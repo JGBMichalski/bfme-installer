@@ -1,0 +1,78 @@
+# Flatpak manifest for the BFME Installer.
+# Runs the Windows All-in-One Launcher and Online Arena under Proton (umu-launcher) in a sandbox.
+# Self-hosted only (not for Flathub). Build from this folder:
+#   flatpak-builder --user --install --force-clean build-dir com.jgbmichalski.BfmeInstaller.yml
+id: com.jgbmichalski.BfmeInstaller
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+command: bfme-linux-setup
+
+finish-args:
+  - --share=network                 # downloads, browser login, game servers
+  - --share=ipc                     # X11 shared memory
+  - --socket=x11                    # the games and apps run through XWayland
+  - --socket=wayland
+  - --socket=pulseaudio             # also covers PipeWire
+  - --device=all                    # GPU and gamepads
+  - --allow=multiarch               # 32-bit games
+  - --allow=devel                   # Proton's container needs this
+  - --allow=per-app-dev-shm         # Wine server shared memory
+  - --filesystem=xdg-data/umu:create   # umu's runtime location
+  - --env=PATH=/app/bin:/usr/bin
+  - --env=XDG_DATA_DIRS=/app/share:/usr/lib/extensions/vulkan/share:/usr/share:/usr/share/runtime/share:/run/host/user-share:/run/host/share:/usr/lib/pressure-vessel/overrides/share
+
+add-extensions:
+  org.freedesktop.Platform.Compat.i386:
+    directory: lib/i386-linux-gnu
+    version: '25.08'
+  org.freedesktop.Platform.GL32:
+    directory: lib/i386-linux-gnu/GL
+    version: '1.4'
+    versions: 25.08;1.4
+    subdirectories: true
+    no-autodownload: true
+    autodelete: false
+    add-ld-path: lib
+    merge-dirs: vulkan/icd.d;glvnd/egl_vendor.d;OpenCL/vendors;lib/dri;lib/d3d;vulkan/explicit_layer.d;vulkan/implicit_layer.d
+    download-if: active-gl-driver
+    enable-if: active-gl-driver
+    autoprune-unless: active-gl-driver
+
+modules:
+  # Mount points the extensions above attach to.
+  - name: extension-points
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/lib/i386-linux-gnu /app/lib/i386-linux-gnu/GL /app/lib/debug/lib/i386-linux-gnu
+
+  - name: umu-launcher
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 umu-run /app/bin/umu-run
+    sources:
+      - type: archive
+        url: https://github.com/Open-Wine-Components/umu-launcher/releases/download/1.4.4/umu-launcher-1.4.4-zipapp.tar
+        sha256: eb590691841f7fad3fc3ad8fd5db4ccb87849fe7948e62b28ece7a4ee48cc851
+        strip-components: 1
+
+  - name: bfme-linux-setup
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 bfme-linux-setup.sh /app/bin/bfme-linux-setup
+      - install -Dm644 com.jgbmichalski.BfmeInstaller.desktop /app/share/applications/com.jgbmichalski.BfmeInstaller.desktop
+      - install -Dm644 com.jgbmichalski.BfmeInstaller.Arena.desktop /app/share/applications/com.jgbmichalski.BfmeInstaller.Arena.desktop
+      - install -Dm644 com.jgbmichalski.BfmeInstaller.png /app/share/icons/hicolor/128x128/apps/com.jgbmichalski.BfmeInstaller.png
+      - install -Dm644 com.jgbmichalski.BfmeInstaller.metainfo.xml /app/share/metainfo/com.jgbmichalski.BfmeInstaller.metainfo.xml
+    sources:
+      - type: file
+        path: ../scripts/bfme-linux-setup.sh
+        dest-filename: bfme-linux-setup.sh
+      - type: file
+        path: com.jgbmichalski.BfmeInstaller.desktop
+      - type: file
+        path: com.jgbmichalski.BfmeInstaller.Arena.desktop
+      - type: file
+        path: com.jgbmichalski.BfmeInstaller.png
+      - type: file
+        path: com.jgbmichalski.BfmeInstaller.metainfo.xml

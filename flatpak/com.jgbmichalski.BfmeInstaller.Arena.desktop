@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=BFME Online Arena
+Comment=Play Battle for Middle-earth online
+Exec=bfme-linux-setup arena
+Icon=com.jgbmichalski.BfmeInstaller
+Terminal=false
+Categories=Game;
+StartupNotify=true

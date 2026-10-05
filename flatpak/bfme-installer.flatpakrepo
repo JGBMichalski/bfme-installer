@@ -1,0 +1,6 @@
+[Flatpak Repo]
+Title=BFME Installer
+Url=@BFME_REPO_URL@
+Homepage=https://github.com/JGBMichalski/bfme-installer
+Comment=Run the BFME All-in-One Launcher and Online Arena on Linux
+RuntimeRepo=https://dl.flathub.org/repo/flathub.flatpakrepo
