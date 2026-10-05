@@ -86,11 +86,28 @@ jobs:
           chmod +x dist/install-flatpak.sh
           ls -l dist
           cd dist && sha256sum -- * > SHA256SUMS
+      # The release notes are this version's section of CHANGELOG.md (Keep a Changelog format). The step fails if
+      # the section is missing or empty, so a release cannot go out without notes.
+      - name: Release notes from the changelog
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          notes="$RUNNER_TEMP/release-notes.md"
+          # From the "## [version]" heading to the next "## [" heading or the link list at the bottom of the file.
+          awk -v v="$version" '
+            /^## \[/ { if (found) exit; if (index($0, "## [" v "]") == 1) found = 1; next }
+            found && /^\[[^]]+\]: / { exit }
+            found { print }
+          ' CHANGELOG.md | sed '/./,$!d' > "$notes"
+          if [ ! -s "$notes" ]; then
+            echo "::error::CHANGELOG.md has no notes for version $version. Add a '## [$version]' section before releasing."
+            exit 1
+          fi
+          cat "$notes"
       - name: Publish the release
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*
-          generate_release_notes: true
+          body_path: ${{ runner.temp }}/release-notes.md
 
   # Publishes a Flatpak repository to GitHub Pages so `flatpak update` can find new versions.
   # Needs Pages enabled with "GitHub Actions" as the source (Settings > Pages).

@@ -39,7 +39,7 @@
 
 set -euo pipefail
 
-readonly SCRIPT_VERSION="0.1.0"
+readonly SCRIPT_VERSION="0.1.1"
 # Pinned on purpose: "UMU-Latest" moves, which re-downloads Proton and can change game behaviour
 # (and so risk "Out of Sync" against Windows players). Raise this together with a release.
 # umu can only download "latest" builds by name, so this exact build is fetched and verified here.
@@ -650,18 +650,42 @@ wait_for_stable_file() {
 }
 
 # ----------------------------------------------------------- the launcher ----
+# Ends every program in the Wine session (the "Wine server"). Needed because the runner waits for the whole
+# session, not just the program it started.
+stop_wine_session() {
+  local ws="" candidate
+  if [ "$RUNNER" = "wine" ]; then
+    ws="$(command -v wineserver || true)"
+  else
+    for candidate in "$PROTONPATH_VALUE/files/bin/wineserver" \
+                     "${XDG_DATA_HOME:-$HOME/.local/share}/umu/compatibilitytools/$PROTONPATH_VALUE/files/bin/wineserver"; do
+      if [ -x "$candidate" ]; then ws="$candidate"; break; fi
+    done
+  fi
+  if [ -z "$ws" ]; then
+    warn "Could not find the Wine server. Close the launcher window to let the setup carry on."
+    return 1
+  fi
+  WINEPREFIX="$PREFIX" "$ws" -k >/dev/null 2>&1 || true
+  WINEPREFIX="$PREFIX" timeout 20 "$ws" -w >/dev/null 2>&1 || true   # wait until it has saved and exited
+}
+
 install_launcher() {
   ensure_prefix
   [ -f "$LAUNCHER_EXE" ] && return
   local setup="$DOWNLOADS/AllInOneLauncherSetup.exe"
   [ -f "$setup" ] || download "$LAUNCHER_SETUP_URL" "$setup"
-  say "Starting the launcher setup. Follow the windows on your screen."
+  say "Installing the launcher. It may open for a moment; the setup closes it again."
   # The first start of the setup must not use runinprefix.
-  run_in_runner create "$setup" >"$LOGS/launcher-setup.log" 2>&1 || true
-  # Under Wine the setup program hands over to a background process and returns at once,
-  # so wait for the installed file to appear and stop growing.
-  wait_for_stable_file "$LAUNCHER_EXE" 180 \
-    || die "The launcher was not installed. See $LOGS/launcher-setup.log"
+  run_in_runner create "$setup" >"$LOGS/launcher-setup.log" 2>&1 &
+  local setup_pid=$! installed=0
+  # When the setup finishes it starts the launcher, and the runner (Proton) does not return until every program
+  # in the session has ended, so waiting for the setup would wait until someone closes the launcher.
+  # Wait for the installed file to appear and stop growing instead, then end the session.
+  wait_for_stable_file "$LAUNCHER_EXE" 180 && installed=1
+  stop_wine_session || true
+  wait "$setup_pid" 2>/dev/null || true
+  [ "$installed" = "1" ] || die "The launcher was not installed. See $LOGS/launcher-setup.log"
   rm -f "$setup"
 }
 

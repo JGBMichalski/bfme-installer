@@ -33,3 +33,4 @@ Other commands: `launcher`, `arena`, `game bfme1|bfme2|rotwk`, `shortcuts`, `sta
 - [Flatpak](docs/flatpak.md): the install script, its options, building, and publishing updates.
 - [Setup wizard](docs/wizard.md): the first-run window.
 - [Status lines](docs/status-lines.md): how the wizard reads the script's progress.
+- [Changelog](CHANGELOG.md): what changed in each release.
