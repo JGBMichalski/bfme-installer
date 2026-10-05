@@ -9,6 +9,7 @@
     <p>Sets up Proton automatically and runs the BFME All-in-One Launcher and the Online Arena, so you can install, mod and play Battle for Middle-earth 1, 2 and Rise of the Witch-king, including online play with Windows players.</p>
   </description>
   <launchable type="desktop-id">com.jgbmichalski.BfmeInstaller.desktop</launchable>
+  <launchable type="desktop-id">com.jgbmichalski.BfmeInstaller.Launcher.desktop</launchable>
   <launchable type="desktop-id">com.jgbmichalski.BfmeInstaller.Arena.desktop</launchable>
   <url type="homepage">https://github.com/JGBMichalski/bfme-installer</url>
   <url type="vcs-browser">https://github.com/JGBMichalski/bfme-installer</url>

@@ -1,12 +1,14 @@
 # Flatpak manifest for the BFME Installer.
-# Runs the Windows All-in-One Launcher and Online Arena under Proton (umu-launcher) in a sandbox.
+# Runs the Windows All-in-One Launcher and Online Arena under Proton (umu-launcher) in a sandbox,
+# with a GTK4/libadwaita setup wizard (wizard/) in front. The GNOME runtime provides GTK4, libadwaita and
+# PyGObject. It is based on freedesktop 25.08, so the 32-bit extensions below are the same.
 # Self-hosted only (not for Flathub). Build from this folder:
 #   flatpak-builder --user --install --force-clean build-dir com.jgbmichalski.BfmeInstaller.yml
 id: com.jgbmichalski.BfmeInstaller
-runtime: org.freedesktop.Platform
-runtime-version: '25.08'
-sdk: org.freedesktop.Sdk
-command: bfme-linux-setup
+runtime: org.gnome.Platform
+runtime-version: '49'
+sdk: org.gnome.Sdk
+command: bfme-installer
 
 finish-args:
   - --share=network                 # downloads, browser login, game servers
@@ -61,6 +63,7 @@ modules:
     build-commands:
       - install -Dm755 bfme-linux-setup.sh /app/bin/bfme-linux-setup
       - install -Dm644 com.jgbmichalski.BfmeInstaller.desktop /app/share/applications/com.jgbmichalski.BfmeInstaller.desktop
+      - install -Dm644 com.jgbmichalski.BfmeInstaller.Launcher.desktop /app/share/applications/com.jgbmichalski.BfmeInstaller.Launcher.desktop
       - install -Dm644 com.jgbmichalski.BfmeInstaller.Arena.desktop /app/share/applications/com.jgbmichalski.BfmeInstaller.Arena.desktop
       - install -Dm644 com.jgbmichalski.BfmeInstaller.png /app/share/icons/hicolor/128x128/apps/com.jgbmichalski.BfmeInstaller.png
       - install -Dm644 com.jgbmichalski.BfmeInstaller.metainfo.xml /app/share/metainfo/com.jgbmichalski.BfmeInstaller.metainfo.xml
@@ -71,8 +74,29 @@ modules:
       - type: file
         path: com.jgbmichalski.BfmeInstaller.desktop
       - type: file
+        path: com.jgbmichalski.BfmeInstaller.Launcher.desktop
+      - type: file
         path: com.jgbmichalski.BfmeInstaller.Arena.desktop
       - type: file
         path: com.jgbmichalski.BfmeInstaller.png
       - type: file
         path: com.jgbmichalski.BfmeInstaller.metainfo.xml
+
+  # The setup wizard (Python, GTK4/libadwaita). `bfme-installer` is the app's main command.
+  - name: bfme-wizard
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/lib/bfme-wizard
+      - cp -r bfme_wizard /app/lib/bfme-wizard/
+      - install -Dm755 bfme-installer /app/bin/bfme-installer
+    sources:
+      - type: dir
+        path: ../wizard/bfme_wizard
+        dest: bfme_wizard
+        skip:
+          - __pycache__
+      - type: script
+        dest-filename: bfme-installer
+        commands:
+          - export PYTHONPATH="/app/lib/bfme-wizard${PYTHONPATH:+:$PYTHONPATH}"
+          - exec python3 -m bfme_wizard "$@"

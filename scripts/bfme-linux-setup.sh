@@ -8,7 +8,7 @@
 # It never uses sudo and never installs system packages. If something is
 # missing, "doctor" tells you what to install.
 #
-# Usage: bfme-linux-setup.sh <command>
+# Usage: bfme-linux-setup.sh [--machine] <command>
 #   doctor              Check system requirements for the chosen runner.
 #   install             Set up everything (runner, prefix, settings, launcher, Arena, shortcuts).
 #   launcher            Start the All-in-One Launcher (installs it first if needed).
@@ -18,6 +18,10 @@
 #   status              Show what is installed and where.
 #   reset-prefix --yes  Delete the prefix. This deletes installed games.
 #   help                Show this help.
+#
+# --machine (or BFME_PROGRESS=1) also prints status lines for a program to read, for example the
+# setup wizard. Each starts with "@bfme " and is described in docs/status-lines.md. The normal
+# text output is unchanged. Send the script SIGUSR1 to stop an install cleanly before the next step.
 #
 # Two runners are supported. Proton is the default.
 #   proton  Proton through umu-launcher. Downloaded for you. Needs no sudo.
@@ -92,15 +96,55 @@ APPS_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
 
 # ---------------------------------------------------------------- output ----
 say()  { printf '%s\n' "$*"; }
-warn() { printf 'WARNING: %s\n' "$*" >&2; }
-die()  { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
+
+# Status lines for programs (--machine). One line each, always starting with "@bfme ".
+MACHINE="${BFME_PROGRESS:-0}"
+STEP_CURRENT=""
+ERROR_REPORTED=0
+CANCEL_REQUESTED=0
+CANCELLED=0
+machine() {
+  [ "$MACHINE" = "1" ] || return 0
+  local line="$*"
+  printf '@bfme %s\n' "${line//$'\n'/ }"
+}
+step_start() { check_cancel; STEP_CURRENT="$1"; machine STEP "$1" start; }
+step_done()  { machine STEP "$1" "done"; STEP_CURRENT=""; }
+step_skip()  { check_cancel; machine STEP "$1" skip; }
+# SIGUSR1 only sets a flag. Bash runs the trap after the current command ends, so the install
+# stops cleanly between steps and a later run carries on where this one stopped.
+check_cancel() {
+  [ "$CANCEL_REQUESTED" = "1" ] || return 0
+  CANCELLED=1
+  machine CANCELLED
+  say "Stopped before the next step."
+  exit 130
+}
+trap 'CANCEL_REQUESTED=1' USR1
+# Any failure that did not go through die() (for example a failed download) still reports an error.
+on_exit() {
+  local rc=$?
+  if [ "$rc" -ne 0 ] && [ "$ERROR_REPORTED" = "0" ] && [ "$CANCELLED" = "0" ]; then
+    machine ERROR "${STEP_CURRENT:--}" "Failed (exit $rc). See the logs in $LOGS"
+  fi
+}
+trap on_exit EXIT
+
+warn() { printf 'WARNING: %s\n' "$*" >&2; machine WARN "$*"; }
+die()  {
+  printf 'ERROR: %s\n' "$*" >&2
+  machine ERROR "${STEP_CURRENT:--}" "$*"
+  ERROR_REPORTED=1
+  exit 1
+}
 
 # ---------------------------------------------------------------- doctor ----
 DOCTOR_FAILS=0
 DOCTOR_WARNS=0
-pass()   { printf '  [ok]   %s\n' "$*"; }
-fail()   { printf '  [FAIL] %s\n' "$*"; DOCTOR_FAILS=$((DOCTOR_FAILS + 1)); }
-notice() { printf '  [warn] %s\n' "$*"; DOCTOR_WARNS=$((DOCTOR_WARNS + 1)); }
+# Each check has an id (first argument) so a program can tell the checks apart.
+pass()   { local id="$1"; shift; printf '  [ok]   %s\n' "$*"; machine CHECK "$id" ok "$*"; }
+fail()   { local id="$1"; shift; printf '  [FAIL] %s\n' "$*"; machine CHECK "$id" fail "$*"; DOCTOR_FAILS=$((DOCTOR_FAILS + 1)); }
+notice() { local id="$1"; shift; printf '  [warn] %s\n' "$*"; machine CHECK "$id" warn "$*"; DOCTOR_WARNS=$((DOCTOR_WARNS + 1)); }
 
 distro_family() {
   local id="" like=""
@@ -118,23 +162,29 @@ distro_family() {
 }
 
 install_hint() {
-  # $1 what is missing; $2 debian packages; $3 fedora/suse packages; $4 arch packages
+  # $1 check id; $2 what is missing; $3 debian packages; $4 fedora/suse packages; $5 arch packages
+  local cmd=""
   case "$(distro_family)" in
-    debian) say "         Install: sudo apt install $2" ;;
-    fedora) say "         Install: sudo dnf install $3" ;;
-    arch)   say "         Install: sudo pacman -S $4" ;;
-    suse)   say "         Install: sudo zypper install $3" ;;
-    *)      say "         Install $1 with your package manager." ;;
+    debian) cmd="sudo apt install $3" ;;
+    fedora) cmd="sudo dnf install $4" ;;
+    arch)   cmd="sudo pacman -S $5" ;;
+    suse)   cmd="sudo zypper install $4" ;;
   esac
+  if [ -n "$cmd" ]; then
+    say "         Install: $cmd"
+    machine FIX "$1" "$cmd"
+  else
+    say "         Install $2 with your package manager."
+  fi
 }
 
 check_cmd() {
   # $1 command; $2 debian pkg; $3 fedora/suse pkg; $4 arch pkg
   if command -v "$1" >/dev/null 2>&1; then
-    pass "$1 found"
+    pass "cmd-$1" "$1 found"
   else
-    fail "$1 not found"
-    install_hint "$1" "$2" "$3" "$4"
+    fail "cmd-$1" "$1 not found"
+    install_hint "cmd-$1" "$1" "$2" "$3" "$4"
   fi
 }
 
@@ -151,9 +201,9 @@ cmd_doctor() {
   say ""
 
   if [ "$(uname -m)" = "x86_64" ]; then
-    pass "x86_64 processor"
+    pass cpu "x86_64 processor"
   else
-    fail "processor is $(uname -m); only x86_64 is supported"
+    fail cpu "processor is $(uname -m); only x86_64 is supported"
   fi
 
   check_cmd curl curl curl curl
@@ -161,12 +211,13 @@ cmd_doctor() {
 
   if [ "$IN_FLATPAK" = "1" ]; then
     check_cmd python3 python3 python3 python
-    pass "running in a Flatpak: graphics libraries and the Proton container come from the Flatpak, so host checks are skipped"
+    pass flatpak "running in a Flatpak: graphics libraries and the Proton container come from the Flatpak, so host checks are skipped"
     if flatpak_32bit_missing; then
-      fail "the 32-bit Flatpak extensions are not installed"
+      fail flatpak-32bit "the 32-bit Flatpak extensions are not installed"
       flatpak_32bit_message | sed 's/^/         /'
+      machine FIX flatpak-32bit "$(flatpak_32bit_fix_command)"
     else
-      pass "32-bit Flatpak extensions installed"
+      pass flatpak-32bit "32-bit Flatpak extensions installed"
     fi
   elif [ "$RUNNER" = "proton" ]; then
     check_cmd python3 python3 python3 python
@@ -174,9 +225,9 @@ cmd_doctor() {
     # Proton's container needs bubblewrap to be allowed to create user namespaces.
     if command -v bwrap >/dev/null 2>&1; then
       if bwrap --ro-bind / / --dev /dev true >/dev/null 2>&1; then
-        pass "bubblewrap can start a sandbox"
+        pass bwrap "bubblewrap can start a sandbox"
       else
-        fail "bubblewrap cannot start a sandbox (user namespaces are blocked)"
+        fail bwrap "bubblewrap cannot start a sandbox (user namespaces are blocked)"
         say "         On Ubuntu 24.04 and newer, make sure the bubblewrap AppArmor profile is installed."
       fi
     fi
@@ -184,15 +235,16 @@ cmd_doctor() {
     check_cmd wine "wine wine32:i386" wine wine
     check_cmd cabextract cabextract cabextract cabextract
     if command -v wine >/dev/null 2>&1; then
-      pass "Wine version: $(wine --version 2>/dev/null || echo unknown). Use one Wine version per prefix."
+      pass wine-version "Wine version: $(wine --version 2>/dev/null || echo unknown). Use one Wine version per prefix."
     fi
     # Debian and Ubuntu need the 32-bit architecture enabled for 32-bit Wine.
     if command -v dpkg >/dev/null 2>&1; then
       if dpkg --print-foreign-architectures 2>/dev/null | grep -q i386; then
-        pass "32-bit (i386) packages enabled"
+        pass i386-arch "32-bit (i386) packages enabled"
       else
-        fail "32-bit (i386) packages are not enabled"
+        fail i386-arch "32-bit (i386) packages are not enabled"
         say "         Run: sudo dpkg --add-architecture i386 && sudo apt update"
+        machine FIX i386-arch "sudo dpkg --add-architecture i386 && sudo apt update"
       fi
     fi
   fi
@@ -205,25 +257,25 @@ cmd_doctor() {
     libs="$(ldconfig -p 2>/dev/null || true)"
     vulkan="$(printf '%s\n' "$libs" | grep 'libvulkan\.so\.1 ' || true)"
     if printf '%s\n' "$vulkan" | grep -q 'x86-64'; then
-      pass "64-bit Vulkan loader found"
+      pass vulkan64 "64-bit Vulkan loader found"
     else
-      fail "64-bit Vulkan loader (libvulkan.so.1) not found"
-      install_hint "the Vulkan loader" "libvulkan1 mesa-vulkan-drivers" "vulkan-loader mesa-vulkan-drivers" "vulkan-icd-loader"
+      fail vulkan64 "64-bit Vulkan loader (libvulkan.so.1) not found"
+      install_hint vulkan64 "the Vulkan loader" "libvulkan1 mesa-vulkan-drivers" "vulkan-loader mesa-vulkan-drivers" "vulkan-icd-loader"
     fi
     if printf '%s\n' "$vulkan" | grep -v 'x86-64' | grep -q 'libvulkan'; then
-      pass "32-bit Vulkan loader found"
+      pass vulkan32 "32-bit Vulkan loader found"
     else
-      notice "32-bit Vulkan loader not found (the games are 32-bit)"
-      install_hint "32-bit graphics libraries" "libvulkan1:i386 mesa-vulkan-drivers:i386" "vulkan-loader.i686 mesa-vulkan-drivers.i686" "lib32-vulkan-icd-loader lib32-vulkan-mesa-layers"
+      notice vulkan32 "32-bit Vulkan loader not found (the games are 32-bit)"
+      install_hint vulkan32 "32-bit graphics libraries" "libvulkan1:i386 mesa-vulkan-drivers:i386" "vulkan-loader.i686 mesa-vulkan-drivers.i686" "lib32-vulkan-icd-loader lib32-vulkan-mesa-layers"
     fi
   fi
 
   local free_kb
   free_kb="$(df -Pk "$(existing_parent "$BASE")" 2>/dev/null | awk 'NR==2 {print $4}')"
   if [ -n "$free_kb" ] && [ "$((free_kb / 1024 / 1024))" -ge "$MIN_FREE_GB" ]; then
-    pass "free disk space: $((free_kb / 1024 / 1024)) GB (need about $MIN_FREE_GB GB)"
+    pass disk "free disk space: $((free_kb / 1024 / 1024)) GB (need about $MIN_FREE_GB GB)"
   else
-    notice "less than $MIN_FREE_GB GB free where the data goes ($BASE)"
+    notice disk "less than $MIN_FREE_GB GB free where the data goes ($BASE)"
   fi
 
   # Firewall: informational only. The script never changes firewall rules.
@@ -235,11 +287,11 @@ cmd_doctor() {
     fi
   done
   if [ "$IN_FLATPAK" = "1" ]; then
-    pass "firewall: not checked from inside a Flatpak. If you cannot host or join games, check ufw or firewalld on your system."
+    pass firewall "firewall: not checked from inside a Flatpak. If you cannot host or join games, check ufw or firewalld on your system."
   elif [ -n "$fw" ]; then
-    notice "firewall '$fw' is active. If you cannot host or join games, check that it allows the game and Arena traffic."
+    notice firewall "firewall '$fw' is active. If you cannot host or join games, check that it allows the game and Arena traffic."
   else
-    pass "no active ufw or firewalld found"
+    pass firewall "no active ufw or firewalld found"
   fi
 
   say ""
@@ -285,6 +337,15 @@ flatpak_32bit_missing() {
   [ "$found_gl32" = "1" ] || [ -d /usr/lib/i386-linux-gnu/GL/default ] || return 0
   return 1
 }
+# The exact command that fixes the above, for a program (such as the wizard) to show.
+flatpak_32bit_fix_command() {
+  local ext="org.freedesktop.Platform.Compat.i386//${FLATPAK_RUNTIME_VERSION} org.freedesktop.Platform.GL32.default//${FLATPAK_RUNTIME_VERSION}" d
+  for d in /usr/lib/x86_64-linux-gnu/GL/nvidia-*; do
+    [ -d "$d" ] || continue
+    ext="$ext org.freedesktop.Platform.GL32.$(basename "$d")"
+  done
+  printf 'flatpak install --user flathub %s' "$ext"
+}
 flatpak_32bit_message() {
   cat <<EOF
 The 32-bit parts of the Flatpak runtime are not installed, so the games and apps cannot start.
@@ -304,8 +365,34 @@ download() {
   local url="$1" dest="$2"
   mkdir -p "$(dirname "$dest")"
   say "Downloading $(basename "$dest")"
-  curl -fL --retry 3 --retry-delay 2 -C - --progress-bar -o "$dest.part" "$url"
+  if [ "$MACHINE" = "1" ]; then
+    download_with_progress "$url" "$dest.part"
+  else
+    curl -fL --retry 3 --retry-delay 2 -C - --progress-bar -o "$dest.part" "$url"
+  fi
   mv -f "$dest.part" "$dest"
+}
+
+# curl's own progress bar is for people. For programs, watch the growing file and print PROGRESS lines.
+# Without a size from the server there are no PROGRESS lines, so the reader shows "working".
+download_with_progress() {
+  # $1 url, $2 the .part file
+  local url="$1" part="$2" total pid rc=0 size pct last=-1
+  total="$(curl -fsIL -m 15 "$url" 2>/dev/null | awk 'tolower($1) == "content-length:" {v = $2} END {gsub(/\r/, "", v); print v}')" || total=""
+  curl -fsSL --retry 3 --retry-delay 2 -C - -o "$part" "$url" &
+  pid=$!
+  while kill -0 "$pid" 2>/dev/null; do
+    if [ -n "$total" ] && [ "$total" -gt 0 ] 2>/dev/null; then
+      size="$(stat -c %s "$part" 2>/dev/null || echo 0)"
+      pct=$((size * 100 / total))
+      [ "$pct" -gt 100 ] && pct=100
+      if [ "$pct" != "$last" ]; then machine PROGRESS "$pct"; last="$pct"; fi
+    fi
+    sleep 0.5
+  done
+  wait "$pid" || rc=$?
+  [ "$rc" -eq 0 ] || return "$rc"
+  [ "$last" = "100" ] || [ -z "$total" ] || machine PROGRESS 100
 }
 
 verify_sha256() {
@@ -526,9 +613,8 @@ acquire_setup_lock() {
   fi
 }
 
-ensure_prefix() {
-  prefix_ready || acquire_setup_lock
-  ensure_runner
+# Everything after the runner is in place: create the prefix and apply its settings.
+prepare_prefix() {
   prefix_ready || create_prefix
   if [ "$RUNNER" = "wine" ] && [ -f "$PREFIX/.bfme-wine-version" ]; then
     local now was
@@ -540,6 +626,12 @@ ensure_prefix() {
     fi
   fi
   apply_prefix_settings
+}
+
+ensure_prefix() {
+  prefix_ready || acquire_setup_lock
+  ensure_runner
+  prepare_prefix
 }
 
 wait_for_stable_file() {
@@ -699,13 +791,38 @@ cmd_shortcuts() {
 }
 
 # ---------------------------------------------------------------- install ----
+# The steps are reported as status lines (--machine): doctor, runner, prefix, launcher, arena, shortcuts.
 cmd_install() {
+  step_start doctor
   cmd_doctor || die "Fix the problems above, then run install again."
+  step_done doctor
   say ""
-  ensure_prefix
-  install_launcher
+  prefix_ready || acquire_setup_lock
+  step_start runner
+  ensure_runner
+  step_done runner
+  step_start prefix
+  prepare_prefix
+  step_done prefix
+  if [ -f "$LAUNCHER_EXE" ]; then
+    step_skip launcher
+  else
+    step_start launcher
+    install_launcher
+    step_done launcher
+  fi
+  step_start arena
   install_or_update_arena
-  cmd_shortcuts
+  step_done arena
+  if [ "$IN_FLATPAK" = "1" ]; then
+    step_skip shortcuts
+    cmd_shortcuts
+  else
+    step_start shortcuts
+    cmd_shortcuts
+    step_done shortcuts
+  fi
+  machine DONE
   say ""
   say "Done. Start 'BFME All-in-One Launcher' to install the games, and 'BFME Online Arena' to play online."
   say "Do not switch patches in the launcher after a game is installed. On Wine this once broke the BFME 2 files."
@@ -722,6 +839,17 @@ cmd_status() {
   for g in BFME1 BFME2 RotWK; do
     say "$(printf '%-11s' "$g:") $([ -d "$PREFIX/drive_c/$g" ] && echo 'folder present' || echo 'not installed')"
   done
+  # For programs: setup is complete when the prefix, launcher and Arena are all there.
+  local p="missing" l="missing" a="missing" done_all="no"
+  prefix_ready && p="ready"
+  [ -f "$LAUNCHER_EXE" ] && l="installed"
+  [ -f "$ARENA_EXE" ] && a="installed"
+  if [ "$p" = "ready" ] && [ "$l" = "installed" ] && [ "$a" = "installed" ]; then done_all="yes"; fi
+  machine STATUS runner "$RUNNER"
+  machine STATUS prefix "$p"
+  machine STATUS launcher "$l"
+  machine STATUS arena "$a"
+  machine STATUS complete "$done_all"
 }
 
 cmd_reset_prefix() {
@@ -737,6 +865,7 @@ cmd_help() { sed -n '2,/^set -euo/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//'; }
 
 # ------------------------------------------------------------------- main ----
 main() {
+  if [ "${1:-}" = "--machine" ]; then MACHINE=1; shift; fi
   local cmd="${1:-help}"
   if [ $# -gt 0 ]; then shift; fi
   case "$cmd" in

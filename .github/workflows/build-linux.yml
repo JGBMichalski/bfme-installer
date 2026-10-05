@@ -7,11 +7,13 @@ on:
     paths:
       - 'scripts/**'
       - 'flatpak/**'
+      - 'wizard/**'
       - '.github/workflows/build-linux.yml'
   pull_request:
     paths:
       - 'scripts/**'
       - 'flatpak/**'
+      - 'wizard/**'
       - '.github/workflows/build-linux.yml'
   workflow_dispatch:
 
@@ -31,11 +33,22 @@ jobs:
       - name: shellcheck
         run: shellcheck -x "$SCRIPTS_DIR/bfme-linux-setup.sh" "$FLATPAK_DIR/install-flatpak.sh"
 
+  # The wizard's logic (protocol, state model, script runner, controller) runs without a display.
+  wizard-tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PyGObject
+        run: sudo apt-get update && sudo apt-get install -y python3-gi gir1.2-glib-2.0
+      - name: Unit tests
+        run: python3 -m unittest discover -s tests -t .
+        working-directory: wizard
+
   flatpak:
-    needs: shellcheck
+    needs: [shellcheck, wizard-tests]
     runs-on: ubuntu-24.04
     container:
-      image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-25.08
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-49
       options: --privileged
     steps:
       - uses: actions/checkout@v4
@@ -66,7 +79,10 @@ jobs:
         run: |
           BASE_URL="${FLATPAK_REPO_BASE_URL:-https://${GITHUB_REPOSITORY_OWNER,,}.github.io/${GITHUB_REPOSITORY#*/}}"
           cp "$SCRIPTS_DIR/bfme-linux-setup.sh" dist/
-          sed "s|@BFME_DEFAULT_REPO@|$BASE_URL/repo|" "$FLATPAK_DIR/install-flatpak.sh" > dist/install-flatpak.sh
+          # The release copy falls back to the bundle of this exact release if the Pages repository is down.
+          BUNDLE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/bfme-installer-linux.flatpak"
+          sed -e "s|@BFME_DEFAULT_REPO@|$BASE_URL/repo|" -e "s|@BFME_BUNDLE_URL@|$BUNDLE_URL|" \
+            "$FLATPAK_DIR/install-flatpak.sh" > dist/install-flatpak.sh
           chmod +x dist/install-flatpak.sh
           ls -l dist
           cd dist && sha256sum -- * > SHA256SUMS
@@ -114,16 +130,19 @@ jobs:
           flatpak build-import-bundle site/repo dist/bfme-installer-linux.flatpak
           flatpak build-update-repo --generate-static-deltas --prune site/repo
           sed "s|@BFME_REPO_URL@|$BASE_URL/repo|" "$FLATPAK_DIR/bfme-installer.flatpakrepo" > site/bfme-installer.flatpakrepo
-          sed "s|@BFME_DEFAULT_REPO@|$BASE_URL/repo|" "$FLATPAK_DIR/install-flatpak.sh" > site/install-flatpak.sh
+          # The site copy always follows the newest release.
+          BUNDLE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/bfme-installer-linux.flatpak"
+          sed -e "s|@BFME_DEFAULT_REPO@|$BASE_URL/repo|" -e "s|@BFME_BUNDLE_URL@|$BUNDLE_URL|" \
+            "$FLATPAK_DIR/install-flatpak.sh" > site/install-flatpak.sh
           chmod +x site/install-flatpak.sh
           cat > site/index.html <<EOF
           <!doctype html>
           <meta charset="utf-8">
           <title>BFME Installer - Linux</title>
           <h1>BFME Installer - Linux Flatpak repository</h1>
-          <p>Install (the helper also installs the 32-bit Flatpak extensions the app needs):</p>
-          <pre>curl -fLO $BASE_URL/install-flatpak.sh
-          bash install-flatpak.sh</pre>
+          <p>Install with one command. It installs the 32-bit Flatpak extensions the app needs, then opens the setup wizard:</p>
+          <pre>curl -fsSL $BASE_URL/install-flatpak.sh | bash</pre>
+          <p>The script is short. Read it first with <code>curl -fsSL $BASE_URL/install-flatpak.sh</code>. To remove the app: <code>curl -fsSL $BASE_URL/install-flatpak.sh | bash -s -- --uninstall</code>.</p>
           <p>Or add the repository yourself and install the app. You must then also install the 32-bit Flatpak extensions, or the app will tell you they are missing:</p>
           <pre>flatpak remote-add --user --if-not-exists bfme-installer $BASE_URL/bfme-installer.flatpakrepo
           flatpak install --user bfme-installer com.jgbmichalski.BfmeInstaller</pre>
