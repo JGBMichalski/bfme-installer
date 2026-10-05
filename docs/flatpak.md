@@ -16,11 +16,11 @@ flatpak-builder --user --install --install-deps-from=flathub --force-clean build
 
 ## The install script
 
-`flatpak/install-flatpak.sh` is what the one-line install in the README runs. The copy attached to each release has two addresses filled in: the Flatpak repository on GitHub Pages, and the `.flatpak` bundle of that same release. It:
+`flatpak/install-flatpak.sh` is what the one-line install in the README runs. The copy attached to each release has two things filled in: the Flatpak repository on GitHub Pages, and the project's public signing key. It:
 
 1. Adds the Flathub remote, for the runtime and the extensions.
 2. Installs the 32-bit extensions. These are required, and Flatpak does **not** install them for apps outside Flathub: not with `flatpak-builder`, not from a self-hosted repo, and not with a `.flatpakref`. The script also picks the 32-bit NVIDIA driver that matches your card.
-3. Installs the app from the Pages repository, so `flatpak update` finds new versions. If the repository cannot be reached, it downloads the release bundle instead, checks it against `SHA256SUMS`, and installs that. A bundle install does not update itself: run the command again, which switches it to the repository once that is reachable.
+3. Installs the app from the Pages repository, so `flatpak update` finds new versions. The repository is signed, and the script only accepts software signed with the project's public key, which is built into it. If the repository cannot be reached, the install stops with a message and you can try again later.
 4. Opens the setup wizard. With no display (SSH, a text console) it runs the terminal setup instead.
 
 If Flatpak is missing, it prints the install command for your distribution (apt, dnf, pacman or zypper) and stops. It never runs `sudo`. It is safe to run again.
@@ -34,17 +34,14 @@ Pass options after `bash -s --` when piping, for example `curl -fsSL <address> |
 | Option | Effect |
 | --- | --- |
 | `--no-setup` | Install only. Do not open the wizard. |
-| `--terminal` | Run the setup in this terminal instead of opening the wizard. |
-| `--repo URL_OR_PATH` | Install from this Flatpak repository. |
-| `--bundle FILE_OR_URL` | Install from a `.flatpak` file or address. |
 | `--uninstall` | Remove the app and its Flatpak repository. Keeps your data and the shared 32-bit extensions. |
 | `--purge` | Uninstall and also delete the app's data: the setup, Proton and any installed games. |
 
-`BFME_FLATPAK_REPO`, `BFME_FLATPAK_BUNDLE` and `BFME_FLATPAK_BUNDLE_URL` set the same sources from the environment. `flatpak uninstall --unused` removes extensions that nothing else uses.
+`flatpak uninstall --unused` removes extensions that nothing else uses.
 
 ### A specific version
 
-Each release attaches its own copy of the script, which falls back to that release's bundle:
+Each release attaches its own copy of the script:
 
 ```
 curl -fsSL https://github.com/JGBMichalski/bfme-installer/releases/download/<tag>/install-flatpak.sh | bash
@@ -61,7 +58,7 @@ One-time setup:
 
 The Pages site also serves a copy of the script that follows the newest release (`<address>/install-flatpak.sh`), with a short page that shows the install command.
 
-The repository is not signed yet, so Flatpak adds it with signature checking off.
+Tagged releases are signed with a project key kept in the `FLATPAK_GPG_PRIVATE_KEY` repository secret. The matching public key is `flatpak/signing-key.gpg`. The setup commands are in a comment in `.github/workflows/build-linux.yml`.
 
 ## Data location
 

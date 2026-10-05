@@ -10,7 +10,7 @@ Copy this into a terminal:
 curl -fsSL https://github.com/JGBMichalski/bfme-installer/releases/latest/download/install-flatpak.sh | bash
 ```
 
-It installs the app as a Flatpak, adds the 32-bit parts Flatpak needs, and opens a setup wizard that walks you through the rest. No `sudo`. If Flatpak is missing it tells you the command to install it. The script is short, so you can read it first: [flatpak/install-flatpak.sh](flatpak/install-flatpak.sh). Each release lists checksums in `SHA256SUMS`.
+It installs the app as a Flatpak, adds the 32-bit parts Flatpak needs, and opens a setup wizard that walks you through the rest.
 
 Run the same command again to update. To remove it, see [Flatpak](docs/flatpak.md#options).
 
@@ -31,6 +31,4 @@ Other commands: `launcher`, `arena`, `game bfme1|bfme2|rotwk`, `shortcuts`, `sta
 
 - [How it works](docs/how-it-works.md): what gets set up, configuration, notes.
 - [Flatpak](docs/flatpak.md): the install script, its options, building, and publishing updates.
-- [Setup wizard](docs/wizard.md): the first-run window.
-- [Status lines](docs/status-lines.md): how the wizard reads the script's progress.
 - [Changelog](CHANGELOG.md): what changed in each release.

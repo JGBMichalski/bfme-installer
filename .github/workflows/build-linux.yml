@@ -29,7 +29,7 @@ jobs:
   shellcheck:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: shellcheck
         run: shellcheck -x "$SCRIPTS_DIR/bfme-linux-setup.sh" "$FLATPAK_DIR/install-flatpak.sh"
 
@@ -37,7 +37,7 @@ jobs:
   wizard-tests:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install PyGObject
         run: sudo apt-get update && sudo apt-get install -y python3-gi gir1.2-glib-2.0
       - name: Unit tests
@@ -51,14 +51,45 @@ jobs:
       image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-49
       options: --privileged
     steps:
-      - uses: actions/checkout@v4
-      - name: Build the Flatpak bundle
+      - uses: actions/checkout@v5
+      - name: Import the signing key
+        id: key
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          FLATPAK_GPG_PRIVATE_KEY: ${{ secrets.FLATPAK_GPG_PRIVATE_KEY }}
+        run: |
+          if [ -z "$FLATPAK_GPG_PRIVATE_KEY" ]; then
+            echo "::error::The FLATPAK_GPG_PRIVATE_KEY secret is not set."
+            exit 1
+          fi
+          command -v gpg >/dev/null 2>&1 || dnf install -y gnupg2
+          printf '%s' "$FLATPAK_GPG_PRIVATE_KEY" | gpg --batch --import
+          echo "fingerprint=$(gpg --batch --list-secret-keys --with-colons | awk -F: '$1 == "fpr" {print $10; exit}')" >> "$GITHUB_OUTPUT"
+      - name: Build the Flatpak
         uses: flatpak/flatpak-github-actions/flatpak-builder@v6
         with:
           bundle: bfme-installer-linux.flatpak
+          artifact-name: bundle
           manifest-path: flatpak/com.jgbmichalski.BfmeInstaller.yml
           cache-key: flatpak-builder-${{ github.sha }}
+          gpg-sign: ${{ steps.key.outputs.fingerprint }}
           upload-artifact: true
+      # The build leaves the repository in ./repo. A client holding the committed public key must accept it. This also
+      # catches a secret that does not match flatpak/signing-key.gpg.
+      - name: Check the signature
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          export FLATPAK_USER_DIR="$RUNNER_TEMP/fp-check"
+          mkdir -p "$FLATPAK_USER_DIR"
+          flatpak --user remote-add check "file://$PWD/repo" --gpg-import=flatpak/signing-key.gpg
+          flatpak --user install -y --noninteractive --no-deps check com.jgbmichalski.BfmeInstaller
+      - name: Keep the repository for GitHub Pages
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@v6
+        with:
+          name: repo
+          path: repo
+          if-no-files-found: error
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
@@ -67,21 +98,19 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      # No artifact name is given on purpose: the Flatpak action chooses its own, so take them all.
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v7
         with:
+          name: bundle
           path: dist
-          merge-multiple: true
       - name: Collect release files
         env:
           FLATPAK_REPO_BASE_URL: ${{ vars.FLATPAK_REPO_BASE_URL }}
         run: |
           BASE_URL="${FLATPAK_REPO_BASE_URL:-https://${GITHUB_REPOSITORY_OWNER,,}.github.io/${GITHUB_REPOSITORY#*/}}"
           cp "$SCRIPTS_DIR/bfme-linux-setup.sh" dist/
-          # The release copy falls back to the bundle of this exact release if the Pages repository is down.
-          BUNDLE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/bfme-installer-linux.flatpak"
-          sed -e "s|@BFME_DEFAULT_REPO@|$BASE_URL/repo|" -e "s|@BFME_BUNDLE_URL@|$BUNDLE_URL|" \
+          KEY="$(base64 -w0 "$FLATPAK_DIR/signing-key.gpg")"
+          sed -e "s|@BFME_DEFAULT_REPO@|$BASE_URL/repo|" -e "s|@BFME_SIGNING_KEY@|$KEY|" \
             "$FLATPAK_DIR/install-flatpak.sh" > dist/install-flatpak.sh
           chmod +x dist/install-flatpak.sh
           ls -l dist
@@ -104,7 +133,7 @@ jobs:
           fi
           cat "$notes"
       - name: Publish the release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: dist/*
           body_path: ${{ runner.temp }}/release-notes.md
@@ -128,28 +157,23 @@ jobs:
       group: pages
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v7
         with:
-          path: dist
-          merge-multiple: true
-      - name: Install the Flatpak tools
-        run: sudo apt-get update && sudo apt-get install -y flatpak ostree
-      - name: Build the repository and the site
+          name: repo
+          path: site/repo
+      - name: Build the site
         env:
           FLATPAK_REPO_BASE_URL: ${{ vars.FLATPAK_REPO_BASE_URL }}
         run: |
           set -euo pipefail
           BASE_URL="${FLATPAK_REPO_BASE_URL:-https://${GITHUB_REPOSITORY_OWNER,,}.github.io/${GITHUB_REPOSITORY#*/}}"
-          mkdir -p site
-          # Only the newest version is kept: users pull what they are missing.
-          ostree init --repo=site/repo --mode=archive-z2
-          flatpak build-import-bundle site/repo dist/bfme-installer-linux.flatpak
-          flatpak build-update-repo --generate-static-deltas --prune site/repo
-          sed "s|@BFME_REPO_URL@|$BASE_URL/repo|" "$FLATPAK_DIR/bfme-installer.flatpakrepo" > site/bfme-installer.flatpakrepo
-          # The site copy always follows the newest release.
-          BUNDLE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/bfme-installer-linux.flatpak"
-          sed -e "s|@BFME_DEFAULT_REPO@|$BASE_URL/repo|" -e "s|@BFME_BUNDLE_URL@|$BUNDLE_URL|" \
+          # site/repo is the signed repository that the build produced.
+          KEY="$(base64 -w0 "$FLATPAK_DIR/signing-key.gpg")"
+          FPR="$(gpg --batch --show-keys --with-colons "$FLATPAK_DIR/signing-key.gpg" | awk -F: '$1 == "fpr" {print $10; exit}')"
+          sed -e "s|@BFME_REPO_URL@|$BASE_URL/repo|" -e "s|@BFME_SIGNING_KEY@|$KEY|" \
+            "$FLATPAK_DIR/bfme-installer.flatpakrepo" > site/bfme-installer.flatpakrepo
+          sed -e "s|@BFME_DEFAULT_REPO@|$BASE_URL/repo|" -e "s|@BFME_SIGNING_KEY@|$KEY|" \
             "$FLATPAK_DIR/install-flatpak.sh" > site/install-flatpak.sh
           chmod +x site/install-flatpak.sh
           cat > site/index.html <<EOF
@@ -160,16 +184,17 @@ jobs:
           <p>Install with one command. It installs the 32-bit Flatpak extensions the app needs, then opens the setup wizard:</p>
           <pre>curl -fsSL $BASE_URL/install-flatpak.sh | bash</pre>
           <p>The script is short. Read it first with <code>curl -fsSL $BASE_URL/install-flatpak.sh</code>. To remove the app: <code>curl -fsSL $BASE_URL/install-flatpak.sh | bash -s -- --uninstall</code>.</p>
+          <p>The repository is signed. The script checks every download against the project's signing key, fingerprint <code>$FPR</code>.</p>
           <p>Or add the repository yourself and install the app. You must then also install the 32-bit Flatpak extensions, or the app will tell you they are missing:</p>
           <pre>flatpak remote-add --user --if-not-exists bfme-installer $BASE_URL/bfme-installer.flatpakrepo
           flatpak install --user bfme-installer com.jgbmichalski.BfmeInstaller</pre>
           <p>Update with <code>flatpak update</code>.</p>
           EOF
           find site -maxdepth 2 | sort
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: site
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

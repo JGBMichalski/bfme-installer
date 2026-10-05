@@ -2,6 +2,8 @@
 # BFME Installer for Linux: installs the Flatpak and the 32-bit Flatpak extensions it needs, then opens the
 # setup wizard. Flatpak does not install those extensions for apps outside Flathub, so this does it for you.
 # Runs as your user. No sudo. Safe to run again: it updates an existing install.
+# The app comes from a signed Flatpak repository. This script carries the project's public signing key and only
+# accepts software signed with it.
 #
 # Install:   curl -fsSL <release or site address>/install-flatpak.sh | bash
 # Options go after "bash -s --", for example:   ... | bash -s -- --uninstall
@@ -14,37 +16,26 @@ readonly APP_ID="com.jgbmichalski.BfmeInstaller"
 readonly RUNTIME_VERSION="25.08"
 readonly REMOTE_NAME="bfme-installer"
 # CI replaces these placeholders in the copy it publishes: the Flatpak repository on GitHub Pages, and the
-# .flatpak bundle attached to the same release (used if the repository cannot be reached).
-readonly DEFAULT_REPO="@BFME_DEFAULT_REPO@"
-readonly DEFAULT_BUNDLE_URL="@BFME_BUNDLE_URL@"
+# project's public signing key (base64). A copy straight from the repository still has the placeholders.
+readonly REPO="@BFME_DEFAULT_REPO@"
+readonly SIGNING_KEY="@BFME_SIGNING_KEY@"
 
-REPO="${BFME_FLATPAK_REPO:-}"
-BUNDLE="${BFME_FLATPAK_BUNDLE:-}"
-BUNDLE_URL="${BFME_FLATPAK_BUNDLE_URL:-}"
 OPEN_WIZARD=1
-TERMINAL=0
 UNINSTALL=0
 PURGE=0
 
 say()  { printf '%s\n' "$*"; }
-warn() { printf 'WARNING: %s\n' "$*" >&2; }
 die()  { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 
 usage() {
   cat <<'EOF'
 Usage: install-flatpak.sh [options]
-  --repo URL_OR_PATH   Install from this Flatpak repository (default: the project's repository)
-  --bundle FILE_OR_URL Install from a single .flatpak file instead
-  --no-setup           Install only. Do not open the setup wizard.
-  --terminal           Run the setup in this terminal instead of opening the wizard.
-  --uninstall          Remove the app and its Flatpak repository. Keeps your data and the shared 32-bit extensions.
-  --purge              Uninstall and also delete the app's data: the setup, Proton and any installed games.
-  -h, --help           Show this help.
+  --no-setup          Install only. Do not open the setup wizard.
+  --uninstall         Remove the app and its Flatpak repository. Keeps your data and the shared 32-bit extensions.
+  --purge             Uninstall and also delete the app's data: the setup, Proton and any installed games.
+  -h, --help          Show this help.
 EOF
 }
-
-# A placeholder that CI did not replace (a checkout, not a release) starts with "@".
-baked() { case "$1" in "@"*|"") return 1 ;; *) return 0 ;; esac; }
 
 has_display() { [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; }
 
@@ -72,8 +63,6 @@ no_flatpak() {
   exit 1
 }
 
-app_installed() { flatpak info --user "$APP_ID" >/dev/null 2>&1; }
-
 install_extensions() {
   local ext=("org.freedesktop.Platform.Compat.i386//${RUNTIME_VERSION}" "org.freedesktop.Platform.GL32.default//${RUNTIME_VERSION}")
   # NVIDIA: the 32-bit driver must match the 64-bit one Flatpak already installed for your card.
@@ -88,99 +77,31 @@ install_extensions() {
   flatpak install --user -y --noninteractive flathub "${ext[@]}"
 }
 
-# Install or update from the Flatpak repository. Returns non-zero when that does not work.
-install_from_repo() {
-  local repo="$1"
-  case "$repo" in /*) repo="file://$repo" ;; esac
-  flatpak remote-add --user --if-not-exists --no-gpg-verify "$REMOTE_NAME" "$repo" || return 1
-  # Keep the address current if an older install used a different one.
-  flatpak remote-modify --user --no-gpg-verify --url="$repo" "$REMOTE_NAME" || return 1
-  if ! app_installed; then
-    flatpak install --user -y --noninteractive "$REMOTE_NAME" "$APP_ID" || return 1
-  elif [ "$(flatpak info --user --show-origin "$APP_ID" 2>/dev/null)" = "$REMOTE_NAME" ]; then
-    say "The app is already installed. Updating it (this also re-checked the extensions above)."
-    flatpak update --user -y --noninteractive "$APP_ID" || return 1
-  else
-    # Installed from a bundle earlier. Switch it to the repository so it can update itself. Your data is kept.
-    say "The app was installed from a download. Switching it to the repository so it can update itself."
-    flatpak install --user --reinstall -y --noninteractive "$REMOTE_NAME" "$APP_ID" || return 1
+# Point the app's remote at the repository, with the signing key: the remote checks every download against it.
+# This also switches checking on for a remote that an older version of this script added without it.
+# The commands are chained with && on purpose: this runs under "|| die", where "set -e" does not stop at a failure,
+# and the install must never go ahead from a remote that did not get checking switched on.
+add_remote() {
+  local key ok=0
+  key="$(mktemp)"
+  if printf '%s' "$SIGNING_KEY" | base64 -d > "$key" \
+     && flatpak remote-add --user --if-not-exists --gpg-import="$key" "$REMOTE_NAME" "$REPO" \
+     && flatpak remote-modify --user --gpg-import="$key" --gpg-verify --url="$REPO" "$REMOTE_NAME"; then
+    ok=1
   fi
-}
-
-# Check a downloaded bundle against the SHA256SUMS file next to it on the release, when there is one.
-verify_download() {
-  local url="$1" file="$2" dir sums name want got
-  dir="${url%/*}"
-  name="${url##*/}"
-  sums="$(curl -fsSL -m 20 "$dir/SHA256SUMS" 2>/dev/null || true)"
-  if [ -z "$sums" ]; then
-    warn "Could not fetch SHA256SUMS to check the download. Continuing without the check."
-    return 0
-  fi
-  want="$(printf '%s\n' "$sums" | awk -v n="$name" '$2 == n || $2 == "*" n {print $1; exit}')"
-  [ -n "$want" ] || { warn "$name is not listed in SHA256SUMS. Continuing without the check."; return 0; }
-  got="$(sha256sum "$file" | awk '{print $1}')"
-  [ "$got" = "$want" ] || { warn "The download does not match SHA256SUMS."; return 1; }
-  say "Checksum OK."
-}
-
-# Install from a .flatpak file, or from a web address that points to one.
-install_from_bundle() {
-  local src="$1" tmp="" file="$1" rc=0
-  case "$src" in
-    http://*|https://*|file://*)
-      command -v curl >/dev/null 2>&1 || { warn "curl is needed to download the bundle."; return 1; }
-      tmp="$(mktemp -d)"
-      file="$tmp/${src##*/}"
-      say "Downloading ${src##*/}"
-      curl -fL --retry 3 --retry-delay 2 -o "$file" "$src" || { rm -rf "$tmp"; return 1; }
-      case "$src" in http*) verify_download "$src" "$file" || { rm -rf "$tmp"; return 1; } ;; esac
-      ;;
-    *) [ -f "$file" ] || die "Bundle '$file' was not found." ;;
-  esac
-  # --reinstall replaces an existing install (the app's data is kept); without it Flatpak refuses.
-  local again=()
-  if app_installed; then again=(--reinstall); fi
-  flatpak install --user -y --noninteractive "${again[@]}" --bundle "$file" || rc=$?
-  [ -z "$tmp" ] || rm -rf "$tmp"
-  return "$rc"
+  rm -f "$key"
+  [ "$ok" = "1" ]
 }
 
 install_app() {
-  if [ -n "$BUNDLE" ]; then
-    install_from_bundle "$BUNDLE" || die "Could not install the bundle."
-    return
-  fi
-  if [ -n "$REPO" ]; then
-    if install_from_repo "$REPO"; then return; fi
-    [ -n "$BUNDLE_URL" ] || die "Could not install from the Flatpak repository $REPO."
-    warn "Could not install from the Flatpak repository. Trying the download from the release instead."
-    if install_from_bundle "$BUNDLE_URL"; then
-      say "Installed from the release download. This copy will not update itself; run this command again to update."
-      return
-    fi
-    die "Could not install from the Flatpak repository or from the release download."
-  fi
-  if [ -n "$BUNDLE_URL" ]; then
-    install_from_bundle "$BUNDLE_URL" || die "Could not install from the release download."
-    return
-  fi
-  die "Give --repo URL or --bundle FILE (or set BFME_FLATPAK_REPO)."
+  add_remote && flatpak install --user -y --noninteractive --or-update "$REMOTE_NAME" "$APP_ID"
 }
 
 start_setup() {
   say ""
   if [ "$OPEN_WIZARD" = "0" ]; then
     say "Installed. Open 'BFME Installer' from your application menu to finish the setup."
-    return
-  fi
-  if [ "$TERMINAL" = "1" ]; then
-    say "Step 4: setup in this terminal (downloads Proton and the launcher, a few minutes)"
-    flatpak run --user --command=bfme-linux-setup "$APP_ID" install \
-      || say "Setup did not finish. Run it again with: flatpak run --command=bfme-linux-setup $APP_ID install"
-    return
-  fi
-  if has_display; then
+  elif has_display; then
     say "Step 4: opening the setup wizard. If it does not appear, open 'BFME Installer' from your application menu."
     nohup flatpak run --user "$APP_ID" >/dev/null 2>&1 &
     disown || true
@@ -193,11 +114,7 @@ start_setup() {
 
 do_uninstall() {
   say "Removing the BFME Installer"
-  if app_installed; then
-    flatpak uninstall --user -y --noninteractive "$APP_ID"
-  else
-    say "The app is not installed."
-  fi
+  flatpak uninstall --user -y --noninteractive "$APP_ID" || say "The app is not installed."
   flatpak remote-delete --user --force "$REMOTE_NAME" >/dev/null 2>&1 || true
   if [ "$PURGE" = "1" ]; then
     local data="${HOME:-}/.var/app/$APP_ID"
@@ -214,10 +131,7 @@ do_uninstall() {
 main() {
   while [ $# -gt 0 ]; do
     case "$1" in
-      --repo)      [ $# -ge 2 ] || die "--repo needs a value."; REPO="$2"; shift 2 ;;
-      --bundle)    [ $# -ge 2 ] || die "--bundle needs a value."; BUNDLE="$2"; shift 2 ;;
       --no-setup)  OPEN_WIZARD=0; shift ;;
-      --terminal)  TERMINAL=1; shift ;;
       --uninstall) UNINSTALL=1; shift ;;
       --purge)     UNINSTALL=1; PURGE=1; shift ;;
       -h|--help)   usage; exit 0 ;;
@@ -232,9 +146,9 @@ main() {
     return
   fi
 
-  # Defaults from the release build, unless a command-line option or an environment variable chose a source.
-  if [ -z "$REPO" ] && [ -z "$BUNDLE" ] && baked "$DEFAULT_REPO"; then REPO="$DEFAULT_REPO"; fi
-  if [ -z "$BUNDLE_URL" ] && baked "$DEFAULT_BUNDLE_URL"; then BUNDLE_URL="$DEFAULT_BUNDLE_URL"; fi
+  case "$REPO$SIGNING_KEY" in
+    *"@BFME_"*) die "This is not a release copy of the script, so it does not know where the app is or which key to trust. Use the install command from the README." ;;
+  esac
 
   say "Step 1: make sure Flathub is available for the runtime and the 32-bit extensions"
   if ! flatpak remotes --user --columns=name | grep -qx flathub; then
@@ -245,7 +159,8 @@ main() {
   install_extensions
 
   say "Step 3: install the app"
-  install_app
+  install_app || die "Could not install the app from $REPO. If the site is down, try again later. If Flatpak says the app is
+already installed from another source (for example a downloaded bundle), run 'flatpak uninstall $APP_ID' (your data is kept) and then this command again."
 
   start_setup
 }

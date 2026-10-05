@@ -3,3 +3,7 @@
 
 __pycache__/
 .flatpak-builder/
+
+# Signing keys: only the public key (flatpak/signing-key.gpg) belongs in the repository
+*-private*.asc
+*.rev
