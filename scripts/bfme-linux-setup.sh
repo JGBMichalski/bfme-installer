@@ -368,7 +368,8 @@ download() {
   if [ "$MACHINE" = "1" ]; then
     download_with_progress "$url" "$dest.part"
   else
-    curl -fL --retry 3 --retry-delay 2 -C - --progress-bar -o "$dest.part" "$url"
+    curl -fL --retry 3 --retry-delay 2 --connect-timeout 20 --speed-limit 1024 --speed-time 30 -C - --progress-bar \
+      -o "$dest.part" "$url" 9>&-
   fi
   mv -f "$dest.part" "$dest"
 }
@@ -379,7 +380,7 @@ download_with_progress() {
   # $1 url, $2 the .part file
   local url="$1" part="$2" total pid rc=0 size pct last=-1
   total="$(curl -fsIL -m 15 "$url" 2>/dev/null | awk 'tolower($1) == "content-length:" {v = $2} END {gsub(/\r/, "", v); print v}')" || total=""
-  curl -fsSL --retry 3 --retry-delay 2 -C - -o "$part" "$url" &
+  curl -fsSL --retry 3 --retry-delay 2 --connect-timeout 20 --speed-limit 1024 --speed-time 30 -C - -o "$part" "$url" 9>&- &
   pid=$!
   while kill -0 "$pid" 2>/dev/null; do
     if [ -n "$total" ] && [ "$total" -gt 0 ] 2>/dev/null; then
@@ -388,7 +389,7 @@ download_with_progress() {
       [ "$pct" -gt 100 ] && pct=100
       if [ "$pct" != "$last" ]; then machine PROGRESS "$pct"; last="$pct"; fi
     fi
-    sleep 0.5
+    sleep 0.5 9>&-
   done
   wait "$pid" || rc=$?
   [ "$rc" -eq 0 ] || return "$rc"
@@ -422,7 +423,7 @@ ensure_umu() {
   local tarball="$DOWNLOADS/umu-launcher-${UMU_VERSION}-zipapp.tar"
   download "$UMU_URL" "$tarball"
   verify_sha256 "$tarball" "$UMU_SHA256"
-  tar -xf "$tarball" -C "$BASE"
+  tar -xf "$tarball" -C "$BASE" 9>&- || die "umu could not be unpacked. Run install again."
   [ -x "$UMU_RUN" ] || die "umu-run was not found after extracting $tarball."
 }
 
@@ -460,10 +461,15 @@ ensure_proton() {
     local tarball="$DOWNLOADS/$DEFAULT_PROTONPATH.tar.gz"
     download "$PROTON_URL" "$tarball"
     verify_sha256 "$tarball" "$PROTON_SHA256"
-    rm -rf "$dir"
-    mkdir -p "$BASE/proton"
-    tar -xzf "$tarball" -C "$BASE/proton"
-    [ -f "$dir/toolmanifest.vdf" ] || die "Proton was not found after extracting $tarball."
+    # Extract next to the final place and rename when done. The folder then exists only when it is complete, so
+    # an interrupted extraction cannot leave a Proton that looks installed but is missing files.
+    local tmp="$BASE/proton/.extracting"
+    rm -rf "$dir" "$tmp"
+    mkdir -p "$tmp"
+    tar -xzf "$tarball" -C "$tmp" 9>&- || die "Proton could not be unpacked. Run install again."
+    [ -f "$tmp/$DEFAULT_PROTONPATH/toolmanifest.vdf" ] || die "Proton was not found after extracting $tarball."
+    mv "$tmp/$DEFAULT_PROTONPATH" "$dir"
+    rm -rf "$tmp"
     rm -f "$tarball"
   fi
   PROTONPATH_VALUE="$dir"
@@ -475,6 +481,7 @@ run_in_runner() {
   local mode="$1"
   shift
   (
+    exec 9>&-   # the setup lock (acquire_setup_lock) must not follow the programs we start
     export WINEPREFIX="$PREFIX"
     # DXVK otherwise writes its shader cache into whatever folder the script was started from.
     mkdir -p "$BASE/dxvk-cache"
@@ -517,8 +524,15 @@ reg_add() {
   fi
 }
 
-prefix_ready() {
+# The folders Wine makes first. They can exist long before the prefix is usable.
+prefix_dirs_exist() {
   [ -d "$PREFIX/drive_c/windows" ] && [ -d "$PREFIX/drive_c/users/$WINE_USER" ]
+}
+
+# A prefix is ready when it has its folders and its creation was not interrupted: create_prefix leaves
+# .bfme-creating behind until it has finished, so a killed creation is redone instead of trusted.
+prefix_ready() {
+  [ ! -e "$PREFIX/.bfme-creating" ] && prefix_dirs_exist
 }
 
 ensure_runner() {
@@ -538,6 +552,8 @@ ensure_runner() {
 }
 
 create_prefix() {
+  mkdir -p "$PREFIX"
+  : >"$PREFIX/.bfme-creating"
   if [ "$RUNNER" = "proton" ]; then
     say "Creating the Proton prefix. The first start downloads Proton and takes a few minutes."
     notify "First start: setting up Proton. This takes a few minutes."
@@ -546,19 +562,19 @@ create_prefix() {
     run_in_runner create "" >"$LOGS/prefix-create.log" 2>&1 || true
   else
     say "Creating the Wine prefix."
-    mkdir -p "$PREFIX"
     # The Windows 10 setting, DXVK (fast menus), D3DX9 (units in BFME 2 and RotWK) and fonts
     # (the Arena password box) come from winetricks.
     { run_in_runner create wineboot -u \
         && run_in_runner create "$WINETRICKS" -q corefonts win10 dxvk d3dx9; } >"$LOGS/prefix-create.log" 2>&1 || true
   fi
-  if ! prefix_ready; then
+  if ! prefix_dirs_exist; then
     tail -n 20 "$LOGS/prefix-create.log" >&2
     die "Could not create the prefix. See $LOGS/prefix-create.log"
   fi
   if [ "$RUNNER" = "wine" ]; then
     wine --version >"$PREFIX/.bfme-wine-version" 2>/dev/null || true
   fi
+  rm -f "$PREFIX/.bfme-creating"
 }
 
 # Settings the games and apps need. Tested in both runners (see the project notes).
@@ -601,16 +617,30 @@ EOF
   : >"$marker"
 }
 
-# Only one setup at a time: a second click on the shortcut during the long first start
-# would otherwise run two Proton setups in the same prefix.
+# Only one setup at a time, so two never write the same files. Everything that can change the setup takes the lock;
+# start_app gives it back before an app starts, so a running launcher does not block a later install.
+# The lock is file descriptor 9 of this script and ends with it. Programs started from here must close it (9>&-),
+# or a download left behind by a killed script would keep the lock and block every later run.
+SETUP_LOCK_HELD=0
 acquire_setup_lock() {
+  [ "$SETUP_LOCK_HELD" = "1" ] && return 0
   command -v flock >/dev/null 2>&1 || return 0
   mkdir -p "$BASE"
   exec 9>"$BASE/.setup.lock"
   if ! flock -n 9; then
     notify "Setup is already running. Please wait, the first start takes a few minutes."
+    if [ "$IN_FLATPAK" = "1" ]; then
+      die "Another setup is already running. Wait for it to finish. If you stopped one earlier and it is stuck, run: flatpak kill $FLATPAK_ID"
+    fi
     die "Another setup is already running. Wait for it to finish."
   fi
+  SETUP_LOCK_HELD=1
+}
+
+release_setup_lock() {
+  [ "$SETUP_LOCK_HELD" = "1" ] || return 0
+  exec 9>&-
+  SETUP_LOCK_HELD=0
 }
 
 # Everything after the runner is in place: create the prefix and apply its settings.
@@ -629,7 +659,7 @@ prepare_prefix() {
 }
 
 ensure_prefix() {
-  prefix_ready || acquire_setup_lock
+  acquire_setup_lock
   ensure_runner
   prepare_prefix
 }
@@ -643,7 +673,7 @@ wait_for_stable_file() {
       if [ "$size" -gt 0 ] && [ "$size" = "$last" ]; then return 0; fi
       last="$size"
     fi
-    sleep 3
+    sleep 3 9>&-
     waited=$((waited + 3))
   done
   return 1
@@ -670,14 +700,24 @@ stop_wine_session() {
   WINEPREFIX="$PREFIX" timeout 20 "$ws" -w >/dev/null 2>&1 || true   # wait until it has saved and exited
 }
 
+# The launcher is installed when its file is there and its setup was not interrupted: install_launcher leaves
+# .bfme-launcher-installing behind until it has finished, so a half-copied file is not mistaken for a launcher.
+launcher_installed() {
+  [ -f "$LAUNCHER_EXE" ] && [ ! -e "$PREFIX/.bfme-launcher-installing" ]
+}
+
 install_launcher() {
   ensure_prefix
-  [ -f "$LAUNCHER_EXE" ] && return
+  launcher_installed && return
   local setup="$DOWNLOADS/AllInOneLauncherSetup.exe"
   [ -f "$setup" ] || download "$LAUNCHER_SETUP_URL" "$setup"
   say "Installing the launcher. It may open for a moment; the setup closes it again."
+  # Start clean: a leftover half-copied file would look finished to wait_for_stable_file below.
+  rm -f "$LAUNCHER_EXE"
+  : >"$PREFIX/.bfme-launcher-installing"
   # The first start of the setup must not use runinprefix.
-  run_in_runner create "$setup" >"$LOGS/launcher-setup.log" 2>&1 &
+  # (9>&- because a function started with & runs in a copy of this shell, which would otherwise hold the lock.)
+  run_in_runner create "$setup" >"$LOGS/launcher-setup.log" 2>&1 9>&- &
   local setup_pid=$! installed=0
   # When the setup finishes it starts the launcher, and the runner (Proton) does not return until every program
   # in the session has ended, so waiting for the setup would wait until someone closes the launcher.
@@ -686,7 +726,7 @@ install_launcher() {
   stop_wine_session || true
   wait "$setup_pid" 2>/dev/null || true
   [ "$installed" = "1" ] || die "The launcher was not installed. See $LOGS/launcher-setup.log"
-  rm -f "$setup"
+  rm -f "$PREFIX/.bfme-launcher-installing" "$setup"
 }
 
 cmd_launcher() {
@@ -761,6 +801,7 @@ cmd_game() {
 start_app() {
   # $1 name; $2 working dir; $3 exe
   local name="$1" dir="$2" exe="$3"
+  release_setup_lock
   mkdir -p "$LOGS"
   local log
   log="$LOGS/$name-$(date +%Y%m%d-%H%M%S).log"
@@ -821,14 +862,14 @@ cmd_install() {
   cmd_doctor || die "Fix the problems above, then run install again."
   step_done doctor
   say ""
-  prefix_ready || acquire_setup_lock
+  acquire_setup_lock
   step_start runner
   ensure_runner
   step_done runner
   step_start prefix
   prepare_prefix
   step_done prefix
-  if [ -f "$LAUNCHER_EXE" ]; then
+  if launcher_installed; then
     step_skip launcher
   else
     step_start launcher
@@ -857,7 +898,7 @@ cmd_status() {
   say "Runner:     $RUNNER$([ "$RUNNER" = proton ] && printf ' (%s)' "$PROTONPATH_VALUE")"
   say "Data dir:   $BASE"
   say "Prefix:     $PREFIX $(prefix_ready && echo '(ready)' || echo '(not created)')"
-  say "Launcher:   $([ -f "$LAUNCHER_EXE" ] && echo installed || echo 'not installed')"
+  say "Launcher:   $(launcher_installed && echo installed || echo 'not installed')"
   say "Arena:      $([ -f "$ARENA_EXE" ] && echo installed || echo 'not installed')"
   local g
   for g in BFME1 BFME2 RotWK; do
@@ -866,7 +907,7 @@ cmd_status() {
   # For programs: setup is complete when the prefix, launcher and Arena are all there.
   local p="missing" l="missing" a="missing" done_all="no"
   prefix_ready && p="ready"
-  [ -f "$LAUNCHER_EXE" ] && l="installed"
+  launcher_installed && l="installed"
   [ -f "$ARENA_EXE" ] && a="installed"
   if [ "$p" = "ready" ] && [ "$l" = "installed" ] && [ "$a" = "installed" ]; then done_all="yes"; fi
   machine STATUS runner "$RUNNER"
@@ -881,6 +922,7 @@ cmd_reset_prefix() {
   case "$PREFIX" in
     ""|"/"|"$HOME") die "Refusing to delete '$PREFIX'." ;;
   esac
+  acquire_setup_lock
   rm -rf -- "$PREFIX"
   say "Prefix deleted."
 }

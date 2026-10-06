@@ -1,6 +1,8 @@
 import os
+import shutil
 import stat
 import tempfile
+import time
 import unittest
 
 from gi.repository import GLib
@@ -14,6 +16,7 @@ case "$2" in
   ok)     echo "plain text"; echo "@bfme STEP doctor start"; echo "@bfme STEP doctor done"; echo "@bfme DONE" ;;
   bad)    echo "@bfme ERROR runner nope"; exit 7 ;;
   slow)   echo "@bfme STEP runner start"; for i in $(seq 1 100); do sleep 0.1; done ;;
+  kids)   sleep 100 & echo $! > "$CHILD_PID_FILE"; echo "@bfme STEP runner start"; wait ;;
   noeol)  printf 'no newline at the end' ;;
 esac
 """
@@ -57,6 +60,21 @@ class Runner(unittest.TestCase):
         lines, codes = run_and_collect(self.runner, ["slow"], before_exit=(500, self.runner.request_cancel))
         self.assertIn("@bfme CANCELLED", lines)
         self.assertEqual(codes, [130])
+
+    @unittest.skipUnless(shutil.which("setsid"), "needs setsid")
+    def test_terminate_also_stops_what_the_script_started(self):
+        pid_file = os.path.join(os.path.dirname(self.script), "child.pid")
+        os.environ["CHILD_PID_FILE"] = pid_file
+        run_and_collect(self.runner, ["kids"], before_exit=(700, self.runner.terminate))
+        child = int(open(pid_file).read())
+        for _ in range(30):  # the child gets SIGTERM with the group; give it a moment to go
+            try:
+                os.kill(child, 0)
+            except ProcessLookupError:
+                break
+            time.sleep(0.1)
+        with self.assertRaises(ProcessLookupError):
+            os.kill(child, 0)
 
     def test_only_one_script_at_a_time(self):
         loop = GLib.MainLoop()

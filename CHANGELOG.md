@@ -4,6 +4,19 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1]
+
+### Fixed
+
+- A setup that was stopped or killed no longer blocks the next one with "Another setup is already running". The download it had started kept running and held the setup lock. Programs the script starts, including its waiting loops, no longer inherit the lock.
+- Every command that can change the setup now takes the lock, including `install` when the prefix already exists and `reset-prefix`. Before, a resumed install ran without it, so two could write the same downloads.
+- The lock is released before the launcher, the Arena or a game starts. Before, a first start from a menu entry kept it for as long as the app stayed open, which blocked the wizard.
+- A prefix or a launcher install that was interrupted is no longer mistaken for a finished one. Both now leave a marker until they complete, and an unfinished step is redone on the next run.
+- Proton is unpacked into a temporary folder and renamed into place, so an interrupted extraction cannot leave a folder that looks complete but is missing files. A failed unpack stops with a clear message.
+- A download that stalls now times out and retries (resuming where it left off) instead of hanging forever.
+- Closing the wizard with "Stop and close" now ends everything the setup started, including the download and the Proton processes, not only the script.
+- The "already running" message inside the Flatpak says how to clear a stuck setup (`flatpak kill`).
+
 ## [0.2.0]
 
 ### Added

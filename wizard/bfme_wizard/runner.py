@@ -13,6 +13,9 @@ gi.require_version("Gio", "2.0")
 from gi.repository import Gio, GLib  # noqa: E402
 
 
+SETSID = shutil.which("setsid")
+
+
 def find_script() -> str | None:
     """BFME_SETUP_SCRIPT, then the installed command (the Flatpak), then the script next to this checkout."""
     override = os.environ.get("BFME_SETUP_SCRIPT")
@@ -40,10 +43,11 @@ class ScriptRunner:
         """Start `script --machine <args>`. Calls on_line per output line, then on_exit(code) once."""
         if self._proc is not None:
             raise RuntimeError("a script is already running")
-        proc = Gio.Subprocess.new(
-            [self.script, "--machine", *args],
-            Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_MERGE,
-        )
+        command = [self.script, "--machine", *args]
+        if SETSID:
+            # A process group of its own, so terminate() can stop the downloads and Proton processes it starts too.
+            command = [SETSID, *command]
+        proc = Gio.Subprocess.new(command, Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_MERGE)
         self._proc = proc
         stream = Gio.DataInputStream.new(proc.get_stdout_pipe())
 
@@ -72,9 +76,17 @@ class ScriptRunner:
             self._proc.send_signal(signal.SIGUSR1)
 
     def terminate(self) -> None:
-        """Stop the running script at once (SIGTERM). Partial downloads resume next time."""
-        if self._proc is not None:
-            self._proc.send_signal(signal.SIGTERM)
+        """Stop the running script and everything it started, at once (SIGTERM). Partial downloads resume next time."""
+        if self._proc is None:
+            return
+        pid = int(self._proc.get_identifier())
+        try:
+            if os.getpgid(pid) == pid:  # the script leads its own group (it was started through setsid)
+                os.killpg(pid, signal.SIGTERM)
+                return
+        except OSError:
+            pass
+        self._proc.send_signal(signal.SIGTERM)
 
     def spawn_detached(self, args: list[str]) -> None:
         """Start the launcher or the Arena and let it run on its own."""
