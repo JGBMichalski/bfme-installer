@@ -9,6 +9,7 @@ from gi.repository import Adw, Gdk, GLib, GObject, Gtk  # noqa: E402
 
 from .controller import Controller
 from .model import STEPS, description_of, title_of
+from .updater import make_updater
 
 APP_ID = "com.jgbmichalski.BfmeInstaller"
 INTRO = "This installs Proton, the launcher and the Arena. It takes a few minutes."
@@ -47,6 +48,11 @@ class WizardWindow(Adw.ApplicationWindow):
         self.toasts = Adw.ToastOverlay()
         toolbar = Adw.ToolbarView()
         toolbar.add_top_bar(Adw.HeaderBar())
+        # The app updating itself (see updater.py). Hidden until there is something to say.
+        self.updater = make_updater(self._render_update_banner)
+        self.update_banner = Adw.Banner(use_markup=False)
+        self.update_banner.connect("button-clicked", self._on_update_button)
+        toolbar.add_top_bar(self.update_banner)
         self.stack = Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE)
         toolbar.set_content(self.stack)
         self.toasts.set_child(toolbar)
@@ -59,6 +65,7 @@ class WizardWindow(Adw.ApplicationWindow):
         self._build_finish()
 
         self.connect("close-request", self._on_close_request)
+        self.updater.check()
         GLib.timeout_add(120, self._pulse)  # keeps the bar moving when a step reports no percentage
 
     # ---------------------------------------------------------------- pages
@@ -115,7 +122,35 @@ class WizardWindow(Adw.ApplicationWindow):
         return lambda: getattr(self.controller, name)()
 
     # --------------------------------------------------------------- render
+    # --------------------------------------------------------------- updating the app itself
+    def _render_update_banner(self) -> None:
+        u = self.updater
+        # Not while the setup is running: the banner would compete with the progress screen.
+        if u.state == "idle" or self.model.state == "running":
+            self.update_banner.set_revealed(False)
+            return
+        title, button = {
+            "available": (f"Version {u.remote} is available (you have {u.local}).", "Update"),
+            "updating": ("Updating..." if u.progress is None else f"Updating... {u.progress}%", None),
+            "done": (f"Updated to {u.remote}. Close and reopen BFME Installer to use it.", "Close"),
+            "empty": (f"Version {u.remote} is not ready to download yet. Try again in a few minutes.", "Try again"),
+            "failed": (f"Could not update automatically. In a terminal, run: {u.manual_command}", "Copy command"),
+        }[u.state]
+        self.update_banner.set_title(title)
+        self.update_banner.set_button_label(button)
+        self.update_banner.set_revealed(True)
+
+    def _on_update_button(self, _banner) -> None:
+        state = self.updater.state
+        if state in ("available", "empty"):
+            self.updater.install()
+        elif state == "done":
+            self.close()
+        elif state == "failed":
+            self.copy(self.updater.manual_command, "Command copied")
+
     def render(self) -> None:
+        self._render_update_banner()
         m = self.model
         if m.state == "checking":
             self.stack.set_visible_child_name("checking")

@@ -13,6 +13,17 @@ One thing on screen at a time:
 5. **Something went wrong**: a failed step, with Retry and Copy log.
 6. **You're all set**: Open the Launcher, Open the Arena. Also the first screen when everything is already installed.
 
+## Updating the app
+
+When the window opens, the wizard asks GitHub which release is the latest (`github.com/.../releases/latest`, which redirects to the tag) and compares it with the version stamped into the installed app. If the latest is newer, a banner offers **Update**. The banner stays hidden while a setup is running.
+
+Pressing it asks Flatpak's update portal (`org.freedesktop.portal.Flatpak`) to install the update from the repository the app was installed from. The portal needs no extra permission and keeps the repository's signature check. The new version is used after the app is closed and reopened.
+
+- The portal only installs; it cannot say whether an update exists, and its own notification polls every 30 minutes, so the release check is separate.
+- If GitHub has the release but Pages does not have it yet, the banner says to try again in a few minutes.
+- The portal refuses an update that adds permissions. The banner then shows `flatpak update --user com.jgbmichalski.BfmeInstaller` to copy.
+- Development builds (version `dev`) and runs outside a Flatpak never check.
+
 Closing the window during an install asks first. Stopping keeps what was done, and the next start offers Resume.
 
 ## Code
@@ -23,6 +34,7 @@ Closing the window during an install asks first. Stopping keeps what was done, a
 | `bfme_wizard/model.py` | The setup state, fed one line at a time. |
 | `bfme_wizard/runner.py` | Starts the script, streams its output, sends the cancel signal. |
 | `bfme_wizard/controller.py` | Connects the two: install, retry, recheck, cancel. |
+| `bfme_wizard/updater.py` | Release check and the update through the Flatpak portal. |
 | `bfme_wizard/ui.py` | The window. Only renders the model and calls the controller. |
 | `bfme_wizard/__main__.py` | Entry point, script lookup, no-display fallback. |
 
