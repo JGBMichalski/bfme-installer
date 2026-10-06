@@ -39,7 +39,11 @@
 
 set -euo pipefail
 
-readonly SCRIPT_VERSION="0.1.1"
+# CI replaces the placeholder with the release version (from the git tag). A copy straight from the repository
+# keeps it and reports "dev".
+SCRIPT_VERSION="@BFME_VERSION@"
+case "$SCRIPT_VERSION" in "@"*) SCRIPT_VERSION="dev" ;; esac
+readonly SCRIPT_VERSION
 # Pinned on purpose: "UMU-Latest" moves, which re-downloads Proton and can change game behaviour
 # (and so risk "Out of Sync" against Windows players). Raise this together with a release.
 # umu can only download "latest" builds by name, so this exact build is fetched and verified here.

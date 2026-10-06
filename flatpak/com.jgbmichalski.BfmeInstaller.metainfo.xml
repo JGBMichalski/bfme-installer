@@ -14,12 +14,8 @@
   <url type="homepage">https://github.com/JGBMichalski/bfme-installer</url>
   <url type="vcs-browser">https://github.com/JGBMichalski/bfme-installer</url>
   <content_rating type="oars-1.1"/>
+  <!-- CI fills in the version (from the git tag) and the date. -->
   <releases>
-    <release version="0.1.1" date="2026-10-05">
-      <description>
-        <p>Fixes the launcher step waiting until you closed the launcher window.</p>
-      </description>
-    </release>
-    <release version="0.1.0" date="2026-10-05"/>
+    <release version="@BFME_VERSION@" date="@BFME_DATE@"/>
   </releases>
 </component>

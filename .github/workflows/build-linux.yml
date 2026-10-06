@@ -52,6 +52,18 @@ jobs:
       options: --privileged
     steps:
       - uses: actions/checkout@v5
+      # A tag needs its changelog section, which becomes the release notes. Failing here saves a whole build.
+      - name: Check the changelog has this version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          grep -qF "## [$version]" CHANGELOG.md || { echo "::error::CHANGELOG.md has no '## [$version]' section. Add it before tagging."; exit 1; }
+      - name: Stamp the version
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then version="${GITHUB_REF_NAME#v}"; else version="dev"; fi
+          sed -i "s|@BFME_VERSION@|$version|" "$SCRIPTS_DIR/bfme-linux-setup.sh" "$FLATPAK_DIR/com.jgbmichalski.BfmeInstaller.metainfo.xml"
+          sed -i "s|@BFME_DATE@|$(date -u +%F)|" "$FLATPAK_DIR/com.jgbmichalski.BfmeInstaller.metainfo.xml"
+          echo "Version: $version"
       - name: Import the signing key
         id: key
         if: startsWith(github.ref, 'refs/tags/v')
@@ -99,6 +111,14 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v5
+      # The version comes from the git tag (v0.2.2 gives 0.2.2). It is stamped into the setup script and the Flatpak
+      # metainfo, so nothing else needs editing for a release. Other builds are stamped "dev".
+      - name: Stamp the version
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then version="${GITHUB_REF_NAME#v}"; else version="dev"; fi
+          sed -i "s|@BFME_VERSION@|$version|" "$SCRIPTS_DIR/bfme-linux-setup.sh" "$FLATPAK_DIR/com.jgbmichalski.BfmeInstaller.metainfo.xml"
+          sed -i "s|@BFME_DATE@|$(date -u +%F)|" "$FLATPAK_DIR/com.jgbmichalski.BfmeInstaller.metainfo.xml"
+          echo "Version: $version"
       - uses: actions/download-artifact@v7
         with:
           name: bundle

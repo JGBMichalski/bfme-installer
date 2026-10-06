@@ -47,6 +47,15 @@ Each release attaches its own copy of the script:
 curl -fsSL https://github.com/JGBMichalski/bfme-installer/releases/download/<tag>/install-flatpak.sh | bash
 ```
 
+## Releasing
+
+The git tag is the only place the version lives. To release:
+
+1. In `CHANGELOG.md`, rename `## [Unreleased]` to `## [x.y.z]` (the section becomes the release notes).
+2. Commit, then tag and push: `git tag vx.y.z && git push origin vx.y.z`.
+
+The build stamps `x.y.z` into the setup script and the Flatpak metainfo. It fails early if the changelog has no `## [x.y.z]` section.
+
 ## Repository and updates
 
 Tagged releases (`v*`) publish a Flatpak repository to GitHub Pages, so `flatpak update` finds new versions. The address is `https://<owner>.github.io/<repo>` unless the repository variable `FLATPAK_REPO_BASE_URL` is set.
