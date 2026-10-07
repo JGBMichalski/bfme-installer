@@ -44,8 +44,10 @@ class HomePage:
     def refresh(self) -> None:
         clear(self.content)
         self.version_label.set_text(f"Version {self.version()}")
-        self.content.append(Gtk.Label(label=games_line(self.controller.model), wrap=True, justify=Gtk.Justification.CENTER,
-                                      css_classes=["heading"]))
+        line = games_line(self.controller.model)
+        if line:
+            self.content.append(Gtk.Label(label=line, wrap=True, justify=Gtk.Justification.CENTER,
+                                          css_classes=["heading"]))
         cards = Gtk.Box(spacing=16, homogeneous=True)
         for name, title, description, icons in CARDS:
             cards.append(self._card(name, title, description, icons))

@@ -18,10 +18,10 @@ from . import protocol as p
 # (id, title, description). The order is the order `install` runs them in.
 STEPS = [
     ("doctor", "Check your system", "Making sure your computer has what the games need."),
-    ("runner", "Get Proton", "Downloading the compatibility layer that runs Windows games. This is the big one."),
-    ("prefix", "Create the game environment", "Setting up a private Windows-like folder for the launcher and games."),
-    ("launcher", "Download the launcher", "Fetching the All-in-One Launcher, where you install the games."),
-    ("arena", "Download the Arena", "Fetching the Online Arena, where you play multiplayer."),
+    ("runner", "Get Proton", "Downloading the compatibility layer that runs Windows games."),
+    ("prefix", "Create the game environment", "Setting up a folder for the launcher and games."),
+    ("launcher", "Download the launcher", "Fetching the All-in-One Launcher for managing the games."),
+    ("arena", "Download the Arena", "Fetching the Online Arena for playing multiplayer."),
     ("shortcuts", "Add menu shortcuts", "Adding the Launcher and the Arena to your application menu."),
 ]
 STEP_IDS = [s[0] for s in STEPS]
@@ -214,10 +214,9 @@ class SetupModel:
 
 
 def games_line(model: SetupModel) -> str:
-    """The sentence at the top of the home screen."""
-    games = model.games
-    if games:
-        return "Installed: " + (", ".join(games[:-1]) + " and " + games[-1] if len(games) > 1 else games[0])
+    """The sentence at the top of the home screen; empty when games are installed."""
+    if model.games:
+        return ""
     if model.just_finished:
         return "Setup is complete. Open the Launcher to install your games."
     return "No games installed yet. Open the Launcher to install them."

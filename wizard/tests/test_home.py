@@ -69,12 +69,11 @@ class Line(unittest.TestCase):
         return games_line(m)
 
     def test_wording(self):
-        self.assertEqual(self.games({"bfme2": "installed"}), "Installed: BFME 2")
-        self.assertEqual(self.games({"bfme1": "installed", "bfme2": "installed", "rotwk": "installed"}),
-                         "Installed: BFME, BFME 2 and Rise of the Witch-king")
+        self.assertEqual(self.games({"bfme2": "installed"}), "")
+        self.assertEqual(self.games({"bfme1": "installed", "bfme2": "installed", "rotwk": "installed"}), "")
         self.assertEqual(self.games({}), "No games installed yet. Open the Launcher to install them.")
         self.assertEqual(self.games({}, finished=True), "Setup is complete. Open the Launcher to install your games.")
-        self.assertEqual(self.games({"bfme2": "installed"}, finished=True), "Installed: BFME 2")
+        self.assertEqual(self.games({"bfme2": "installed"}, finished=True), "")
 
 
 APP = """#!/usr/bin/env bash
