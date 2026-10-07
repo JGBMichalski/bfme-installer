@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from pathlib import Path
 
 import gi
 
@@ -11,6 +12,7 @@ from gi.repository import Adw, GLib, Gtk  # noqa: E402
 
 from .controller import Controller
 from .model import games_line
+from .paths import game_folders
 from .widgets import clear, first_icon, pill
 
 CARDS = [
@@ -27,8 +29,9 @@ CANT_CHECK = [
 
 class HomePage:
     def __init__(self, controller: Controller, version: Callable[[], str], offer: str | None,
-                 on_troubleshoot: Callable[[], None]) -> None:
+                 on_troubleshoot: Callable[[], None], on_game_folders: Callable[[], None] = lambda: None) -> None:
         self.controller, self.version, self.offer, self.on_troubleshoot = controller, version, offer, on_troubleshoot
+        self.on_game_folders = on_game_folders
         # The page fills the window: the content sits in the middle and the version at the bottom edge.
         self.box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         self.content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=18, vexpand=True, valign=Gtk.Align.CENTER,
@@ -47,9 +50,10 @@ class HomePage:
         for name, title, description, icons in CARDS:
             cards.append(self._card(name, title, description, icons))
         self.content.append(cards)
-        troubleshoot = pill("Troubleshoot", self.on_troubleshoot, suggested=False)
-        troubleshoot.set_margin_top(6)
-        self.content.append(troubleshoot)
+        tools = Gtk.Box(spacing=12, halign=Gtk.Align.CENTER, margin_top=6)
+        tools.append(pill("Game folders", self.on_game_folders, suggested=False))
+        tools.append(pill("Troubleshoot", self.on_troubleshoot, suggested=False))
+        self.content.append(tools)
 
     def _card(self, name: str, title: str, description: str, icons: tuple[str, ...]) -> Gtk.Widget:
         state = self.controller.apps.state[name]
@@ -73,6 +77,33 @@ class HomePage:
         card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, css_classes=["card"])
         card.append(inner)
         return card
+
+
+class GameFoldersPage:
+    """The page behind the home screen's Game folders button: one group per game, a row per folder to open."""
+
+    def __init__(self, open_folder: Callable[[Path], None]) -> None:
+        self.view = Adw.ToolbarView()
+        self.view.add_top_bar(Adw.HeaderBar())
+        page = Adw.PreferencesPage(
+            title="Game folders",
+            description="Open a folder in your file manager to add maps or copy files.",
+        )
+        for folders in game_folders():
+            group = Adw.PreferencesGroup(title=GLib.markup_escape_text(folders.name))
+            if not folders.installed:
+                group.set_description("Not installed")
+            else:
+                for title, subtitle, target in (
+                    ("Game folder", "Installed files and patches", folders.game),
+                    ("Maps and user data", "Maps, replays and settings", folders.maps_target()),
+                ):
+                    row = Adw.ActionRow(title=title, subtitle=subtitle, activatable=True)
+                    row.add_suffix(Gtk.Image.new_from_icon_name("folder-open-symbolic"))
+                    row.connect("activated", lambda *_, t=target: open_folder(t))
+                    group.add(row)
+            page.add(group)
+        self.view.set_content(page)
 
 
 class TroubleshootPage:

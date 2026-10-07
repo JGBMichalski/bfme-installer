@@ -11,7 +11,7 @@ from gi.repository import Adw, Gdk, Gio, GLib, GObject, Gtk  # noqa: E402
 
 from .controller import Controller
 from .diagnostics import any_log, build_report, data_dir
-from .home import HomePage, TroubleshootPage
+from .home import GameFoldersPage, HomePage, TroubleshootPage
 from .model import STEPS, description_of, title_of
 from .updater import make_updater
 from .widgets import clear, first_icon, pill
@@ -55,7 +55,7 @@ class WizardWindow(Adw.ApplicationWindow):
         self._build_welcome()
         self._build_run()
         self._build_problem()
-        self.home = HomePage(self.controller, lambda: self.updater.local or "dev", offer, self.show_troubleshoot)
+        self.home = HomePage(self.controller, lambda: self.updater.local or "dev", offer, self.show_troubleshoot, self.show_game_folders)
         self.stack.add_named(self.home.box, "home")
 
         self.connect("close-request", self._on_close_request)
@@ -128,6 +128,11 @@ class WizardWindow(Adw.ApplicationWindow):
         )
         self.nav.push(Adw.NavigationPage.new(self.troubleshoot.view, "Troubleshoot"))
 
+    def show_game_folders(self) -> None:
+        if self.nav.get_visible_page().get_title() == "Game folders":
+            return
+        self.nav.push(Adw.NavigationPage.new(GameFoldersPage(self.open_folder).view, "Game folders"))
+
     def copy_diagnostics(self) -> None:
         report = build_report(self.updater.local or "dev", self.model, data_dir() / "logs")
         self.copy(report, "Diagnostics copied. Check it before you share it.")
@@ -146,6 +151,18 @@ class WizardWindow(Adw.ApplicationWindow):
                 self.toasts.add_toast(Adw.Toast.new(f"Could not open it. The logs are in {logs}"))
 
         Gtk.FileLauncher.new(Gio.File.new_for_path(str(target))).open_containing_folder(self, None, opened)
+
+    def open_folder(self, folder) -> None:
+        def opened(launcher: Gtk.FileLauncher, result: Gio.AsyncResult) -> None:
+            try:
+                launcher.launch_finish(result)
+            except GLib.Error:
+                toast = Adw.Toast.new(f"Could not open it. The folder is {folder}")
+                toast.set_button_label("Copy path")
+                toast.connect("button-clicked", lambda *_: self.copy(str(folder), "Path copied"))
+                self.toasts.add_toast(toast)
+
+        Gtk.FileLauncher.new(Gio.File.new_for_path(str(folder))).launch(self, None, opened)
 
     def confirm_reset(self) -> None:
         dialog = Adw.AlertDialog(

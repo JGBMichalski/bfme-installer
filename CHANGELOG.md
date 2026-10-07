@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0]
+
+### Added
+
+- A Game folders page, opened from a button on the home screen. It opens each installed game's folder, or its maps and user data in your file manager, so you can add maps or copy files. Games that are not installed are shown as such.
+
 ## [0.3.0]
 
 ### Added
