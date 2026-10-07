@@ -118,6 +118,13 @@ Then open **BFME All-in-One Launcher** from your menu and install the games. Sta
 Other commands: `launcher`, `arena`, `game bfme1|bfme2|rotwk`, `shortcuts`, `status`, `reset-prefix --yes`, `help`.
 Configuration variables (such as `BFME_HOME` and `BFME_RUNNER=wine`) are in [How it works](docs/how-it-works.md).
 
+## Planned
+
+This is a direction, not a promise, and it has no dates.
+
+- [ ] **Repair.** Fix a damaged setup without deleting the game environment, so [Reset](#when-something-goes-wrong) is not the only way out.
+- [ ] **Error details.** An expandable log on the "Something went wrong" screen, so you can see what failed without opening the logs folder.
+
 ## Contributing
 
 Bug reports and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for more information. When you report a problem, press **Copy diagnostics** on the Troubleshoot page and paste the report into the issue.
