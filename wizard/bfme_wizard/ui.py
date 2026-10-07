@@ -1,45 +1,28 @@
-"""The wizard window (variant A, "Pages": one thing on screen at a time). Renders the model; holds no setup logic."""
+"""The wizard window. One page at a time, then the home screen once the setup is complete. Renders the model."""
 from __future__ import annotations
+
+import os
 
 import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Adw, Gdk, GLib, GObject, Gtk  # noqa: E402
+from gi.repository import Adw, Gdk, Gio, GLib, GObject, Gtk  # noqa: E402
 
 from .controller import Controller
+from .diagnostics import any_log, build_report, data_dir
+from .home import HomePage, TroubleshootPage
 from .model import STEPS, description_of, title_of
 from .updater import make_updater
+from .widgets import clear, first_icon, pill
 
-APP_ID = "com.jgbmichalski.BfmeInstaller"
+# Inside a Flatpak the app ID is whatever it was built as, so a copy built under another ID can run beside this one.
+APP_ID = os.environ.get("FLATPAK_ID") or "com.jgbmichalski.BfmeInstaller"
 INTRO = "This installs Proton, the launcher and the Arena. It takes a few minutes."
 
 
-def first_icon(*names: str) -> str | None:
-    """The first icon the current theme has, so a missing icon never shows as a blurry placeholder."""
-    theme = Gtk.IconTheme.get_for_display(Gdk.Display.get_default())
-    return next((n for n in names if theme.has_icon(n)), None)
-
-
-def pill(label: str, callback, *, suggested: bool = True) -> Gtk.Button:
-    button = Gtk.Button(label=label, halign=Gtk.Align.CENTER)
-    button.add_css_class("pill")
-    if suggested:
-        button.add_css_class("suggested-action")
-    button.connect("clicked", lambda *_: callback())
-    return button
-
-
-def clear(box: Gtk.Box) -> None:
-    child = box.get_first_child()
-    while child is not None:
-        nxt = child.get_next_sibling()
-        box.remove(child)
-        child = nxt
-
-
 class WizardWindow(Adw.ApplicationWindow):
-    def __init__(self, app: Adw.Application, controller_factory) -> None:
+    def __init__(self, app: Adw.Application, controller_factory, offer: str | None = None) -> None:
         super().__init__(application=app, title="BFME Installer")
         self.set_default_size(640, 560)
         self.controller: Controller = controller_factory(self.render)
@@ -47,7 +30,13 @@ class WizardWindow(Adw.ApplicationWindow):
 
         self.toasts = Adw.ToastOverlay()
         toolbar = Adw.ToolbarView()
-        toolbar.add_top_bar(Adw.HeaderBar())
+        header = Adw.HeaderBar()
+        header.pack_end(self._build_menu())
+        toolbar.add_top_bar(header)
+        # A system check failed: say so above the home screen and point at Troubleshoot.
+        self.check_banner = Adw.Banner(title="Your system needs a change.", button_label="Troubleshoot")
+        self.check_banner.connect("button-clicked", lambda *_: self.show_troubleshoot())
+        toolbar.add_top_bar(self.check_banner)
         # The app updating itself (see updater.py). Hidden until there is something to say.
         self.updater = make_updater(self._render_update_banner)
         self.update_banner = Adw.Banner(use_markup=False)
@@ -55,14 +44,19 @@ class WizardWindow(Adw.ApplicationWindow):
         toolbar.add_top_bar(self.update_banner)
         self.stack = Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE)
         toolbar.set_content(self.stack)
-        self.toasts.set_child(toolbar)
+        self.nav = Adw.NavigationView()
+        self.nav.add(Adw.NavigationPage.new(toolbar, "BFME Installer"))
+        self.nav.connect("popped", lambda *_: setattr(self, "troubleshoot", None))
+        self.troubleshoot: TroubleshootPage | None = None
+        self.toasts.set_child(self.nav)
         self.set_content(self.toasts)
 
         self._build_checking()
         self._build_welcome()
         self._build_run()
         self._build_problem()
-        self._build_finish()
+        self.home = HomePage(self.controller, lambda: self.updater.local or "dev", offer, self.show_troubleshoot)
+        self.stack.add_named(self.home.box, "home")
 
         self.connect("close-request", self._on_close_request)
         self.updater.check()
@@ -106,22 +100,78 @@ class WizardWindow(Adw.ApplicationWindow):
         self.problem.set_child(clamp)
         self.stack.add_named(self.problem, "problem")
 
-    def _build_finish(self) -> None:
-        page = Adw.StatusPage(
-            icon_name=first_icon("emblem-ok-symbolic", "object-select-symbolic"),
-            title="You're all set",
-            description="Open the launcher to install your games. Start the Arena from its own button to play online.",
-        )
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12, halign=Gtk.Align.CENTER)
-        box.append(pill("Open the Launcher", self.controller_call("open_launcher")))
-        box.append(pill("Open the Arena", self.controller_call("open_arena"), suggested=False))
-        page.set_child(box)
-        self.stack.add_named(page, "finish")
+    def _build_menu(self) -> Gtk.MenuButton:
+        """The header menu: Troubleshoot is reachable from every page, even while the setup runs."""
+        popover = Gtk.Popover()
+        item = Gtk.Button(label="Troubleshoot", css_classes=["flat"])
+        item.connect("clicked", lambda *_: (popover.popdown(), self.show_troubleshoot()))
+        popover.set_child(item)
+        button = Gtk.MenuButton(icon_name="open-menu-symbolic", tooltip_text="Menu")
+        button.set_popover(popover)
+        return button
 
     def controller_call(self, name: str):
         return lambda: getattr(self.controller, name)()
 
     # --------------------------------------------------------------- render
+    # --------------------------------------------------------------- troubleshoot
+    def _render_check_banner(self) -> None:
+        m = self.model
+        self.check_banner.set_revealed(m.state == "done" and bool(m.problems))
+
+    def show_troubleshoot(self) -> None:
+        if self.troubleshoot is not None:
+            return
+        self.troubleshoot = TroubleshootPage(
+            self.controller, copy_text=self.copy, copy_diagnostics=self.copy_diagnostics,
+            open_logs=self.open_logs, confirm_reset=self.confirm_reset,
+        )
+        self.nav.push(Adw.NavigationPage.new(self.troubleshoot.view, "Troubleshoot"))
+
+    def copy_diagnostics(self) -> None:
+        report = build_report(self.updater.local or "dev", self.model, data_dir() / "logs")
+        self.copy(report, "Diagnostics copied. Check it before you share it.")
+
+    def open_logs(self) -> None:
+        logs = data_dir() / "logs"
+        target = any_log(logs)
+        if target is None:
+            self.toasts.add_toast(Adw.Toast.new("There are no logs yet."))
+            return
+
+        def opened(launcher: Gtk.FileLauncher, result: Gio.AsyncResult) -> None:
+            try:
+                launcher.open_containing_folder_finish(result)
+            except GLib.Error:
+                self.toasts.add_toast(Adw.Toast.new(f"Could not open it. The logs are in {logs}"))
+
+        Gtk.FileLauncher.new(Gio.File.new_for_path(str(target))).open_containing_folder(self, None, opened)
+
+    def confirm_reset(self) -> None:
+        dialog = Adw.AlertDialog(
+            heading="Delete the game environment?",
+            body="This deletes the game environment, including every game you installed. This cannot be undone.\n\n"
+                 "Close the Launcher and the Arena first.",
+        )
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("reset", "Delete and set up again")
+        dialog.set_response_appearance("reset", Adw.ResponseAppearance.DESTRUCTIVE)
+        dialog.set_default_response("cancel")
+        dialog.set_close_response("cancel")
+        dialog.connect("response", lambda _d, response: self._do_reset() if response == "reset" else None)
+        dialog.present(self)
+
+    def _do_reset(self) -> None:
+        def done(ok: bool) -> None:
+            text = "The game environment was deleted." if ok else "The reset failed. Open the logs folder from Troubleshoot."
+            self.toasts.add_toast(Adw.Toast.new(text))
+
+        if self.controller.reset(done):
+            while self.nav.get_visible_page().get_title() != "BFME Installer":
+                self.nav.pop()
+        else:
+            self.toasts.add_toast(Adw.Toast.new(self.controller.blocked_reason() or "Not now."))
+
     # --------------------------------------------------------------- updating the app itself
     def _render_update_banner(self) -> None:
         u = self.updater
@@ -151,11 +201,15 @@ class WizardWindow(Adw.ApplicationWindow):
 
     def render(self) -> None:
         self._render_update_banner()
+        self._render_check_banner()
+        if self.troubleshoot is not None:
+            self.troubleshoot.refresh()
         m = self.model
         if m.state == "checking":
             self.stack.set_visible_child_name("checking")
         elif m.state == "done":
-            self.stack.set_visible_child_name("finish")
+            self.home.refresh()
+            self.stack.set_visible_child_name("home")
         elif m.state == "running":
             self._render_run()
             self.stack.set_visible_child_name("run")
@@ -209,7 +263,18 @@ class WizardWindow(Adw.ApplicationWindow):
                 self.problem_box.append(group)
             elif m.error:
                 self.problem_box.append(Gtk.Label(label=m.error.message, wrap=True))
-            self.problem_box.append(pill("Recheck", self.controller.recheck))
+            if os.environ.get("FLATPAK_ID") and any(
+                c.level == "fail" and cid == "flatpak-32bit" for cid, c in m.checks.items()
+            ):
+                # A running Flatpak mounts its extensions once, at launch, so installing them now cannot be seen from
+                # inside this window. Only a fresh start picks them up.
+                self.problem_box.append(Gtk.Label(
+                    label="After the command finishes, close this window and open BFME Installer again.",
+                    wrap=True,
+                ))
+                self.problem_box.append(pill("Close", lambda: self.get_application().quit()))
+            else:
+                self.problem_box.append(pill("Recheck", self.controller.recheck))
         else:
             step = title_of(m.failed_step) if m.failed_step else "the setup"
             message = m.error.message if m.error else "The setup stopped unexpectedly."
@@ -258,14 +323,15 @@ class WizardWindow(Adw.ApplicationWindow):
 
 
 class WizardApp(Adw.Application):
-    def __init__(self, runner) -> None:
+    def __init__(self, runner, offer: str | None = None) -> None:
         super().__init__(application_id=APP_ID)
         self.runner = runner
+        self.offer = offer   # the app a menu entry wanted to open before the setup was complete
         self.connect("activate", self._activate)
 
     def _activate(self, _app) -> None:
         window = self.props.active_window
         if window is None:
-            window = WizardWindow(self, lambda on_change: Controller(self.runner, on_change))
+            window = WizardWindow(self, lambda on_change: Controller(self.runner, on_change), self.offer)
             window.controller.start()
         window.present()

@@ -18,7 +18,7 @@ Each status line is one line, starts with `@bfme `, and goes to stdout. Ignore e
 | `@bfme ERROR <step\|-> <message>` | The command failed. The step is `-` if no step was running. Always the last status line before a non-zero exit, except after `CANCELLED`. |
 | `@bfme CANCELLED` | The install stopped cleanly because it was asked to. Exit status 130. |
 | `@bfme DONE` | `install` finished. |
-| `@bfme STATUS <key> <value>` | Printed by `status`. Keys: `runner`, `prefix` (`ready` or `missing`), `launcher` and `arena` (`installed` or `missing`), `complete` (`yes` or `no`). |
+| `@bfme STATUS <key> <value>` | Printed by `status`. Keys: `runner`, `prefix` (`ready` or `missing`), `launcher` and `arena` (`installed` or `missing`), `bfme1`, `bfme2` and `rotwk` (`installed` when the game's program is there, else `missing`), `complete` (`yes` or `no`). |
 
 ## Steps
 

@@ -4,6 +4,21 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0]
+
+### Added
+
+- A home screen replaces the "You're all set" page: two cards for the Launcher and the Arena, a line showing which games are installed, and a Troubleshoot button. A card shows "Running" while its program is open, and a program that ends within 15 seconds gets a soft "closed after a few seconds" note.
+- A Troubleshoot page, from the home screen and from the header menu on every page: the system checks (problems first, passing checks folded, with Check again), a "Can't be checked from here" section for the firewall and the graphics drivers, Copy diagnostics, Open logs folder, and Reset game environment behind a confirmation.
+- A quiet system check when the window opens with the setup complete. A failed check shows a banner on the home screen with the fix one click away.
+- `status` reports which games are installed (`STATUS bfme1`, `bfme2` and `rotwk`).
+
+### Changed
+
+- The wizard registers under the app ID Flatpak gives it, so a copy built under another ID runs beside the release app. `dev/install-local.sh` builds and installs such a copy from a checkout, and `dev/uninstall-local.sh` removes it.
+- The Launcher and Arena menu entries start the app at once when the setup is complete, with no window, and open the wizard first when it is not (`bfme-installer --open launcher|arena`). Before, an unfinished setup ran silently from the menu entry for minutes.
+- `reset-prefix` ends the Wine session before it deletes the prefix, so a running program is not deleted from under itself.
+
 ## [0.2.3]
 
 ### Added

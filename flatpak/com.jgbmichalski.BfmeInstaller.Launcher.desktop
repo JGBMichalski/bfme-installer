@@ -2,7 +2,7 @@
 Type=Application
 Name=BFME All-in-One Launcher
 Comment=Install, mod and manage the Battle for Middle-earth games
-Exec=bfme-linux-setup launcher
+Exec=bfme-installer --open launcher
 Icon=com.jgbmichalski.BfmeInstaller
 Terminal=false
 Categories=Game;

@@ -918,6 +918,11 @@ cmd_status() {
   machine STATUS prefix "$p"
   machine STATUS launcher "$l"
   machine STATUS arena "$a"
+  # A game counts as installed when its program is there, not just its folder.
+  local game
+  for game in bfme1:BFME1/lotrbfme.exe bfme2:BFME2/lotrbfme2.exe rotwk:RotWK/lotrbfme2ep1.exe; do
+    if [ -f "$PREFIX/drive_c/${game#*:}" ]; then machine STATUS "${game%%:*}" installed; else machine STATUS "${game%%:*}" missing; fi
+  done
   machine STATUS complete "$done_all"
 }
 
@@ -927,6 +932,12 @@ cmd_reset_prefix() {
     ""|"/"|"$HOME") die "Refusing to delete '$PREFIX'." ;;
   esac
   acquire_setup_lock
+  # A program that is still running would have its files deleted from under it, and Wine would write its
+  # registry back afterwards. End the Wine session first (stop_wine_session also waits for it to finish).
+  if [ "$RUNNER" = "proton" ] && [ "$PROTONPATH_VALUE" = "$DEFAULT_PROTONPATH" ] && [ -d "$BASE/proton/$DEFAULT_PROTONPATH" ]; then
+    PROTONPATH_VALUE="$BASE/proton/$DEFAULT_PROTONPATH"
+  fi
+  if [ -d "$PREFIX" ]; then stop_wine_session || true; fi
   rm -rf -- "$PREFIX"
   say "Prefix deleted."
 }

@@ -25,6 +25,11 @@ STEPS = [
     ("shortcuts", "Add menu shortcuts", "Adding the Launcher and the Arena to your application menu."),
 ]
 STEP_IDS = [s[0] for s in STEPS]
+# The games the script reports (STATUS bfme1 / bfme2 / rotwk), in the order they are shown.
+GAMES = [("bfme1", "BFME"), ("bfme2", "BFME 2"), ("rotwk", "Rise of the Witch-king")]
+# Checks the home screen does not list: the firewall cannot be seen from the sandbox, and the Troubleshoot page
+# has its own "Can't be checked from here" section for it.
+HIDDEN_CHECKS = {"firewall"}
 MAX_LOG_LINES = 2000
 
 
@@ -48,6 +53,7 @@ class SetupModel:
         self.state = "checking"
         self.log: list[str] = []
         self.installed: dict[str, str] = {}
+        self.just_finished = False   # this session ran the setup to the end
         self._reset_run()
 
     # ------------------------------------------------------------ run bookkeeping
@@ -69,8 +75,14 @@ class SetupModel:
         self.fixes.clear()
         self.error = None
 
+    def begin_quiet_check(self) -> None:
+        """Run the system checks again without leaving the current state (the home screen stays on screen)."""
+        self.checks.clear()
+        self.fixes.clear()
+
     def begin_install(self) -> None:
         self._reset_run()
+        self.just_finished = False
         self.state = "running"
 
     def request_cancel(self) -> None:
@@ -139,6 +151,7 @@ class SetupModel:
         elif self._saw_done and exit_code == 0:
             self.state = "done"
             self.current = None
+            self.just_finished = True
         else:
             if self.error is None:
                 self.error = p.Error(self.current, f"The setup stopped unexpectedly (exit {exit_code}).")
@@ -171,6 +184,21 @@ class SetupModel:
         return [Problem(c.message, self.fixes.get(cid)) for cid, c in self.checks.items() if c.level == "fail"]
 
     @property
+    def games(self) -> list[str]:
+        """Names of the installed games. Only known after a status check."""
+        return [name for key, name in GAMES if self.installed.get(key) == "installed"]
+
+    @property
+    def check_rows(self) -> list[tuple[str, str, str, str | None]]:
+        """(id, level, message, fix command) for every check to show, problems first."""
+        rows = [
+            (cid, c.level, c.message, self.fixes.get(cid))
+            for cid, c in self.checks.items() if cid not in HIDDEN_CHECKS
+        ]
+        order = {"fail": 0, "warn": 1, "ok": 2}
+        return sorted(rows, key=lambda r: order[r[1]])
+
+    @property
     def failed_step(self) -> str | None:
         return self.error.step if self.error else None
 
@@ -183,3 +211,13 @@ class SetupModel:
             else:
                 out.append(line)
         return "\n".join(out)
+
+
+def games_line(model: SetupModel) -> str:
+    """The sentence at the top of the home screen."""
+    games = model.games
+    if games:
+        return "Installed: " + (", ".join(games[:-1]) + " and " + games[-1] if len(games) > 1 else games[0])
+    if model.just_finished:
+        return "Setup is complete. Open the Launcher to install your games."
+    return "No games installed yet. Open the Launcher to install them."
