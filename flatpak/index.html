@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BFME Installer for Linux</title>
+<meta name="description" content="Play Battle for the Middle-earth on Linux from one guided setup.">
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f6f4ef; --fg: #1d1b16; --muted: #6b665b; --card: #fff; --border: #e0dcd0;
+    --accent: #9a6b1f; --code-bg: #1d1b16; --code-fg: #f1e7cf;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #14130f; --fg: #eee8d8; --muted: #a39d8c; --card: #1d1b16; --border: #2f2c23;
+            --accent: #d9a548; --code-bg: #0c0b09; --code-fg: #f1e7cf; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); line-height: 1.6;
+         font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 56px 20px 40px; }
+  header { text-align: center; margin-bottom: 40px; }
+  h1 { font-size: clamp(2rem, 6vw, 2.8rem); margin: 0 0 8px; letter-spacing: -0.02em; }
+  .lead { color: var(--muted); font-size: 1.1rem; margin: 0 auto 24px; max-width: 34em; }
+  .shot { width: 100%; max-width: 420px; border-radius: 12px; border: 1px solid var(--border);
+          box-shadow: 0 10px 30px rgba(0,0,0,.18); }
+  h2 { font-size: 1.3rem; margin: 0 0 12px; }
+  section { background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+            padding: 22px 24px; margin-bottom: 20px; }
+  section p { margin: 0 0 12px; }
+  section p:last-child { margin-bottom: 0; }
+  .cmd { position: relative; margin: 0 0 12px; }
+  pre { margin: 0; padding: 14px 84px 14px 16px; background: var(--code-bg); color: var(--code-fg);
+        border-radius: 8px; overflow-x: auto; font: 0.9rem/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+  code { font: 0.9em ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+  p code { background: color-mix(in srgb, var(--fg) 10%, transparent); padding: 1px 5px; border-radius: 4px; }
+  button { position: absolute; top: 8px; right: 8px; cursor: pointer; border: 1px solid var(--accent);
+           background: transparent; color: var(--code-fg); border-radius: 6px; padding: 4px 10px; font-size: .8rem; }
+  button:hover { background: var(--accent); color: #14130f; }
+  .muted { color: var(--muted); font-size: .92rem; }
+  .links { text-align: center; margin-top: 28px; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>BFME Installer</h1>
+    <p class="lead">Play <em>Battle for the Middle-earth</em> on Linux from one guided setup. Installs the community Launcher and Online Arena under Proton.</p>
+    <img class="shot" src="home.png" alt="The BFME Installer home screen with Launcher and Arena cards">
+  </header>
+
+  <section>
+    <h2>Install</h2>
+    <p>One command. It installs the 32-bit Flatpak extensions the app needs, then opens the setup wizard.</p>
+    <div class="cmd"><pre>curl -fsSL @BFME_BASE_URL@/install-flatpak.sh | bash</pre><button type="button">Copy</button></div>
+    <p class="muted">The script is short. Read it first with <code>curl -fsSL @BFME_BASE_URL@/install-flatpak.sh</code>.</p>
+  </section>
+
+  <section>
+    <h2>Update</h2>
+    <p>Update with:</p>
+    <div class="cmd"><pre>flatpak update</pre><button type="button">Copy</button></div>
+  </section>
+
+  <section>
+    <h2>Remove</h2>
+    <p>Remove the app and keep your games and setup, so a later reinstall picks up where you left off:</p>
+    <div class="cmd"><pre>curl -fsSL @BFME_BASE_URL@/install-flatpak.sh | bash -s -- --uninstall</pre><button type="button">Copy</button></div>
+    <p>Remove the app and also delete its data: the setup, Proton and every installed game. This cannot be undone:</p>
+    <div class="cmd"><pre>curl -fsSL @BFME_BASE_URL@/install-flatpak.sh | bash -s -- --purge</pre><button type="button">Copy</button></div>
+  </section>
+
+  <p class="links"><a href="https://github.com/JGBMichalski/bfme-installer">Source and docs on GitHub</a> &middot;
+     <a href="https://github.com/JGBMichalski/bfme-installer/releases/latest">Latest release</a></p>
+</main>
+<script>
+  document.querySelectorAll('.cmd button').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var text = b.previousElementSibling.textContent;
+      (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject()).then(function () {
+        b.textContent = 'Copied'; setTimeout(function () { b.textContent = 'Copy'; }, 1500);
+      }, function () { b.textContent = 'Press Ctrl+C'; });
+    });
+  });
+</script>
+</body>
+</html>

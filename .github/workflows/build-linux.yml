@@ -30,6 +30,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
+
       - name: shellcheck
         run: shellcheck -x "$SCRIPTS_DIR/bfme-linux-setup.sh" "$FLATPAK_DIR/install-flatpak.sh"
 
@@ -38,8 +39,10 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
+
       - name: Install PyGObject
         run: sudo apt-get update && sudo apt-get install -y python3-gi gir1.2-glib-2.0
+
       - name: Unit tests
         run: python3 -m unittest discover -s tests -t .
         working-directory: wizard
@@ -50,20 +53,23 @@ jobs:
     container:
       image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-49
       options: --privileged
+
     steps:
       - uses: actions/checkout@v7
-      # A tag needs its changelog section, which becomes the release notes. Failing here saves a whole build.
+
       - name: Check the changelog has this version
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
           version="${GITHUB_REF_NAME#v}"
           grep -qF "## [$version]" CHANGELOG.md || { echo "::error::CHANGELOG.md has no '## [$version]' section. Add it before tagging."; exit 1; }
+
       - name: Stamp the version
         run: |
           if [ "${GITHUB_REF_TYPE}" = "tag" ]; then version="${GITHUB_REF_NAME#v}"; else version="dev"; fi
           sed -i "s|@BFME_VERSION@|$version|" "$SCRIPTS_DIR/bfme-linux-setup.sh" "$FLATPAK_DIR/com.jgbmichalski.BfmeInstaller.metainfo.xml"
           sed -i "s|@BFME_DATE@|$(date -u +%F)|" "$FLATPAK_DIR/com.jgbmichalski.BfmeInstaller.metainfo.xml"
           echo "Version: $version"
+
       - name: Import the signing key
         id: key
         if: startsWith(github.ref, 'refs/tags/v')
@@ -77,6 +83,7 @@ jobs:
           command -v gpg >/dev/null 2>&1 || dnf install -y gnupg2
           printf '%s' "$FLATPAK_GPG_PRIVATE_KEY" | gpg --batch --import
           echo "fingerprint=$(gpg --batch --list-secret-keys --with-colons | awk -F: '$1 == "fpr" {print $10; exit}')" >> "$GITHUB_OUTPUT"
+
       - name: Build the Flatpak
         uses: flatpak/flatpak-github-actions/flatpak-builder@v6
         with:
@@ -86,8 +93,7 @@ jobs:
           cache-key: flatpak-builder-${{ github.sha }}
           gpg-sign: ${{ steps.key.outputs.fingerprint }}
           upload-artifact: true
-      # The build leaves the repository in ./repo. A client holding the committed public key must accept it. This also
-      # catches a secret that does not match flatpak/signing-key.gpg.
+
       - name: Check the signature
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
@@ -95,6 +101,7 @@ jobs:
           mkdir -p "$FLATPAK_USER_DIR"
           flatpak --user remote-add check "file://$PWD/repo" --gpg-import=flatpak/signing-key.gpg
           flatpak --user install -y --noninteractive --no-deps check com.jgbmichalski.BfmeInstaller
+
       - name: Keep the repository for GitHub Pages
         if: startsWith(github.ref, 'refs/tags/v')
         uses: actions/upload-artifact@v6
@@ -109,20 +116,22 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: write
+
     steps:
       - uses: actions/checkout@v7
-      # The version comes from the git tag (v0.2.2 gives 0.2.2). It is stamped into the setup script and the Flatpak
-      # metainfo, so nothing else needs editing for a release. Other builds are stamped "dev".
+
       - name: Stamp the version
         run: |
           if [ "${GITHUB_REF_TYPE}" = "tag" ]; then version="${GITHUB_REF_NAME#v}"; else version="dev"; fi
           sed -i "s|@BFME_VERSION@|$version|" "$SCRIPTS_DIR/bfme-linux-setup.sh" "$FLATPAK_DIR/com.jgbmichalski.BfmeInstaller.metainfo.xml"
           sed -i "s|@BFME_DATE@|$(date -u +%F)|" "$FLATPAK_DIR/com.jgbmichalski.BfmeInstaller.metainfo.xml"
           echo "Version: $version"
+
       - uses: actions/download-artifact@v7
         with:
           name: bundle
           path: dist
+
       - name: Collect release files
         env:
           FLATPAK_REPO_BASE_URL: ${{ vars.FLATPAK_REPO_BASE_URL }}
@@ -135,8 +144,7 @@ jobs:
           chmod +x dist/install-flatpak.sh
           ls -l dist
           cd dist && sha256sum -- * > SHA256SUMS
-      # The release notes are this version's section of CHANGELOG.md (Keep a Changelog format). The step fails if
-      # the section is missing or empty, so a release cannot go out without notes.
+
       - name: Release notes from the changelog
         run: |
           version="${GITHUB_REF_NAME#v}"
@@ -152,16 +160,13 @@ jobs:
             exit 1
           fi
           cat "$notes"
+
       - name: Publish the release
         uses: softprops/action-gh-release@v3
         with:
           files: dist/*
           body_path: ${{ runner.temp }}/release-notes.md
 
-  # Publishes a Flatpak repository to GitHub Pages so `flatpak update` can find new versions.
-  # Needs Pages enabled with "GitHub Actions" as the source (Settings > Pages).
-  # The repository address is https://<owner>.github.io/<repo>, unless the repository variable
-  # FLATPAK_REPO_BASE_URL is set (for example when a custom domain is used).
   publish-repo:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: flatpak
@@ -176,12 +181,15 @@ jobs:
     concurrency:
       group: pages
       cancel-in-progress: false
+
     steps:
       - uses: actions/checkout@v7
+
       - uses: actions/download-artifact@v7
         with:
           name: repo
           path: site/repo
+
       - name: Build the site
         env:
           FLATPAK_REPO_BASE_URL: ${{ vars.FLATPAK_REPO_BASE_URL }}
@@ -190,31 +198,21 @@ jobs:
           BASE_URL="${FLATPAK_REPO_BASE_URL:-https://${GITHUB_REPOSITORY_OWNER,,}.github.io/${GITHUB_REPOSITORY#*/}}"
           # site/repo is the signed repository that the build produced.
           KEY="$(base64 -w0 "$FLATPAK_DIR/signing-key.gpg")"
-          FPR="$(gpg --batch --show-keys --with-colons "$FLATPAK_DIR/signing-key.gpg" | awk -F: '$1 == "fpr" {print $10; exit}')"
           sed -e "s|@BFME_REPO_URL@|$BASE_URL/repo|" -e "s|@BFME_SIGNING_KEY@|$KEY|" \
             "$FLATPAK_DIR/bfme-installer.flatpakrepo" > site/bfme-installer.flatpakrepo
           sed -e "s|@BFME_DEFAULT_REPO@|$BASE_URL/repo|" -e "s|@BFME_SIGNING_KEY@|$KEY|" \
             "$FLATPAK_DIR/install-flatpak.sh" > site/install-flatpak.sh
           chmod +x site/install-flatpak.sh
-          cat > site/index.html <<EOF
-          <!doctype html>
-          <meta charset="utf-8">
-          <title>BFME Installer - Linux</title>
-          <h1>BFME Installer - Linux Flatpak repository</h1>
-          <p>Install with one command. It installs the 32-bit Flatpak extensions the app needs, then opens the setup wizard:</p>
-          <pre>curl -fsSL $BASE_URL/install-flatpak.sh | bash</pre>
-          <p>The script is short. Read it first with <code>curl -fsSL $BASE_URL/install-flatpak.sh</code>. To remove the app: <code>curl -fsSL $BASE_URL/install-flatpak.sh | bash -s -- --uninstall</code>.</p>
-          <p>The repository is signed. The script checks every download against the project's signing key, fingerprint <code>$FPR</code>.</p>
-          <p>Or add the repository yourself and install the app. You must then also install the 32-bit Flatpak extensions, or the app will tell you they are missing:</p>
-          <pre>flatpak remote-add --user --if-not-exists bfme-installer $BASE_URL/bfme-installer.flatpakrepo
-          flatpak install --user bfme-installer com.jgbmichalski.BfmeInstaller</pre>
-          <p>Update with <code>flatpak update</code>.</p>
-          EOF
+          sed -e "s|@BFME_BASE_URL@|$BASE_URL|g" \
+            "$FLATPAK_DIR/index.html" > site/index.html
+          cp docs/images/home.png site/home.png
           find site -maxdepth 2 | sort
       - uses: actions/configure-pages@v6
+
       - uses: actions/upload-pages-artifact@v5
         with:
           path: site
+
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v5

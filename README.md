@@ -57,9 +57,9 @@ Copy this into a terminal:
 curl -fsSL https://github.com/JGBMichalski/bfme-installer/releases/latest/download/install-flatpak.sh | bash
 ```
 
-It installs the app as a Flatpak, adds the 32-bit parts Flatpak needs, and opens the setup wizard, which walks you
-through the rest. The script is short and readable, and the app repository is signed. See [Flatpak](docs/flatpak.md)
-for what it does, how to pin a version, and how to remove everything.
+It installs the app as a Flatpak, adds the 32-bit parts Flatpak needs, and opens the setup wizard, which walks you through the rest.
+
+The same commands are also available on the [install page](https://jgbmichalski.github.io/bfme-installer/).
 
 To update, press **Update** in the app when it offers one, or run the same command again.
 
