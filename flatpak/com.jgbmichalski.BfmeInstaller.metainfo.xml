@@ -2,7 +2,7 @@
 <component type="desktop-application">
   <id>com.jgbmichalski.BfmeInstaller</id>
   <metadata_license>CC0-1.0</metadata_license>
-  <project_license>LicenseRef-unspecified</project_license>
+  <project_license>MIT</project_license>
   <name>BFME Installer</name>
   <summary>Run the BFME All-in-One Launcher and Online Arena on Linux</summary>
   <description>

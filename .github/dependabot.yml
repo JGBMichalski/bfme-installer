@@ -1,0 +1,9 @@
+version: 2
+updates:
+  # Keeps the actions the build workflow uses up to date.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "ci"

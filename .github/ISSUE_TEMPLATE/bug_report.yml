@@ -1,0 +1,57 @@
+name: Bug report
+description: Something does not work as it should
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting this. Before you start, press **Troubleshoot** in the app and check that the system checks pass. A failed check shows the command that fixes it.
+  - type: dropdown
+    id: install
+    attributes:
+      label: How did you install it?
+      options:
+        - One-line install (Flatpak)
+        - Setup script without Flatpak
+        - Built from source
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Shown at the bottom of the home screen.
+      placeholder: "0.4.0"
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: Distribution and desktop
+      placeholder: "Fedora 42, KDE Plasma (Wayland)"
+    validations:
+      required: true
+  - type: input
+    id: gpu
+    attributes:
+      label: Graphics card and driver
+      placeholder: "NVIDIA RTX 3060, driver 570"
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what you saw instead. Mention the game (BFME, BFME 2 or Rise of the Witch-king) and whether it was the Launcher or the Arena.
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: |
+        On the Troubleshoot page, press **Copy diagnostics** and paste the report here. Read it first, because it can contain your home folder and user name.
+      render: text
+  - type: textarea
+    id: more
+    attributes:
+      label: Anything else?
+      description: Screenshots, or steps that make it happen every time.
