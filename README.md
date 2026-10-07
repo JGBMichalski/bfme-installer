@@ -21,7 +21,7 @@ Running these games on Linux used to mean hand-building a Wine prefix, picking t
 multiplayer "Out of Sync" error by trial and error. BFME Installer does that once, the same way every time, and then
 gets out of your way.
 
-- **One command to install.** No sudo for the setup itself, and it never installs system packages behind your back.
+- **One command to install.** Paste one line into a terminal and the wizard opens, ready to set up the Launcher and the Arena.
 - **A guided window.** Checks your system, downloads Proton, builds the game environment and tells you in plain words
   when something needs your attention.
 - **Launcher and Arena side by side.** Both share one game environment, so maps and games installed in one are there

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # BFME Installer for Linux: installs the Flatpak and the 32-bit Flatpak extensions it needs, then opens the
 # setup wizard. Flatpak does not install those extensions for apps outside Flathub, so this does it for you.
-# Runs as your user. No sudo. Safe to run again: it updates an existing install.
+# Runs as your user. The only time it uses sudo is to install Flatpak itself, and only if you say yes after
+# seeing the exact command. Safe to run again: it updates an existing install.
 # The app comes from a signed Flatpak repository. This script carries the project's public signing key and only
 # accepts software signed with it.
 #
@@ -21,6 +22,7 @@ readonly REPO="@BFME_DEFAULT_REPO@"
 readonly SIGNING_KEY="@BFME_SIGNING_KEY@"
 
 OPEN_WIZARD=1
+ASSUME_YES=0
 UNINSTALL=0
 PURGE=0
 
@@ -31,6 +33,7 @@ usage() {
   cat <<'EOF'
 Usage: install-flatpak.sh [options]
   --no-setup          Install only. Do not open the setup wizard.
+  -y, --yes           If Flatpak is missing, install it with sudo without asking first.
   --uninstall         Remove the app and its Flatpak repository. Keeps your data and the shared 32-bit extensions.
   --purge             Uninstall and also delete the app's data: the setup, Proton and any installed games.
   -h, --help          Show this help.
@@ -39,20 +42,33 @@ EOF
 
 has_display() { [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; }
 
-no_flatpak() {
-  local id="" like="" cmd=""
+# The command that installs Flatpak on this distribution. Prints nothing for a distribution we do not know.
+flatpak_install_command() {
+  local id="" like=""
   if [ -r /etc/os-release ]; then
     id="$(. /etc/os-release; printf '%s' "${ID:-}")"
     like="$(. /etc/os-release; printf '%s' "${ID_LIKE:-}")"
   fi
   case " $id $like " in
-    *" debian "*|*" ubuntu "*) cmd="sudo apt install flatpak" ;;
-    *" fedora "*|*" rhel "*)   cmd="sudo dnf install flatpak" ;;
-    *" arch "*)                cmd="sudo pacman -S flatpak" ;;
-    *" suse "*|*" opensuse "*) cmd="sudo zypper install flatpak" ;;
+    *" debian "*|*" ubuntu "*) printf '%s' "sudo apt update && sudo apt install -y flatpak" ;;
+    *" fedora "*|*" rhel "*)   printf '%s' "sudo dnf install -y flatpak" ;;
+    *" arch "*)                printf '%s' "sudo pacman -S --noconfirm flatpak" ;;
+    *" suse "*|*" opensuse "*) printf '%s' "sudo zypper install -y flatpak" ;;
   esac
-  say "Flatpak is not installed."
-  say ""
+}
+
+# Ask a yes/no question on the terminal. When run as "curl | bash", stdin is the script, so read from /dev/tty.
+# Returns 1 (no) when there is no terminal. The default is no.
+ask_yes_no() {
+  local answer=""
+  { : < /dev/tty > /dev/tty; } 2>/dev/null || return 1
+  printf '%s [y/N] ' "$1" > /dev/tty
+  IFS= read -r answer < /dev/tty || return 1
+  case "$answer" in y|Y|yes|YES|Yes) return 0 ;; *) return 1 ;; esac
+}
+
+print_manual_flatpak() {
+  local cmd="$1"
   if [ -n "$cmd" ]; then
     say "Install it with this command, then run the BFME Installer command again:"
     say "  $cmd"
@@ -60,6 +76,32 @@ no_flatpak() {
     say "Install it for your distribution (https://flatpak.org/setup/), then run the BFME Installer command again."
   fi
   say "On some distributions you must log out and back in after installing Flatpak."
+}
+
+no_flatpak() {
+  local cmd
+  cmd="$(flatpak_install_command)"
+  say "Flatpak is not installed."
+  say ""
+  if [ -z "$cmd" ]; then
+    print_manual_flatpak ""
+    exit 1
+  fi
+  say "This command installs it (it uses sudo, so it may ask for your password):"
+  say "  $cmd"
+  say ""
+  if [ "$ASSUME_YES" = "1" ] || ask_yes_no "Run it now?"; then
+    if bash -c "$cmd" && command -v flatpak >/dev/null 2>&1; then
+      say ""
+      say "Flatpak is installed. Continuing."
+      say "Note: you may need to log out and back in before 'BFME Installer' shows in your application menu."
+      say ""
+      return 0
+    fi
+    say ""
+    say "Could not install Flatpak automatically."
+  fi
+  print_manual_flatpak "$cmd"
   exit 1
 }
 
@@ -132,6 +174,7 @@ main() {
   while [ $# -gt 0 ]; do
     case "$1" in
       --no-setup)  OPEN_WIZARD=0; shift ;;
+      -y|--yes)    ASSUME_YES=1; shift ;;
       --uninstall) UNINSTALL=1; shift ;;
       --purge)     UNINSTALL=1; PURGE=1; shift ;;
       -h|--help)   usage; exit 0 ;;
