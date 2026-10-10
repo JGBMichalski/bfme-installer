@@ -23,7 +23,7 @@ Set these in `<data dir>/config.env` or the environment.
 | `BFME_RUNNER` | `proton` (default) or `wine` |
 | `BFME_PROTONPATH` | Proton to use (default: a pinned UMU-Proton) |
 | `BFME_ARENA_BRANCH` | Arena release branch |
-| `BFME_NVIDIA` | `auto`, `1` or `0` |
+| `BFME_NVIDIA` | `1` or `0` (default `0`) |
 | `BFME_EXTRA_ENV` | Extra environment for the game |
 | `BFME_UMU_RUN` | Path to `umu-run` |
 

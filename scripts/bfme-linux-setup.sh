@@ -31,7 +31,7 @@
 #   BFME_RUNNER        proton (default) or wine
 #   BFME_PROTONPATH    Proton to use (default pinned UMU-Proton; UMU-Latest, GE-Proton or a path also work)
 #   BFME_ARENA_BRANCH  Arena update branch (default main)
-#   BFME_NVIDIA        auto (default), 1 or 0. Use the NVIDIA card on a two-card computer.
+#   BFME_NVIDIA        1 or 0 (default 0). Explicitly use NVIDIA on a two-card computer.
 #   BFME_EXTRA_ENV     Extra environment, e.g. "DXVK_HUD=fps"
 #   BFME_UMU_RUN       Path to an existing umu-run (default: download one)
 #   BFME_HOME          Data dir (default ~/.local/share/bfme-installer)
@@ -82,7 +82,7 @@ if [ "$IN_FLATPAK" = "1" ] && [ "$RUNNER" != "proton" ]; then
 fi
 PROTONPATH_VALUE="${BFME_PROTONPATH:-$DEFAULT_PROTONPATH}"
 ARENA_BRANCH="${BFME_ARENA_BRANCH:-main}"
-NVIDIA_MODE="${BFME_NVIDIA:-auto}"
+NVIDIA_MODE="${BFME_NVIDIA:-0}"
 UMU_RUN="${BFME_UMU_RUN:-}"
 
 case "$RUNNER" in
@@ -450,11 +450,7 @@ use_nvidia() {
     1) return 0 ;;
     0) return 1 ;;
   esac
-  # auto: an NVIDIA card together with another graphics card (laptops with PRIME).
-  command -v lspci >/dev/null 2>&1 || return 1
-  local cards
-  cards="$(lspci 2>/dev/null | grep -iE 'vga|3d' || true)"
-  [ "$(printf '%s\n' "$cards" | grep -c .)" -gt 1 ] && printf '%s\n' "$cards" | grep -qi nvidia
+  return 1
 }
 
 # Download the pinned Proton build. Other values of BFME_PROTONPATH are passed to umu unchanged.
