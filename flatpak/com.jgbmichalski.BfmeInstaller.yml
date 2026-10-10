@@ -21,6 +21,7 @@ finish-args:
   - --allow=devel                   # Proton's container needs this
   - --allow=per-app-dev-shm         # Wine server shared memory
   - --filesystem=xdg-data/umu:create   # umu's runtime location
+  - --env=GDK_BACKEND=x11              # KDE Wayland currently closes GTK4 with protocol error 71
   - --env=PATH=/app/bin:/usr/bin
   - --env=XDG_DATA_DIRS=/app/share:/usr/lib/extensions/vulkan/share:/usr/share:/usr/share/runtime/share:/run/host/user-share:/run/host/share:/usr/lib/pressure-vessel/overrides/share
 
