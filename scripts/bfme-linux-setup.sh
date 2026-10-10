@@ -579,7 +579,7 @@ create_prefix() {
 
 # Settings the games and apps need. Tested in both runners (see the project notes).
 # They are applied once per SETTINGS_VERSION. Raise it to roll out a new setting.
-SETTINGS_VERSION=3
+SETTINGS_VERSION=6
 apply_prefix_settings() {
   local marker="$PREFIX/.bfme-settings-v$SETTINGS_VERSION"
   [ -f "$marker" ] && return
