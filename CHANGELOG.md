@@ -4,6 +4,17 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Workshop Studio on the home screen and in the menu, sharing the game environment of the Launcher and Arena.
+
+### Changed
+
+- The Flatpak installer detects the active GPU driver and installs the matching 64-bit and 32-bit Vulkan/GL extensions for DXVK.
+- `BFME_NVIDIA` defaults to `0` and only uses the NVIDIA card when set to `1`.
+
 ## [1.0.3]
 
 ### Changed
