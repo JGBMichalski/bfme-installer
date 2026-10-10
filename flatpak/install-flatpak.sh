@@ -107,15 +107,16 @@ no_flatpak() {
 
 install_extensions() {
   local ext=("org.freedesktop.Platform.Compat.i386//${RUNTIME_VERSION}" "org.freedesktop.Platform.GL32.default//${RUNTIME_VERSION}")
-  # NVIDIA: the 32-bit driver must match the 64-bit one Flatpak already installed for your card.
-  local nvidia line
-  nvidia="$(flatpak list --runtime --columns=application,branch 2>/dev/null \
-    | awk '$1 ~ /^org\.freedesktop\.Platform\.GL\.nvidia-/ {print $1 "//" $2}' | sort -u || true)"
-  if [ -n "$nvidia" ]; then
-    while IFS= read -r line; do
-      ext+=("${line/Platform.GL.nvidia/Platform.GL32.nvidia}")
-    done <<<"$nvidia"
-  fi
+  # Self-hosted apps do not pull the active GPU driver extensions automatically.
+  # Read the active driver from Flatpak rather than from installed extensions: after a
+  # host driver update, the old extension can still be installed while the new one is
+  # missing. Without the matching pair, 32-bit DXVK can select a different GPU than
+  # the X server and fail to create the D3D9 swapchain.
+  local driver
+  while IFS= read -r driver; do
+    ext+=("org.freedesktop.Platform.GL.${driver}//1.4")
+    ext+=("org.freedesktop.Platform.GL32.${driver}//1.4")
+  done < <(flatpak --gl-drivers 2>/dev/null | awk '$1 ~ /^nvidia-/ {print $1}' | sort -u)
   flatpak install --user -y --noninteractive flathub "${ext[@]}"
 }
 

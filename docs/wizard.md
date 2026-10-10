@@ -15,11 +15,11 @@ One thing on screen at a time:
 
 ## Home screen
 
-Two cards, **Launcher** and **Arena**, each with an Open button, a line above them that says which games are installed (or "No games installed yet. Open the Launcher to install them."), and a **Troubleshoot** button with the version beside it.
+Three cards, **Launcher**, **Arena** and **Workshop Studio**, each with an Open button, a line above them that says which games are installed (or "No games installed yet. Open the Launcher to install them."), and a **Troubleshoot** button with the version beside it.
 
-- **Opening an app:** the window stays open. The card shows "Running" until the program ends, and both apps can run at once. A program that ends within 15 seconds gets a soft note, "Closed after a few seconds. If it didn't open, see Troubleshoot.", because the script returns 0 whether or not the program worked.
+- **Opening an app:** the window stays open. The card shows "Running" until the program ends, and all three apps can run at once. A program that ends within 15 seconds gets a soft note, "Closed after a few seconds. If it didn't open, see Troubleshoot.", because the script returns 0 whether or not the program worked.
 - **Quiet check:** when the window opens with the setup complete, the system checks run in the background. If one **failed** (a warning does not count), a banner says "Your system needs a change" and links to Troubleshoot.
-- **Menu entries:** the Launcher and Arena entries run `bfme-installer --open launcher|arena`. With the setup complete, the app starts at once with no window. With the setup incomplete, the wizard opens, and the offered app is highlighted when the setup finishes.
+- **Menu entries:** the Launcher, Arena and Workshop Studio entries run `bfme-installer --open launcher|arena|workshop`. With the setup complete, the app starts at once with no window. With the setup incomplete, the wizard opens, and the offered app is highlighted when the setup finishes.
 
 ## Troubleshoot
 

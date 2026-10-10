@@ -18,6 +18,7 @@ from .widgets import clear, first_icon, pill
 CARDS = [
     ("launcher", "Launcher", "Install, patch and start your games", ("applications-games-symbolic", "input-gaming-symbolic")),
     ("arena", "Arena", "Play online matches against other players", ("network-workgroup-symbolic", "system-users-symbolic")),
+    ("workshop", "Workshop Studio", "Create and publish Workshop packages", ("applications-development-symbolic", "applications-games-symbolic")),
 ]
 QUICK_EXIT_NOTE = "Closed after a few seconds. If it didn't open, see Troubleshoot."
 # Things the sandbox cannot see. Plain advice and a command to copy, never a pass or fail.

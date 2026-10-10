@@ -18,7 +18,7 @@ from .widgets import clear, first_icon, pill
 
 # Inside a Flatpak the app ID is whatever it was built as, so a copy built under another ID can run beside this one.
 APP_ID = os.environ.get("FLATPAK_ID") or "com.jgbmichalski.BfmeInstaller"
-INTRO = "This installs Proton, the launcher and the Arena. It takes a few minutes."
+INTRO = "This installs Proton, the launcher and the Arena. Workshop Studio is available from the home screen. It takes a few minutes."
 
 
 class WizardWindow(Adw.ApplicationWindow):

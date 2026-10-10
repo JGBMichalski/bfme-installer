@@ -1,12 +1,13 @@
 # How it works
 
-`scripts/bfme-linux-setup.sh` creates one shared Wine prefix and installs the launcher and Arena into it.
+`scripts/bfme-linux-setup.sh` creates one shared Wine prefix and runs the Launcher, Arena and Workshop Studio in it.
 
 ## What it sets up
 
 - One shared prefix under `~/.local/share/bfme-installer` (change with `BFME_HOME`).
 - Proton through `umu-launcher` (checksum-verified download), or your system Wine 10.0 plus winetricks (`BFME_RUNNER=wine`).
 - The launcher and Arena in the same folders as on Windows (`AppData/Roaming/...` in the prefix). The script downloads and updates the Arena, with an MD5 check.
+- Workshop Studio is downloaded on first launch into the setup data directory and runs from there with the same prefix.
 - Prefix settings, applied once per version:
   - `mfc71`, `msvcp71`, `msvcr71`, `dinput8` = `native,builtin`. This stops the multiplayer "Out of Sync" error between Linux and Windows players.
   - `DisableHWAcceleration = 1`, so the launcher repaints tabs correctly.
@@ -23,7 +24,7 @@ Set these in `<data dir>/config.env` or the environment.
 | `BFME_RUNNER` | `proton` (default) or `wine` |
 | `BFME_PROTONPATH` | Proton to use (default: a pinned UMU-Proton) |
 | `BFME_ARENA_BRANCH` | Arena release branch |
-| `BFME_NVIDIA` | `auto`, `1` or `0` |
+| `BFME_NVIDIA` | `1` or `0` (default `0`) |
 | `BFME_EXTRA_ENV` | Extra environment for the game |
 | `BFME_UMU_RUN` | Path to `umu-run` |
 

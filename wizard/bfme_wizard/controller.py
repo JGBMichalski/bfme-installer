@@ -52,7 +52,7 @@ class Controller:
         self.runner.terminate()
 
     def open_app(self, name: str) -> None:
-        """Start the Launcher or the Arena. The window keeps showing whether it is still running."""
+        """Start the Launcher, Arena or Workshop Studio. The window keeps showing whether it is still running."""
         self.apps.start(name)
 
     def run_checks(self) -> bool:
@@ -74,7 +74,7 @@ class Controller:
         if self.model.state == "running":
             return "The setup is running."
         if self.apps.any_running:
-            return "The Launcher or the Arena is still running."
+            return "The Launcher, Arena or Workshop Studio is still running."
         if self.runner.busy:
             return "Something else is still running. Try again in a moment."
         return None

@@ -22,7 +22,7 @@ STEPS = [
     ("prefix", "Create the game environment", "Setting up a folder for the launcher and games."),
     ("launcher", "Download the launcher", "Fetching the All-in-One Launcher for managing the games."),
     ("arena", "Download the Arena", "Fetching the Online Arena for playing multiplayer."),
-    ("shortcuts", "Add menu shortcuts", "Adding the Launcher and the Arena to your application menu."),
+    ("shortcuts", "Add menu shortcuts", "Adding the Launcher, Arena and Workshop Studio to your application menu."),
 ]
 STEP_IDS = [s[0] for s in STEPS]
 # The games the script reports (STATUS bfme1 / bfme2 / rotwk), in the order they are shown.

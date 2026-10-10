@@ -3,6 +3,7 @@
   bfme-installer                     the wizard
   bfme-installer --open launcher     the "BFME All-in-One Launcher" menu entry
   bfme-installer --open arena        the "BFME Online Arena" menu entry
+  bfme-installer --open workshop     the "BFME Workshop Studio" menu entry
 
 With --open and the setup complete, the app starts at once with no window. With the setup incomplete, the wizard opens
 instead and offers that app when the setup is done.
@@ -14,7 +15,7 @@ import sys
 
 from .runner import ScriptRunner, find_script, setup_is_complete
 
-OPENABLE = ("launcher", "arena")
+OPENABLE = ("launcher", "arena", "workshop")
 
 
 def has_display() -> bool:
