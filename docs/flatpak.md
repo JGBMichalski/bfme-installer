@@ -1,6 +1,8 @@
 # Flatpak
 
-`flatpak/` packages the same script as a Flatpak (`com.jgbmichalski.BfmeInstaller`) with a setup wizard (see [wizard.md](wizard.md)) in front of it. It adds three menu entries: **BFME Installer** (the wizard, and the app's default command), **BFME All-in-One Launcher** and **BFME Online Arena**. Inside the sandbox the script uses Proton only. The graphics and 32-bit libraries come from the Flatpak runtime.
+The Flatpak also provides a BFME Workshop Studio menu entry. It runs Workshop Studio with the same Proton prefix as the Launcher and Arena and downloads it on first launch.
+
+`flatpak/` packages the same script as a Flatpak (`com.jgbmichalski.BfmeInstaller`) with a setup wizard (see [wizard.md](wizard.md)) in front of it. It adds four menu entries: **BFME Installer** (the wizard, and the app's default command), **BFME All-in-One Launcher**, **BFME Online Arena** and **BFME Workshop Studio**. Inside the sandbox the script uses Proton only. The graphics and 32-bit libraries come from the Flatpak runtime.
 
 The app runs on the GNOME runtime (`org.gnome.Platform` 49), which provides GTK4, libadwaita and PyGObject for the wizard. It is based on freedesktop 25.08, so the 32-bit extensions below stay the same. The script is still available with `flatpak run --command=bfme-linux-setup com.jgbmichalski.BfmeInstaller <command>`.
 

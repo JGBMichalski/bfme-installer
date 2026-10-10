@@ -14,7 +14,7 @@ import sys
 
 from .runner import ScriptRunner, find_script, setup_is_complete
 
-OPENABLE = ("launcher", "arena")
+OPENABLE = ("launcher", "arena", "workshop")
 
 
 def has_display() -> bool:

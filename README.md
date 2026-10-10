@@ -21,11 +21,11 @@ Running these games on Linux used to mean hand-building a Wine prefix, picking t
 multiplayer "Out of Sync" error by trial and error. BFME Installer does that once, the same way every time, and then
 gets out of your way.
 
-- **One command to install.** Paste one line into a terminal and the wizard opens, ready to set up the Launcher and the Arena.
+- **One command to install.** Paste one line into a terminal and the wizard opens, ready to set up the Launcher, Arena and Workshop Studio.
 - **A guided window.** Checks your system, downloads Proton, builds the game environment and tells you in plain words
   when something needs your attention.
-- **Launcher and Arena side by side.** Both share one game environment, so maps and games installed in one are there
-  in the other.
+- **Launcher, Arena and Workshop Studio side by side.** All three share one game environment, so maps and games installed
+  in one are there in the others.
 - **Online play with Windows players.** The prefix settings that stop "Out of Sync" errors are applied for you.
 - **Updates itself.** The app tells you when a new release exists and installs it through Flatpak.
 - **Easy to fix.** A Troubleshoot page re-runs the system checks, copies a report for bug reports, opens the logs, and
@@ -79,8 +79,15 @@ To update, press **Update** in the app when it offers one, or run the same comma
 3. Start online matches from the **Arena**. Always start it on its own, never from the Launcher's Multiplayer tab, where
    it draws outside the Launcher's window.
 
-The menu also gets **BFME All-in-One Launcher** and **BFME Online Arena** entries that start the program directly,
-with no window.
+The home screen and application menu also include **Workshop Studio**. It is downloaded the first time you open it and runs in the same Proton environment as the Launcher and Arena.
+
+See [Workshop Studio documentation](docs/workshop-studio.md) for its download location, shared prefix and command-line entry point.
+
+Workshop Studio also gets a **W:** drive pointing to your `~/open-bfme1` folder, so you can move packages in and out without fighting the sandbox. The same folder opens from the **Game folders** page as **Workshop files (W:)**.
+
+
+The menu also gets **BFME All-in-One Launcher**, **BFME Online Arena** and **BFME Workshop Studio** entries that start the
+program directly, with no window.
 
 ### Add maps and copy files
 
@@ -115,7 +122,7 @@ Run the setup script in a terminal. It does the same setup without the wizard.
 Then open **BFME All-in-One Launcher** from your menu and install the games. Start the Arena from its own
 **BFME Online Arena** shortcut.
 
-Other commands: `launcher`, `arena`, `game bfme1|bfme2|rotwk`, `shortcuts`, `status`, `reset-prefix --yes`, `help`.
+Other commands: `launcher`, `arena`, `workshop`, `game bfme1|bfme2|rotwk`, `shortcuts`, `status`, `reset-prefix --yes`, `help`.
 Configuration variables (such as `BFME_HOME` and `BFME_RUNNER=wine`) are in [How it works](docs/how-it-works.md).
 
 ## Planned

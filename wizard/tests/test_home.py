@@ -79,7 +79,7 @@ class Line(unittest.TestCase):
 APP = """#!/usr/bin/env bash
 # fake setup script; the app commands run for APP_SECONDS
 case "$1" in
-  launcher|arena) sleep "${APP_SECONDS:-0}" ;;
+  launcher|arena|workshop) sleep "${APP_SECONDS:-0}" ;;
   bad-exit) exit 3 ;;
 esac
 """
@@ -125,10 +125,18 @@ class Apps(unittest.TestCase):
         os.environ["APP_SECONDS"] = "1"
         apps = AppLauncher(make_script(APP), lambda: None, quick_seconds=0)
         apps.start("launcher"); apps.start("launcher"); apps.start("arena")
-        self.assertEqual(apps.state, {"launcher": "running", "arena": "running"})
+        self.assertEqual(apps.state, {"launcher": "running", "arena": "running", "workshop": "idle"})
         self.assertTrue(apps.any_running)
         wait_for(5000, lambda: not apps.any_running)
-        self.assertEqual(apps.state, {"launcher": "idle", "arena": "idle"})
+        self.assertEqual(apps.state, {"launcher": "idle", "arena": "idle", "workshop": "idle"})
+
+    def test_workshop_can_start(self):
+        os.environ["APP_SECONDS"] = "0.3"
+        apps = AppLauncher(make_script(APP), lambda: None)
+        apps.start("workshop")
+        self.assertEqual(apps.state["workshop"], "running")
+        wait_for(5000, lambda: apps.state["workshop"] != "running")
+        self.assertEqual(apps.state["workshop"], "quick")
 
     def test_a_program_that_cannot_start_counts_as_closed_quickly(self):
         apps = AppLauncher("/nonexistent/script", lambda: None)
@@ -138,7 +146,7 @@ class Apps(unittest.TestCase):
     def test_unknown_names_are_ignored(self):
         apps = AppLauncher(make_script(APP), lambda: None)
         apps.start("bad-exit")
-        self.assertEqual(apps.state, {"launcher": "idle", "arena": "idle"})
+        self.assertEqual(apps.state, {"launcher": "idle", "arena": "idle", "workshop": "idle"})
 
 
 class Diagnostics(unittest.TestCase):
@@ -191,6 +199,7 @@ class MenuEntries(unittest.TestCase):
     def test_parse_args(self):
         self.assertEqual(parse_args(["--open", "launcher"]), "launcher")
         self.assertEqual(parse_args(["x", "--open", "arena"]), "arena")
+        self.assertEqual(parse_args(["--open", "workshop"]), "workshop")
         for bad in ([], ["--open"], ["--open", "bfme2"], ["launcher"]):
             self.assertIsNone(parse_args(bad))
 

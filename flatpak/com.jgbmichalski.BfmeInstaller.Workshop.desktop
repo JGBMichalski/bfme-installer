@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=BFME Workshop Studio
+Comment=Create and publish BFME Workshop packages
+Exec=bfme-installer --open workshop
+Icon=com.jgbmichalski.BfmeInstaller
+Terminal=false
+Categories=Game;Development;
+StartupNotify=true

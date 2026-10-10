@@ -18,6 +18,7 @@ from .widgets import clear, first_icon, pill
 CARDS = [
     ("launcher", "Launcher", "Install, patch and start your games", ("applications-games-symbolic", "input-gaming-symbolic")),
     ("arena", "Arena", "Play online matches against other players", ("network-workgroup-symbolic", "system-users-symbolic")),
+    ("workshop", "Workshop Studio", "Create and publish Workshop packages", ("applications-development-symbolic", "applications-games-symbolic")),
 ]
 QUICK_EXIT_NOTE = "Closed after a few seconds. If it didn't open, see Troubleshoot."
 # Things the sandbox cannot see. Plain advice and a command to copy, never a pass or fail.
@@ -105,6 +106,18 @@ class GameFoldersPage:
                     row.connect("activated", lambda *_, t=target: open_folder(t))
                     group.add(row)
             page.add(group)
+        exchange = Path.home() / "open-bfme1"
+        group = Adw.PreferencesGroup(
+            title="Workshop files",
+            description="The W: drive in Workshop Studio. Put files in here (or drag them out) to move them between the game and your computer.",
+        )
+        row = Adw.ActionRow(
+            title="Workshop files (W:)", subtitle="Open this folder in your file manager.", activatable=True,
+        )
+        row.add_suffix(Gtk.Image.new_from_icon_name("folder-open-symbolic"))
+        row.connect("activated", lambda *_: open_folder(exchange))
+        group.add(row)
+        page.add(group)
         self.view.set_content(page)
 
 

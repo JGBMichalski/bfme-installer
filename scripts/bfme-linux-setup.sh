@@ -13,8 +13,9 @@
 #   install             Set up everything (runner, prefix, settings, launcher, Arena, shortcuts).
 #   launcher            Start the All-in-One Launcher (installs it first if needed).
 #   arena               Start the Online Arena (downloads or updates it first).
+#   workshop            Start Workshop Studio (downloads it first if needed).
 #   game bfme1|bfme2|rotwk   Start a game without the Arena.
-#   shortcuts           (Re)create the two menu shortcuts.
+#   shortcuts           (Re)create the three menu shortcuts.
 #   status              Show what is installed and where.
 #   reset-prefix --yes  Delete the prefix. This deletes installed games.
 #   help                Show this help.
@@ -31,7 +32,7 @@
 #   BFME_RUNNER        proton (default) or wine
 #   BFME_PROTONPATH    Proton to use (default pinned UMU-Proton; UMU-Latest, GE-Proton or a path also work)
 #   BFME_ARENA_BRANCH  Arena update branch (default main)
-#   BFME_NVIDIA        auto (default), 1 or 0. Use the NVIDIA card on a two-card computer.
+#   BFME_NVIDIA        1 or 0 (default 0). Explicitly use NVIDIA on a two-card computer.
 #   BFME_EXTRA_ENV     Extra environment, e.g. "DXVK_HUD=fps"
 #   BFME_UMU_RUN       Path to an existing umu-run (default: download one)
 #   BFME_HOME          Data dir (default ~/.local/share/bfme-installer)
@@ -54,6 +55,7 @@ readonly UMU_VERSION="1.4.4"
 readonly UMU_URL="https://github.com/Open-Wine-Components/umu-launcher/releases/download/${UMU_VERSION}/umu-launcher-${UMU_VERSION}-zipapp.tar"
 readonly UMU_SHA256="eb590691841f7fad3fc3ad8fd5db4ccb87849fe7948e62b28ece7a4ee48cc851"
 readonly LAUNCHER_SETUP_URL="https://arena-files.bfmeladder.com/downloads/AllInOneLauncherSetup.exe"
+readonly WORKSHOP_SETUP_URL="https://arena-files.bfmeladder.com/downloads/WorkshopStudio.exe"
 readonly ARENA_FILES_HOST="https://arena-files.bfmeladder.com"
 readonly ARENA_SERVER_HOST="https://bfmeladder.com"
 readonly WINETRICKS_VERSION="20260125"
@@ -82,7 +84,7 @@ if [ "$IN_FLATPAK" = "1" ] && [ "$RUNNER" != "proton" ]; then
 fi
 PROTONPATH_VALUE="${BFME_PROTONPATH:-$DEFAULT_PROTONPATH}"
 ARENA_BRANCH="${BFME_ARENA_BRANCH:-main}"
-NVIDIA_MODE="${BFME_NVIDIA:-auto}"
+NVIDIA_MODE="${BFME_NVIDIA:-0}"
 UMU_RUN="${BFME_UMU_RUN:-}"
 
 case "$RUNNER" in
@@ -96,6 +98,7 @@ LAUNCHER_DIR="$ROAMING/BFME All In One Launcher"
 LAUNCHER_EXE="$LAUNCHER_DIR/AllInOneLauncher.exe"
 ARENA_DIR="$ROAMING/BFME Competetive Arena"
 ARENA_EXE="$ARENA_DIR/BfmeFoundationProject_OnlineArena.exe"
+WORKSHOP_EXE="$DOWNLOADS/WorkshopStudio.exe"
 APPS_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
 
 # ---------------------------------------------------------------- output ----
@@ -450,11 +453,7 @@ use_nvidia() {
     1) return 0 ;;
     0) return 1 ;;
   esac
-  # auto: an NVIDIA card together with another graphics card (laptops with PRIME).
-  command -v lspci >/dev/null 2>&1 || return 1
-  local cards
-  cards="$(lspci 2>/dev/null | grep -iE 'vga|3d' || true)"
-  [ "$(printf '%s\n' "$cards" | grep -c .)" -gt 1 ] && printf '%s\n' "$cards" | grep -qi nvidia
+  return 1
 }
 
 # Download the pinned Proton build. Other values of BFME_PROTONPATH are passed to umu unchanged.
@@ -583,7 +582,7 @@ create_prefix() {
 
 # Settings the games and apps need. Tested in both runners (see the project notes).
 # They are applied once per SETTINGS_VERSION. Raise it to roll out a new setting.
-SETTINGS_VERSION=3
+SETTINGS_VERSION=6
 apply_prefix_settings() {
   local marker="$PREFIX/.bfme-settings-v$SETTINGS_VERSION"
   [ -f "$marker" ] && return
@@ -666,6 +665,15 @@ ensure_prefix() {
   acquire_setup_lock
   ensure_runner
   prepare_prefix
+  map_workshop_drive
+}
+
+# A drive letter for a folder both Wine and the host file manager can reach, so Workshop Studio can
+# import and export packages through it. The folder is created; Wine maps it as W: when the prefix is ready.
+map_workshop_drive() {
+  [ -d "$PREFIX/drive_c/windows" ] || return 0
+  mkdir -p "$PREFIX/dosdevices" "$HOME/open-bfme1"
+  ln -sfn "$HOME/open-bfme1" "$PREFIX/dosdevices/w:"
 }
 
 wait_for_stable_file() {
@@ -785,6 +793,16 @@ cmd_arena() {
   start_app "arena" "$ARENA_DIR" "$ARENA_EXE"
 }
 
+# ---------------------------------------------------------- workshop studio ----
+cmd_workshop() {
+  ensure_prefix
+  if [ ! -f "$WORKSHOP_EXE" ]; then
+    say "Downloading Workshop Studio."
+    download "$WORKSHOP_SETUP_URL" "$WORKSHOP_EXE"
+  fi
+  start_app "workshop" "$DOWNLOADS" "$WORKSHOP_EXE"
+}
+
 # ------------------------------------------------------------------ games ----
 cmd_game() {
   local dir exe
@@ -853,6 +871,7 @@ cmd_shortcuts() {
   chmod +x "$BIN/bfme-linux-setup.sh"
   write_desktop "bfme-launcher.desktop" "BFME All-in-One Launcher" "Install, mod and manage the BFME games" "launcher"
   write_desktop "bfme-arena.desktop" "BFME Online Arena" "Play BFME online" "arena"
+  write_desktop "bfme-workshop.desktop" "BFME Workshop Studio" "Create and publish BFME Workshop packages" "workshop"
   if command -v update-desktop-database >/dev/null 2>&1; then
     update-desktop-database "$APPS_DIR" >/dev/null 2>&1 || true
   fi
@@ -893,7 +912,7 @@ cmd_install() {
   fi
   machine DONE
   say ""
-  say "Done. Start 'BFME All-in-One Launcher' to install the games, and 'BFME Online Arena' to play online."
+  say "Done. Start 'BFME All-in-One Launcher' to install the games, 'BFME Online Arena' to play online, or 'BFME Workshop Studio' to create Workshop packages."
   say "Do not switch patches in the launcher after a game is installed. On Wine this once broke the BFME 2 files."
 }
 
@@ -954,6 +973,7 @@ main() {
     install)      cmd_install ;;
     launcher)     cmd_launcher ;;
     arena)        cmd_arena ;;
+    workshop)     cmd_workshop ;;
     game)         cmd_game "$@" ;;
     shortcuts)    cmd_shortcuts ;;
     status)       cmd_status ;;
