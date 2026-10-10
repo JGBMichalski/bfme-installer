@@ -1,4 +1,4 @@
-"""Starting the Launcher and the Arena, and knowing whether they are still running. No GTK.
+"""Starting the Launcher, the Arena and Workshop Studio, and knowing whether they are still running. No GTK.
 
 A program the wizard starts keeps running after the wizard closes, so this only watches it for the window's sake:
 a button shows "running" until the program ends. The script returns 0 whether or not the program worked, so the only
@@ -16,7 +16,7 @@ gi.require_version("Gio", "2.0")
 from gi.repository import Gio, GLib  # noqa: E402
 
 QUICK_EXIT_SECONDS = 15
-APPS = ("launcher", "arena")
+APPS = ("launcher", "arena", "workshop")
 
 
 class AppLauncher:

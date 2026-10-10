@@ -13,8 +13,9 @@
 #   install             Set up everything (runner, prefix, settings, launcher, Arena, shortcuts).
 #   launcher            Start the All-in-One Launcher (installs it first if needed).
 #   arena               Start the Online Arena (downloads or updates it first).
+#   workshop            Start Workshop Studio (downloads it first if needed).
 #   game bfme1|bfme2|rotwk   Start a game without the Arena.
-#   shortcuts           (Re)create the two menu shortcuts.
+#   shortcuts           (Re)create the three menu shortcuts.
 #   status              Show what is installed and where.
 #   reset-prefix --yes  Delete the prefix. This deletes installed games.
 #   help                Show this help.
@@ -54,6 +55,7 @@ readonly UMU_VERSION="1.4.4"
 readonly UMU_URL="https://github.com/Open-Wine-Components/umu-launcher/releases/download/${UMU_VERSION}/umu-launcher-${UMU_VERSION}-zipapp.tar"
 readonly UMU_SHA256="eb590691841f7fad3fc3ad8fd5db4ccb87849fe7948e62b28ece7a4ee48cc851"
 readonly LAUNCHER_SETUP_URL="https://arena-files.bfmeladder.com/downloads/AllInOneLauncherSetup.exe"
+readonly WORKSHOP_SETUP_URL="https://arena-files.bfmeladder.com/downloads/WorkshopStudio.exe"
 readonly ARENA_FILES_HOST="https://arena-files.bfmeladder.com"
 readonly ARENA_SERVER_HOST="https://bfmeladder.com"
 readonly WINETRICKS_VERSION="20260125"
@@ -96,6 +98,7 @@ LAUNCHER_DIR="$ROAMING/BFME All In One Launcher"
 LAUNCHER_EXE="$LAUNCHER_DIR/AllInOneLauncher.exe"
 ARENA_DIR="$ROAMING/BFME Competetive Arena"
 ARENA_EXE="$ARENA_DIR/BfmeFoundationProject_OnlineArena.exe"
+WORKSHOP_EXE="$DOWNLOADS/WorkshopStudio.exe"
 APPS_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
 
 # ---------------------------------------------------------------- output ----
@@ -781,6 +784,26 @@ cmd_arena() {
   start_app "arena" "$ARENA_DIR" "$ARENA_EXE"
 }
 
+# ---------------------------------------------------------- workshop studio ----
+cmd_workshop() {
+  ensure_prefix
+  if [ ! -f "$WORKSHOP_EXE" ]; then
+    # From a terminal, ask before downloading ~296 MB. Without a TTY (menu entry, wizard) the user already
+    # chose to open Workshop Studio, so download and start it without asking.
+    if [ -t 0 ]; then
+      say "Workshop Studio is not downloaded yet (~296 MB)."
+      read -r -p "Download it now? [y/N] " answer
+      case "$answer" in
+        y|Y) ;;
+        *) say "Skipped. Run this command again when you want Workshop Studio."; exit 0 ;;
+      esac
+    fi
+    say "Downloading Workshop Studio."
+    download "$WORKSHOP_SETUP_URL" "$WORKSHOP_EXE"
+  fi
+  start_app "workshop" "$DOWNLOADS" "$WORKSHOP_EXE"
+}
+
 # ------------------------------------------------------------------ games ----
 cmd_game() {
   local dir exe
@@ -849,6 +872,7 @@ cmd_shortcuts() {
   chmod +x "$BIN/bfme-linux-setup.sh"
   write_desktop "bfme-launcher.desktop" "BFME All-in-One Launcher" "Install, mod and manage the BFME games" "launcher"
   write_desktop "bfme-arena.desktop" "BFME Online Arena" "Play BFME online" "arena"
+  write_desktop "bfme-workshop.desktop" "BFME Workshop Studio" "Create and publish BFME Workshop packages" "workshop"
   if command -v update-desktop-database >/dev/null 2>&1; then
     update-desktop-database "$APPS_DIR" >/dev/null 2>&1 || true
   fi
@@ -889,7 +913,7 @@ cmd_install() {
   fi
   machine DONE
   say ""
-  say "Done. Start 'BFME All-in-One Launcher' to install the games, and 'BFME Online Arena' to play online."
+  say "Done. Start 'BFME All-in-One Launcher' to install the games, 'BFME Online Arena' to play online, or 'BFME Workshop Studio' to create Workshop packages."
   say "Do not switch patches in the launcher after a game is installed. On Wine this once broke the BFME 2 files."
 }
 
@@ -950,6 +974,7 @@ main() {
     install)      cmd_install ;;
     launcher)     cmd_launcher ;;
     arena)        cmd_arena ;;
+    workshop)     cmd_workshop ;;
     game)         cmd_game "$@" ;;
     shortcuts)    cmd_shortcuts ;;
     status)       cmd_status ;;

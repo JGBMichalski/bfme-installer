@@ -66,6 +66,7 @@ modules:
       - install -Dm644 com.jgbmichalski.BfmeInstaller.desktop /app/share/applications/com.jgbmichalski.BfmeInstaller.desktop
       - install -Dm644 com.jgbmichalski.BfmeInstaller.Launcher.desktop /app/share/applications/com.jgbmichalski.BfmeInstaller.Launcher.desktop
       - install -Dm644 com.jgbmichalski.BfmeInstaller.Arena.desktop /app/share/applications/com.jgbmichalski.BfmeInstaller.Arena.desktop
+      - install -Dm644 com.jgbmichalski.BfmeInstaller.Workshop.desktop /app/share/applications/com.jgbmichalski.BfmeInstaller.Workshop.desktop
       - install -Dm644 com.jgbmichalski.BfmeInstaller.png /app/share/icons/hicolor/128x128/apps/com.jgbmichalski.BfmeInstaller.png
       - install -Dm644 com.jgbmichalski.BfmeInstaller.metainfo.xml /app/share/metainfo/com.jgbmichalski.BfmeInstaller.metainfo.xml
     sources:
@@ -78,6 +79,8 @@ modules:
         path: com.jgbmichalski.BfmeInstaller.Launcher.desktop
       - type: file
         path: com.jgbmichalski.BfmeInstaller.Arena.desktop
+      - type: file
+        path: com.jgbmichalski.BfmeInstaller.Workshop.desktop
       - type: file
         path: com.jgbmichalski.BfmeInstaller.png
       - type: file
