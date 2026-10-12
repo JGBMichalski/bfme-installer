@@ -846,63 +846,43 @@ aotr_unpack_percent() {
 # same from inside and outside the Wine container). Prints nothing when it cannot be seen yet, for example between
 # two files or before it has started.
 aotr_install_percent() {
-  python3 - "$AOTR_UNPACK" <<'PY' 2>/dev/null || true
-import os, re, sys
-
-folder = sys.argv[1]
-slices = []
-for name in os.listdir(folder):
-    m = re.search(r"-(\d+)([a-z])\.bin$", name)
-    if m:
-        slices.append(((int(m.group(1)), m.group(2)), name))
-slices.sort()
-by_inode, total = {}, 0
-for _key, name in slices:
-    st = os.stat(os.path.join(folder, name))
-    by_inode[(st.st_dev, st.st_ino)] = total
-    total += st.st_size
-if total == 0:
-    sys.exit(0)
-best = -1
-for pid in os.listdir("/proc"):
-    if not pid.isdigit():
-        continue
-    fd_dir = f"/proc/{pid}/fd"
-    try:
-        fds = os.listdir(fd_dir)
-    except OSError:
-        continue
-    for fd in fds:
-        try:
-            st = os.stat(f"{fd_dir}/{fd}")
-            before = by_inode.get((st.st_dev, st.st_ino))
-            if before is None:
-                continue
-            with open(f"/proc/{pid}/fdinfo/{fd}") as f:
-                pos = next(int(line.split()[1]) for line in f if line.startswith("pos:"))
-        except (OSError, StopIteration, ValueError):
-            continue
-        best = max(best, before + pos)
-if best >= 0:
-    print(min(100, best * 100 // total))
-PY
+  local -A start=()
+  local total=0 best=-1 key size path fd pos line
+  # The slices are named <installer>-<number><letter>.bin and are read in that order (1a, 1b, ..., 2a, ...).
+  while IFS=' ' read -r key size; do
+    start[$key]=$total
+    total=$(( total + size ))
+  done < <(find "$AOTR_UNPACK" -maxdepth 1 -type f -name '*-[0-9]*[a-z].bin' -printf '%f\n' 2>/dev/null \
+    | sed -E 's/^(.*-)([0-9]+)([a-z])\.bin$/\2 \3 &/' | sort -k1,1n -k2,2 | cut -d' ' -f3- \
+    | while IFS= read -r name; do stat -c '%d:%i %s' -- "$AOTR_UNPACK/$name"; done)
+  [ "$total" -gt 0 ] || return 0
+  # Every open file of every process, as "<dev>:<inode> /proc/<pid>/fd/<fd>".
+  while IFS=' ' read -r key path; do
+    [ -n "${start[$key]+x}" ] || continue
+    fd="${path#/proc/}"
+    pos=""
+    while IFS= read -r line; do
+      case "$line" in pos:*) pos="${line#pos:}"; pos="${pos//[[:space:]]/}"; break ;; esac
+    done 2>/dev/null <"/proc/${fd%%/*}/fdinfo/${fd##*/}" || continue
+    [ -n "$pos" ] || continue
+    if [ $(( start[$key] + pos )) -gt "$best" ]; then best=$(( start[$key] + pos )); fi
+  done < <(stat -L -c '%d:%i %n' /proc/[0-9]*/fd/* 2>/dev/null)
+  [ "$best" -ge 0 ] || return 0
+  pos=$(( best * 100 / total ))
+  echo $(( pos > 100 ? 100 : pos ))
 }
 
 # The download is a ZIP64 archive of about 14 GB packed with Deflate64. The unzip and bsdtar in the Flatpak runtime cannot
-# open it ("start of central directory not found") and Python's zipfile cannot unpack Deflate64. So the contents are
-# listed with Python (zipfile reads the directory fine) and unpacked with 7-Zip (the Flatpak ships it).
+# open it ("start of central directory not found"), so it is listed and unpacked with 7-Zip (the Flatpak ships it).
 # Prints "<size>\t<name>" per entry. Fails when the file is not a complete zip (a browser download that is not
 # finished has no zip directory at its end).
 aotr_zip_entries() {
-  python3 - "$1" <<'PY'
-import sys, zipfile
-try:
-    with zipfile.ZipFile(sys.argv[1]) as z:
-        for i in z.infolist():
-            print(f"{i.file_size}\t{i.filename}")
-except (zipfile.BadZipFile, OSError, EOFError, NotImplementedError):
-    sys.exit(1)
-PY
+  local sevenzip="$1" zip="$2" out
+  out="$("$sevenzip" l -slt -ba -- "$zip" 2>/dev/null)" || return 1
+  printf '%s\n' "$out" | awk '
+    /^Path = /   { if (path != "") print size "\t" path; path = substr($0, 8); size = 0 }
+    /^Size = /   { size = substr($0, 8) + 0 }
+    END          { if (path != "") print size "\t" path }'
 }
 
 # Check the zip the player downloaded. Sets AOTR_EXE_NAME (the installer inside it) and AOTR_UNPACKED_BYTES.
@@ -910,14 +890,15 @@ PY
 AOTR_EXE_NAME=""
 AOTR_UNPACKED_BYTES=0
 aotr_check_zip() {
-  local zip="$1" listing names parts
+  local zip="$1" listing names parts sevenzip
   [ -f "$zip" ] || die "The file '$zip' was not found."
   case "$(basename "$zip")" in
     *.part|*.crdownload|*.download) die "This download is not finished yet. Wait until your browser has finished, then choose the file again." ;;
     AotR_Standalone_*_Installer.zip) ;;
     *) die "This is not the Age of the Ring installer. Choose the file named like AotR_Standalone_9.3.0_Installer.zip." ;;
   esac
-  listing="$(aotr_zip_entries "$zip")" \
+  sevenzip="$(aotr_sevenzip)" || die "$AOTR_NEED_7ZIP"
+  listing="$(aotr_zip_entries "$sevenzip" "$zip")" \
     || die "This file is incomplete or damaged. Download it again from ModDB."
   names="$(printf '%s\n' "$listing" | cut -f2-)"
   AOTR_EXE_NAME="$(printf '%s\n' "$names" | grep -E '^AotR_Standalone_[^/]*_Installer\.exe$' | head -n 1 || true)"
@@ -938,6 +919,8 @@ aotr_check_space() {
   fi
 }
 
+readonly AOTR_NEED_7ZIP="7-Zip is needed to read the download. Install it (Debian/Ubuntu: p7zip-full, Fedora: 7zip, Arch: 7zip) and try again."
+
 # The 7-Zip program: 7zz (the Flatpak ships it), or a system 7z / 7za.
 aotr_sevenzip() {
   local c
@@ -951,8 +934,7 @@ aotr_sevenzip() {
 aotr_unpack() {
   local zip="$1" pid rc=0 sevenzip
   if [ -f "$AOTR_UNPACK/.complete" ] && [ "$(cat "$AOTR_UNPACK/.complete")" = "$(basename "$zip")" ]; then return 0; fi
-  sevenzip="$(aotr_sevenzip)" \
-    || die "7-Zip is needed to unpack the download. Install it (Debian/Ubuntu: p7zip-full, Fedora: 7zip, Arch: 7zip) and try again."
+  sevenzip="$(aotr_sevenzip)" || die "$AOTR_NEED_7ZIP"
   rm -rf -- "$AOTR_UNPACK"
   mkdir -p "$AOTR_UNPACK"
   # 7-Zip also checks every file's CRC, so a damaged download fails here and not later in the installer.
