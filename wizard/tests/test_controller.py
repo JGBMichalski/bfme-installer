@@ -19,7 +19,16 @@ case "$cmd" in
       echo "@bfme STATUS arena installed"; echo "@bfme STATUS complete yes"
     else
       echo "@bfme STATUS prefix missing"; echo "@bfme STATUS complete no"
-    fi ;;
+    fi
+    if [ -f "$FAKE_DIR/aotr" ]; then echo "@bfme STATUS aotr installed"; else echo "@bfme STATUS aotr missing"; fi ;;
+  aotr-install)
+    echo "$*" > "$FAKE_DIR/aotr-args"
+    echo "@bfme STEP aotr-check start"
+    if [ -f "$FAKE_DIR/aotr-bad" ] && [ ! -f "$FAKE_DIR/aotr-bad-used" ]; then
+      touch "$FAKE_DIR/aotr-bad-used"; echo "@bfme ERROR aotr-check This file is incomplete."; exit 1; fi
+    echo "@bfme STEP aotr-check done"; echo "@bfme PROGRESS 40"
+    echo "@bfme STEP aotr-install start"; echo "@bfme STEP aotr-install done"
+    echo "@bfme DONE"; touch "$FAKE_DIR/aotr" ;;
   doctor)
     if [ -f "$FAKE_DIR/curl-fixed" ]; then echo "@bfme CHECK cmd-curl ok curl found"; exit 0; fi
     echo "@bfme CHECK cmd-curl fail curl not found"; echo "@bfme FIX cmd-curl sudo apt install curl"; exit 1 ;;
@@ -112,3 +121,32 @@ class Flow(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AgeOfTheRing(Flow):
+    def test_install_passes_the_file_then_shows_it_installed(self):
+        self.flag("installed")
+        self.run_until("done", self.c.start)
+        self.assertFalse(self.c.model.aotr_installed)
+        self.run_until("done", lambda: self.c.install_aotr("/tmp/AotR_Standalone_9.3.0_Installer.zip"))
+        with open(os.path.join(self.dir, "aotr-args")) as f:
+            self.assertEqual(f.read().split(), ["aotr-install", "/tmp/AotR_Standalone_9.3.0_Installer.zip"])
+        self.assertEqual(self.c.model.kind, "aotr")
+        self.assertTrue(self.c.model.aotr_just_installed)
+        self.assertTrue(self.c.model.aotr_installed)   # the status check after the install
+
+    def test_a_failed_check_can_be_retried_with_the_same_file_or_left(self):
+        self.flag("installed")
+        self.flag("aotr-bad")
+        self.run_until("failed", lambda: self.c.install_aotr("/tmp/a.zip"))
+        self.assertEqual(self.c.model.failed_step, "aotr-check")
+        self.assertIn("incomplete", self.c.model.error.message)
+        self.run_until("done", self.c.retry)   # runs aotr-install again, not the setup
+        self.assertTrue(self.c.model.aotr_installed)
+
+    def test_back_home_looks_at_the_setup_again(self):
+        self.flag("installed")
+        self.flag("aotr-bad")
+        self.run_until("failed", lambda: self.c.install_aotr("/tmp/a.zip"))
+        self.run_until("done", self.c.back_home)
+        self.assertFalse(self.c.model.aotr_installed)

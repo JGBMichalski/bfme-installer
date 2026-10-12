@@ -18,7 +18,9 @@ from .widgets import clear, first_icon, pill
 CARDS = [
     ("launcher", "Launcher", "Install, patch and start your games", ("applications-games-symbolic", "input-gaming-symbolic")),
     ("arena", "Arena", "Play online matches against other players", ("network-workgroup-symbolic", "system-users-symbolic")),
+    ("aotr", "Age of the Ring", "A large mod with its own Launcher", ("media-optical-symbolic", "starred-symbolic")),
 ]
+AOTR_NOT_INSTALLED = "An optional mod with its own Launcher"
 QUICK_EXIT_NOTE = "Closed after a few seconds. If it didn't open, see Troubleshoot."
 # Things the sandbox cannot see. Plain advice and a command to copy, never a pass or fail.
 CANT_CHECK = [
@@ -29,9 +31,11 @@ CANT_CHECK = [
 
 class HomePage:
     def __init__(self, controller: Controller, version: Callable[[], str], offer: str | None,
-                 on_troubleshoot: Callable[[], None], on_game_folders: Callable[[], None] = lambda: None) -> None:
+                 on_troubleshoot: Callable[[], None], on_game_folders: Callable[[], None] = lambda: None,
+                 on_aotr_install: Callable[[], None] = lambda: None) -> None:
         self.controller, self.version, self.offer, self.on_troubleshoot = controller, version, offer, on_troubleshoot
         self.on_game_folders = on_game_folders
+        self.on_aotr_install = on_aotr_install
         # The page fills the window: the content sits in the middle and the version at the bottom edge.
         self.box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         self.content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=18, vexpand=True, valign=Gtk.Align.CENTER,
@@ -64,6 +68,9 @@ class HomePage:
         image.set_pixel_size(48)
         inner.append(image)
         inner.append(Gtk.Label(label=title, css_classes=["title-2"]))
+        installed = name != "aotr" or self.controller.model.aotr_installed
+        if not installed:
+            description = AOTR_NOT_INSTALLED
         inner.append(Gtk.Label(label=description, wrap=True, justify=Gtk.Justification.CENTER, css_classes=["dim-label"], max_width_chars=20))
         if state == "running":
             running = Gtk.Box(spacing=8, halign=Gtk.Align.CENTER, margin_top=4, margin_bottom=4)
@@ -71,8 +78,10 @@ class HomePage:
             running.append(Gtk.Label(label="Running"))
             inner.append(running)
         else:
-            suggested = (self.offer or "launcher") == name
-            inner.append(pill("Open", lambda n=name: self.controller.open_app(n), suggested=suggested))
+            if installed:
+                inner.append(pill("Open", lambda n=name: self.controller.open_app(n)))
+            else:
+                inner.append(pill("Install", self.on_aotr_install))
         if state == "quick":
             inner.append(Gtk.Label(label=QUICK_EXIT_NOTE, wrap=True, justify=Gtk.Justification.CENTER,
                                    css_classes=["caption", "warning"], max_width_chars=26))
@@ -189,7 +198,7 @@ class TroubleshootPage:
         reason = self.controller.blocked_reason()
         reset = Adw.ActionRow(
             title="Reset game environment",
-            subtitle=GLib.markup_escape_text(reason or "Deletes the game environment and every game you installed."),
+            subtitle=GLib.markup_escape_text(reason or "Deletes the game environment and every game you installed, including Age of the Ring."),
             subtitle_lines=2, activatable=reason is None, sensitive=reason is None,
         )
         reset.add_css_class("error")

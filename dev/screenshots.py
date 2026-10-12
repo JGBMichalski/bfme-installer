@@ -14,7 +14,7 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SCENES = ("welcome", "running", "home", "folders", "troubleshoot")
+SCENES = ("welcome", "running", "home", "folders", "troubleshoot", "aotr-download", "aotr-running", "aotr-installed")
 
 STUB = r"""#!/bin/bash
 # Pretends to be bfme-linux-setup.sh. STUB_SCENE picks the story.
@@ -28,7 +28,12 @@ case "$1" in
         [ "$k" = prefix ] && v=ready || v=installed; echo "@bfme STATUS $k $v"
       done
       echo "@bfme STATUS complete yes"
+      if [ "$STUB_SCENE" = aotr-installed ]; then echo "@bfme STATUS aotr installed"; fi
     fi ;;
+  aotr-install)
+    echo "@bfme STEP aotr-check start"; echo "@bfme STEP aotr-check done"
+    echo "@bfme STEP aotr-unpack start"; echo "@bfme STEP aotr-unpack done"
+    echo "@bfme STEP aotr-install start"; echo "@bfme PROGRESS 38"; sleep 30 ;;
   doctor)
     echo "@bfme CHECK cpu ok x86_64 processor"
     echo "@bfme CHECK flatpak-32bit ok the 32-bit Flatpak extensions are installed"
@@ -61,7 +66,7 @@ def run_scene(scene: str, out: str) -> None:
     from bfme_wizard import ui
     from bfme_wizard.runner import ScriptRunner
 
-    if scene in ("folders", "troubleshoot"):                 # tall enough to show every group
+    if scene in ("folders", "troubleshoot", "aotr-download"):                 # tall enough to show every group
         init = ui.WizardWindow.__init__
         def tall(self, *args, **kwargs):
             init(self, *args, **kwargs)
@@ -81,6 +86,10 @@ def run_scene(scene: str, out: str) -> None:
                 window.show_game_folders()
             elif scene == "troubleshoot":
                 window.show_troubleshoot()
+            elif scene == "aotr-download":
+                window.show_aotr_install()
+            elif scene == "aotr-running":
+                window.controller.install_aotr("/tmp/AotR_Standalone_9.3.0_Installer.zip")
             return True
         capture(window, out)
         app.quit()

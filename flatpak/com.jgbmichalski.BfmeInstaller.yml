@@ -58,6 +58,17 @@ modules:
         sha256: eb590691841f7fad3fc3ad8fd5db4ccb87849fe7948e62b28ece7a4ee48cc851
         strip-components: 1
 
+  - name: 7zip
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 7zz /app/bin/7zz
+      - install -Dm644 License.txt /app/share/licenses/7zip/License.txt
+    sources:
+      - type: archive
+        url: https://www.7-zip.org/a/7z2604-linux-x64.tar.xz
+        sha256: fc0327ba27e89bd086cf426dff17d77de582953cdbbc10a6576540a06853ffcd
+        strip-components: 0
+
   - name: bfme-linux-setup
     buildsystem: simple
     build-commands:

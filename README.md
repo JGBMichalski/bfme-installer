@@ -11,7 +11,7 @@ Installs and runs the community All-in-One Launcher and Online Arena from [bfmel
 [![Build](https://img.shields.io/github/actions/workflow/status/JGBMichalski/bfme-installer/build-linux.yml?label=build)](https://github.com/JGBMichalski/bfme-installer/actions/workflows/build-linux.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-<img src="docs/images/home.png" alt="The BFME Installer home screen with Launcher and Arena cards" width="460">
+<img src="docs/images/home.png" alt="The BFME Installer home screen with Launcher, Arena and Age of the Ring cards" width="460">
 
 </div>
 
@@ -26,6 +26,8 @@ gets out of your way.
   when something needs your attention.
 - **Launcher and Arena side by side.** Both share one game environment, so maps and games installed in one are there
   in the other.
+- **Age of the Ring.** An optional install from the home screen. You download the file from ModDB and
+  the app does the rest.
 - **Online play with Windows players.** The prefix settings that stop "Out of Sync" errors are applied for you.
 - **Updates itself.** The app tells you when a new release exists and installs it through Flatpak.
 - **Easy to fix.** A Troubleshoot page re-runs the system checks, copies a report for bug reports, opens the logs, and
@@ -79,8 +81,16 @@ To update, press **Update** in the app when it offers one, or run the same comma
 3. Start online matches from the **Arena**. Always start it on its own, never from the Launcher's Multiplayer tab, where
    it draws outside the Launcher's window.
 
-The menu also gets **BFME All-in-One Launcher** and **BFME Online Arena** entries that start the program directly,
-with no window.
+### Install Age of the Ring (optional)
+
+[Age of the Ring](https://www.moddb.com/mods/the-horse-lords-a-total-modification-for-bfme) is not part of the All-in-One Launcher. It has its own Launcher and its own copies of BFME 2 and the Rise of the Witch-king, so it does not touch the games you already have.
+
+1. Finish the setup first. On the home screen, press **Install** on the **Age of the Ring** card.
+2. Press **Open ModDB**, click **Download Now**, and wait until your browser has finished the file (about 14 GB). ModDB only lets a web browser download it, so the app cannot do this step for you.
+3. Back in the app, press **Choose file...** and pick the zip you downloaded. Do not unpack it. The app checks it, unpacks it, installs the mod and shows its progress. You need about 40 GB of free space, and the install can take an hour.
+4. When it is done you can delete the zip. The card now says **Open**. The Age of the Ring Launcher updates the mod itself.
+
+Resetting the game environment also deletes Age of the Ring.
 
 ### Add maps and copy files
 

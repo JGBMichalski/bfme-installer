@@ -18,7 +18,7 @@ Each status line is one line, starts with `@bfme `, and goes to stdout. Ignore e
 | `@bfme ERROR <step\|-> <message>` | The command failed. The step is `-` if no step was running. Always the last status line before a non-zero exit, except after `CANCELLED`. |
 | `@bfme CANCELLED` | The install stopped cleanly because it was asked to. Exit status 130. |
 | `@bfme DONE` | `install` finished. |
-| `@bfme STATUS <key> <value>` | Printed by `status`. Keys: `runner`, `prefix` (`ready` or `missing`), `launcher` and `arena` (`installed` or `missing`), `bfme1`, `bfme2` and `rotwk` (`installed` when the game's program is there, else `missing`), `complete` (`yes` or `no`). |
+| `@bfme STATUS <key> <value>` | Printed by `status`. Keys: `runner`, `prefix` (`ready` or `missing`), `launcher`, `arena` and `aotr` (`installed` or `missing`; `aotr` is Age of the Ring), `bfme1`, `bfme2` and `rotwk` (`installed` when the game's program is there, else `missing`), `complete` (`yes` or `no`). |
 
 ## Steps
 
@@ -32,6 +32,15 @@ Each status line is one line, starts with `@bfme `, and goes to stdout. Ignore e
 | `launcher` | Downloads and installs the All-in-One Launcher. `skip` if already installed. |
 | `arena` | Downloads or updates the Online Arena. |
 | `shortcuts` | Writes the menu shortcuts. `skip` inside the Flatpak, which provides its own. |
+
+`aotr-install <zip>` installs Age of the Ring (optional, after the setup is complete) and runs these steps:
+
+| Id | What it does |
+| --- | --- |
+| `aotr-check` | Checks the zip the player downloaded (name, complete, every part present) and the free space. |
+| `aotr-unpack` | Unpacks the zip into the downloads folder (`PROGRESS` lines, from how much has been written). Skipped work is not repeated on a second run. |
+| `aotr-install` | Runs the Age of the Ring installer without its own window. `PROGRESS` lines come from how far the installer has read into its data files (capped at 99 until it ends). No `PROGRESS` lines when the installer cannot be seen, and the reader shows "working". |
+| `aotr-settings` | Deletes the unpacked files. |
 
 ## Check ids
 

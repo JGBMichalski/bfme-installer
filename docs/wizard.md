@@ -15,11 +15,17 @@ One thing on screen at a time:
 
 ## Home screen
 
-Two cards, **Launcher** and **Arena**, each with an Open button, a line above them that says which games are installed (or "No games installed yet. Open the Launcher to install them."), and a **Troubleshoot** button with the version beside it.
+Three cards, **Launcher**, **Arena** and **Age of the Ring**, a line above them that says which games are installed (or "No games installed yet. Open the Launcher to install them."), a **Game Folders** button that opens the installed games' folders, and a **Troubleshoot** button with the version beside it.
 
 - **Opening an app:** the window stays open. The card shows "Running" until the program ends, and both apps can run at once. A program that ends within 15 seconds gets a soft note, "Closed after a few seconds. If it didn't open, see Troubleshoot.", because the script returns 0 whether or not the program worked.
 - **Quiet check:** when the window opens with the setup complete, the system checks run in the background. If one **failed** (a warning does not count), a banner says "Your system needs a change" and links to Troubleshoot.
-- **Menu entries:** the Launcher and Arena entries run `bfme-installer --open launcher|arena`. With the setup complete, the app starts at once with no window. With the setup incomplete, the wizard opens, and the offered app is highlighted when the setup finishes.
+- **Menu entries:** the Launcher and Arena entries run `bfme-installer --open launcher|arena`. With the setup complete, the app starts at once with no window. With the setup incomplete, the wizard opens and finishes the setup first.
+
+## Age of the Ring
+
+**Install** on its card pushes an instructions page: the size (about 14 GB to download, about 40 GB of free space), **Open ModDB** (the player's browser; ModDB's bot check stops a script from downloading), and **Choose file...**, which opens the system file chooser in Downloads. The chooser works in the Flatpak without access to the Downloads folder.
+
+The chosen file goes to `aotr-install <zip>`. The window shows the same progress page as the setup, with four steps (check, unpack, install, finish up), Cancel, and on a failure Retry (same file), Back to home and Copy log. Stopping the install returns to the home screen, not to the welcome page. When it is installed the card's button says **Open**, which runs `aotr`.
 
 ## Troubleshoot
 
@@ -56,6 +62,7 @@ Closing the window during an install asks first. Stopping keeps what was done, a
 | `bfme_wizard/apps.py` | Starts the Launcher and the Arena and watches whether they are still running. |
 | `bfme_wizard/diagnostics.py` | The "Copy diagnostics" report and the logs folder. |
 | `bfme_wizard/home.py` | The home screen and the Troubleshoot page. |
+| `bfme_wizard/aotr.py` | The Age of the Ring install page (instructions, Open ModDB, Choose file). |
 | `bfme_wizard/ui.py` | The window. Only renders the model and calls the controller. |
 | `bfme_wizard/__main__.py` | Entry point, script lookup, no-display fallback. |
 

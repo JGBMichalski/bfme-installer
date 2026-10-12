@@ -145,3 +145,44 @@ class Log(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AgeOfTheRingRun(unittest.TestCase):
+    def test_its_steps_are_known_while_it_runs(self):
+        m = SetupModel()
+        m.begin_install("aotr")
+        feed(m, "@bfme STEP aotr-check start", "@bfme STEP aotr-check done", "@bfme STEP aotr-unpack start")
+        self.assertEqual((m.steps["aotr-check"], m.current, m.step_number), ("done", "aotr-unpack", 2))
+        self.assertEqual(len(m.step_defs), 4)
+
+    def test_finishing_does_not_mark_the_main_setup_as_just_finished(self):
+        m = SetupModel()
+        m.begin_install("aotr")
+        feed(m, "@bfme DONE")
+        m.finish_install(0)
+        self.assertEqual((m.state, m.aotr_just_installed, m.just_finished), ("done", True, False))
+
+    def test_stopping_goes_back_to_the_home_screen(self):
+        m = SetupModel()
+        m.begin_install("aotr")
+        feed(m, "@bfme CANCELLED")
+        m.finish_install(130)
+        self.assertEqual(m.state, "done")   # the main setup would be "cancelled" (the welcome page)
+
+    def test_a_failure_names_the_step(self):
+        m = SetupModel()
+        m.begin_install("aotr")
+        feed(m, "@bfme STEP aotr-check start", "@bfme ERROR aotr-check This file is incomplete.")
+        m.finish_install(1)
+        self.assertEqual((m.state, m.failed_step), ("failed", "aotr-check"))
+
+    def test_installed_comes_from_the_status_line(self):
+        m = SetupModel()
+        self.assertFalse(m.aotr_installed)
+        feed(m, "@bfme STATUS aotr installed")
+        self.assertTrue(m.aotr_installed)
+
+    def test_the_main_setup_is_unchanged(self):
+        m = SetupModel()
+        m.begin_install()
+        self.assertEqual((m.kind, len(m.step_defs)), ("setup", 6))

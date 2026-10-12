@@ -25,6 +25,13 @@ STEPS = [
     ("shortcuts", "Add menu shortcuts", "Adding the Launcher and the Arena to your application menu."),
 ]
 STEP_IDS = [s[0] for s in STEPS]
+# The steps of `aotr-install` (Age of the Ring), shown the same way while it runs.
+AOTR_STEPS = [
+    ("aotr-check", "Check the download", "Making sure the file is complete and there is room for it."),
+    ("aotr-unpack", "Unpack the download", "Extracting the installer files. This takes a few minutes."),
+    ("aotr-install", "Install Age of the Ring", "Copying the game and the mod. This can take an hour."),
+    ("aotr-settings", "Finish up", "Removing the temporary files."),
+]
 # The games the script reports (STATUS bfme1 / bfme2 / rotwk), in the order they are shown.
 GAMES = [("bfme1", "BFME"), ("bfme2", "BFME 2"), ("rotwk", "Rise of the Witch-king")]
 # Checks the home screen does not list: the firewall cannot be seen from the sandbox, and the Troubleshoot page
@@ -34,11 +41,11 @@ MAX_LOG_LINES = 2000
 
 
 def title_of(step_id: str) -> str:
-    return next((t for i, t, _ in STEPS if i == step_id), step_id)
+    return next((t for i, t, _ in STEPS + AOTR_STEPS if i == step_id), step_id)
 
 
 def description_of(step_id: str) -> str:
-    return next((d for i, _, d in STEPS if i == step_id), "")
+    return next((d for i, _, d in STEPS + AOTR_STEPS if i == step_id), "")
 
 
 @dataclass(frozen=True)
@@ -54,11 +61,21 @@ class SetupModel:
         self.log: list[str] = []
         self.installed: dict[str, str] = {}
         self.just_finished = False   # this session ran the setup to the end
+        self.kind = "setup"          # what the current or last run is: "setup" or "aotr" (Age of the Ring)
+        self.aotr_just_installed = False
         self._reset_run()
 
     # ------------------------------------------------------------ run bookkeeping
+    @property
+    def step_defs(self) -> list[tuple[str, str, str]]:
+        return AOTR_STEPS if self.kind == "aotr" else STEPS
+
+    @property
+    def step_ids(self) -> list[str]:
+        return [s[0] for s in self.step_defs]
+
     def _reset_run(self) -> None:
-        self.steps = {sid: "pending" for sid in STEP_IDS}
+        self.steps = {sid: "pending" for sid in self.step_ids}
         self.current: str | None = None
         self.progress: int | None = None
         self.checks: dict[str, p.Check] = {}
@@ -80,9 +97,13 @@ class SetupModel:
         self.checks.clear()
         self.fixes.clear()
 
-    def begin_install(self) -> None:
+    def begin_install(self, kind: str = "setup") -> None:
+        self.kind = kind
         self._reset_run()
-        self.just_finished = False
+        if kind == "setup":
+            self.just_finished = False
+        else:
+            self.aotr_just_installed = False
         self.state = "running"
 
     def request_cancel(self) -> None:
@@ -146,12 +167,16 @@ class SetupModel:
         if self.state != "running":
             return
         if self._saw_cancelled:
-            self.state = "cancelled"
+            # Age of the Ring: stopped install goes back to the home screen
+            self.state = "done" if self.kind == "aotr" else "cancelled"
             self.current = None
         elif self._saw_done and exit_code == 0:
             self.state = "done"
             self.current = None
-            self.just_finished = True
+            if self.kind == "aotr":
+                self.aotr_just_installed = True
+            else:
+                self.just_finished = True
         else:
             if self.error is None:
                 self.error = p.Error(self.current, f"The setup stopped unexpectedly (exit {exit_code}).")
@@ -172,7 +197,8 @@ class SetupModel:
     @property
     def step_number(self) -> int:
         """1-based position of the running step, for "Step 3 of 6"."""
-        return STEP_IDS.index(self.current) + 1 if self.current in STEP_IDS else max(1, self.done_count + 1)
+        ids = self.step_ids
+        return ids.index(self.current) + 1 if self.current in ids else max(1, self.done_count + 1)
 
     @property
     def last_check_message(self) -> str:
@@ -182,6 +208,11 @@ class SetupModel:
     def problems(self) -> list[Problem]:
         """Failed system checks, each with its fix command when there is one."""
         return [Problem(c.message, self.fixes.get(cid)) for cid, c in self.checks.items() if c.level == "fail"]
+
+    @property
+    def aotr_installed(self) -> bool:
+        """Age of the Ring is installed. Only known after a status check."""
+        return self.installed.get("aotr") == "installed"
 
     @property
     def games(self) -> list[str]:

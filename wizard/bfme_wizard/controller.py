@@ -14,6 +14,7 @@ class Controller:
         self.model = SetupModel()
         self._on_change = on_change
         self.apps = AppLauncher(runner.script, on_change)
+        self._last_aotr: str | None = None   # the zip of the last Age of the Ring install, for Retry
 
     # ---------------------------------------------------------------- actions
     def start(self) -> None:
@@ -33,7 +34,25 @@ class Controller:
         self._on_change()
         self.runner.run(["install"], self._line, self._install_done)
 
-    retry = install
+    def install_aotr(self, zip_path: str) -> None:
+        """Install Age of the Ring from the zip the player downloaded."""
+        if self.runner.busy:
+            return
+        self._last_aotr = zip_path
+        self.model.begin_install("aotr")
+        self._on_change()
+        self.runner.run(["aotr-install", zip_path], self._line, self._install_done)
+
+    def retry(self) -> None:
+        """Run again whatever failed: the setup, or the Age of the Ring install."""
+        if self.model.kind == "aotr" and self._last_aotr is not None:
+            self.install_aotr(self._last_aotr)
+        else:
+            self.install()
+
+    def back_home(self) -> None:
+        """Leave a failed Age of the Ring install and look at the setup again (the home screen)."""
+        self.start()
 
     def recheck(self) -> None:
         """Run the system checks again after the user fixed something. Continues the install if they now pass."""
@@ -74,7 +93,7 @@ class Controller:
         if self.model.state == "running":
             return "The setup is running."
         if self.apps.any_running:
-            return "The Launcher or the Arena is still running."
+            return "The Launcher, the Arena or Age of the Ring is still running."
         if self.runner.busy:
             return "Something else is still running. Try again in a moment."
         return None

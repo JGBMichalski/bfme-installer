@@ -125,10 +125,10 @@ class Apps(unittest.TestCase):
         os.environ["APP_SECONDS"] = "1"
         apps = AppLauncher(make_script(APP), lambda: None, quick_seconds=0)
         apps.start("launcher"); apps.start("launcher"); apps.start("arena")
-        self.assertEqual(apps.state, {"launcher": "running", "arena": "running"})
+        self.assertEqual(apps.state, {"launcher": "running", "arena": "running", "aotr": "idle"})
         self.assertTrue(apps.any_running)
         wait_for(5000, lambda: not apps.any_running)
-        self.assertEqual(apps.state, {"launcher": "idle", "arena": "idle"})
+        self.assertEqual(apps.state, {"launcher": "idle", "arena": "idle", "aotr": "idle"})
 
     def test_a_program_that_cannot_start_counts_as_closed_quickly(self):
         apps = AppLauncher("/nonexistent/script", lambda: None)
@@ -138,7 +138,7 @@ class Apps(unittest.TestCase):
     def test_unknown_names_are_ignored(self):
         apps = AppLauncher(make_script(APP), lambda: None)
         apps.start("bad-exit")
-        self.assertEqual(apps.state, {"launcher": "idle", "arena": "idle"})
+        self.assertEqual(apps.state, {"launcher": "idle", "arena": "idle", "aotr": "idle"})
 
 
 class Diagnostics(unittest.TestCase):
@@ -302,7 +302,7 @@ class Flow(unittest.TestCase):
 
 
 class OfferedApp(unittest.TestCase):
-    """The app a menu entry wanted is the highlighted one on the home screen."""
+    """Every card's button looks the same, whichever app a menu entry wanted."""
 
     def highlighted(self, offer):
         try:
@@ -321,17 +321,16 @@ class OfferedApp(unittest.TestCase):
         found = {}
         def walk(w):
             while w:
-                if isinstance(w, Gtk.Button) and w.get_label() == "Open":
+                if isinstance(w, Gtk.Button) and w.get_label() in ("Open", "Install"):
                     found[len(found)] = w.has_css_class("suggested-action")
                 walk(w.get_first_child())
                 w = w.get_next_sibling()
         walk(page.content)
-        return [found[0], found[1]]   # Launcher card first, then Arena
+        return list(found.values())   # Launcher, Arena, Age of the Ring
 
-    def test_launcher_by_default_and_the_offered_app_otherwise(self):
-        self.assertEqual(self.highlighted(None), [True, False])
-        self.assertEqual(self.highlighted("launcher"), [True, False])
-        self.assertEqual(self.highlighted("arena"), [False, True])
+    def test_every_card_is_highlighted_the_same(self):
+        for offer in (None, "launcher", "arena"):
+            self.assertEqual(self.highlighted(offer), [True, True, True])
 
 
 if __name__ == "__main__":

@@ -4,6 +4,17 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0]
+
+### Added
+
+- Age of the Ring, an optional install.
+
+### Changed
+
+- The three home screen cards use the same button style.
+- Reset game environment now says it also deletes Age of the Ring, and cannot start while Age of the Ring is running.
+
 ## [1.0.3]
 
 ### Changed

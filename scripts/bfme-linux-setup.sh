@@ -14,6 +14,8 @@
 #   launcher            Start the All-in-One Launcher (installs it first if needed).
 #   arena               Start the Online Arena (downloads or updates it first).
 #   game bfme1|bfme2|rotwk   Start a game without the Arena.
+#   aotr-install <zip>  Install Age of the Ring (optional) from the zip you downloaded from ModDB.
+#   aotr                Start the Age of the Ring Launcher.
 #   shortcuts           (Re)create the two menu shortcuts.
 #   status              Show what is installed and where.
 #   reset-prefix --yes  Delete the prefix. This deletes installed games.
@@ -60,6 +62,8 @@ readonly WINETRICKS_VERSION="20260125"
 readonly WINETRICKS_URL="https://raw.githubusercontent.com/Winetricks/winetricks/${WINETRICKS_VERSION}/src/winetricks"
 readonly WINETRICKS_SHA256="431f82fc74000e6c864409f1d8fb495d696c03928808e3e8acffc45179312a7b"
 readonly MIN_FREE_GB=30                   # three games plus the Arena
+readonly AOTR_INSTALL_RATIO_PERCENT=160 # Estimated installed size ratio for Age of the Ring
+readonly AOTR_PAGE_URL="https://www.moddb.com/mods/the-horse-lords-a-total-modification-for-bfme/downloads/age-of-the-ring-version-90"
 
 BASE="${BFME_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/bfme-installer}"
 DOWNLOADS="$BASE/downloads"
@@ -96,6 +100,9 @@ LAUNCHER_DIR="$ROAMING/BFME All In One Launcher"
 LAUNCHER_EXE="$LAUNCHER_DIR/AllInOneLauncher.exe"
 ARENA_DIR="$ROAMING/BFME Competetive Arena"
 ARENA_EXE="$ARENA_DIR/BfmeFoundationProject_OnlineArena.exe"
+AOTR_DIR="$PREFIX/drive_c/AgeoftheRing"
+AOTR_EXE="$AOTR_DIR/AotR_Launcher.exe"
+AOTR_UNPACK="$DOWNLOADS/aotr"
 APPS_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
 
 # ---------------------------------------------------------------- output ----
@@ -785,6 +792,230 @@ cmd_arena() {
   start_app "arena" "$ARENA_DIR" "$ARENA_EXE"
 }
 
+# ------------------------------------------------------- age of the ring ----
+# Optional. ModDB only lets a browser download the installer, so the player downloads the zip and gives us
+# its path. The steps are aotr-check, aotr-unpack, aotr-install and aotr-settings.
+
+# Installed when the Launcher is there and the installer was not interrupted (same idea as the launcher).
+aotr_installed() {
+  [ -f "$AOTR_EXE" ] && [ ! -e "$PREFIX/.bfme-aotr-installing" ]
+}
+
+# Apparent size in bytes of a folder (0 while it does not exist).
+dir_bytes() {
+  # du exits non-zero when a file vanishes while it counts (the installer deletes temporary files), but it still
+  # prints a size. Take that first number and ignore the exit status, so the answer is always exactly one number.
+  local n
+  n="$(du -sb "$1" 2>/dev/null | awk 'NR == 1 {print $1}' || true)"
+  case "$n" in ""|*[!0-9]*) n=0 ;; esac
+  printf '%s' "$n"
+}
+
+# Print PROGRESS while process $1 runs. $2 is a function that prints the percent done, or nothing when it cannot tell
+# yet. Capped at 99: only the process ending says it is finished. A cancel request stops the process; $3 is run to
+# clean up after it.
+watch_progress() {
+  # $1 pid; $2 function printing a percent; $3 command to stop what the pid started (may be empty)
+  local pid="$1" measure="$2" stop="${3:-}" pct last=-1
+  while kill -0 "$pid" 2>/dev/null; do
+    if [ "$CANCEL_REQUESTED" = "1" ]; then
+      kill "$pid" 2>/dev/null || true
+      [ -n "$stop" ] && $stop
+      wait "$pid" 2>/dev/null || true
+      check_cancel
+    fi
+    pct="$($measure)" || pct=""
+    case "$pct" in
+      ""|*[!0-9]*) ;;
+      *)
+        [ "$pct" -gt 99 ] && pct=99
+        if [ "$pct" != "$last" ]; then machine PROGRESS "$pct"; last="$pct"; fi ;;
+    esac
+    sleep 2 9>&-
+  done
+}
+
+# Percent of the unpacked files written so far (the zip says how big they will be).
+aotr_unpack_percent() {
+  [ "$AOTR_UNPACKED_BYTES" -gt 0 ] || return 0
+  echo $(( $(dir_bytes "$AOTR_UNPACK") * 100 / AOTR_UNPACKED_BYTES ))
+}
+
+# Percent of the installer's data files it has read. The installer reads its .bin files in order from start to end,
+# so how far into them it is says how far it is. It is found by the files it has open (matched by inode, which is the
+# same from inside and outside the Wine container). Prints nothing when it cannot be seen yet, for example between
+# two files or before it has started.
+aotr_install_percent() {
+  python3 - "$AOTR_UNPACK" <<'PY' 2>/dev/null || true
+import os, re, sys
+
+folder = sys.argv[1]
+slices = []
+for name in os.listdir(folder):
+    m = re.search(r"-(\d+)([a-z])\.bin$", name)
+    if m:
+        slices.append(((int(m.group(1)), m.group(2)), name))
+slices.sort()
+by_inode, total = {}, 0
+for _key, name in slices:
+    st = os.stat(os.path.join(folder, name))
+    by_inode[(st.st_dev, st.st_ino)] = total
+    total += st.st_size
+if total == 0:
+    sys.exit(0)
+best = -1
+for pid in os.listdir("/proc"):
+    if not pid.isdigit():
+        continue
+    fd_dir = f"/proc/{pid}/fd"
+    try:
+        fds = os.listdir(fd_dir)
+    except OSError:
+        continue
+    for fd in fds:
+        try:
+            st = os.stat(f"{fd_dir}/{fd}")
+            before = by_inode.get((st.st_dev, st.st_ino))
+            if before is None:
+                continue
+            with open(f"/proc/{pid}/fdinfo/{fd}") as f:
+                pos = next(int(line.split()[1]) for line in f if line.startswith("pos:"))
+        except (OSError, StopIteration, ValueError):
+            continue
+        best = max(best, before + pos)
+if best >= 0:
+    print(min(100, best * 100 // total))
+PY
+}
+
+# The download is a ZIP64 archive of about 14 GB packed with Deflate64. The unzip and bsdtar in the Flatpak runtime cannot
+# open it ("start of central directory not found") and Python's zipfile cannot unpack Deflate64. So the contents are
+# listed with Python (zipfile reads the directory fine) and unpacked with 7-Zip (the Flatpak ships it).
+# Prints "<size>\t<name>" per entry. Fails when the file is not a complete zip (a browser download that is not
+# finished has no zip directory at its end).
+aotr_zip_entries() {
+  python3 - "$1" <<'PY'
+import sys, zipfile
+try:
+    with zipfile.ZipFile(sys.argv[1]) as z:
+        for i in z.infolist():
+            print(f"{i.file_size}\t{i.filename}")
+except (zipfile.BadZipFile, OSError, EOFError, NotImplementedError):
+    sys.exit(1)
+PY
+}
+
+# Check the zip the player downloaded. Sets AOTR_EXE_NAME (the installer inside it) and AOTR_UNPACKED_BYTES.
+# (Not called as $(...): a die inside that would lose its status line.)
+AOTR_EXE_NAME=""
+AOTR_UNPACKED_BYTES=0
+aotr_check_zip() {
+  local zip="$1" listing names parts
+  [ -f "$zip" ] || die "The file '$zip' was not found."
+  case "$(basename "$zip")" in
+    *.part|*.crdownload|*.download) die "This download is not finished yet. Wait until your browser has finished, then choose the file again." ;;
+    AotR_Standalone_*_Installer.zip) ;;
+    *) die "This is not the Age of the Ring installer. Choose the file named like AotR_Standalone_9.3.0_Installer.zip." ;;
+  esac
+  listing="$(aotr_zip_entries "$zip")" \
+    || die "This file is incomplete or damaged. Download it again from ModDB."
+  names="$(printf '%s\n' "$listing" | cut -f2-)"
+  AOTR_EXE_NAME="$(printf '%s\n' "$names" | grep -E '^AotR_Standalone_[^/]*_Installer\.exe$' | head -n 1 || true)"
+  [ -n "$AOTR_EXE_NAME" ] || die "The installer program is missing from this file. Download it again from ModDB."
+  parts="$(printf '%s\n' "$names" | grep -c -E "^${AOTR_EXE_NAME%.exe}-[0-9]+[a-z]\.bin$" || true)"
+  [ "$parts" -gt 0 ] || die "The installer's data files are missing from this file. Download it again from ModDB."
+  AOTR_UNPACKED_BYTES="$(printf '%s\n' "$listing" | awk -F'\t' '{s += $1} END {printf "%d", s}')"
+}
+
+# Check there is room for the unpacked files and the install (aotr_check_zip has to run first).
+aotr_check_space() {
+  local need free
+  need=$(( AOTR_UNPACKED_BYTES + AOTR_UNPACKED_BYTES * AOTR_INSTALL_RATIO_PERCENT / 100 - $(dir_bytes "$AOTR_UNPACK") - $(dir_bytes "$AOTR_DIR") ))
+  mkdir -p "$BASE"
+  free="$(df -PB1 "$BASE" | awk 'NR == 2 {print $4}')"
+  if [ -n "$free" ] && [ "$need" -gt "$free" ]; then
+    die "Not enough free space: Age of the Ring needs $(( need / 1000000000 + 1 )) GB more, but only $(( free / 1000000000 )) GB is free."
+  fi
+}
+
+# The 7-Zip program: 7zz (the Flatpak ships it), or a system 7z / 7za.
+aotr_sevenzip() {
+  local c
+  for c in 7zz 7z 7za; do
+    if command -v "$c" >/dev/null 2>&1; then command -v "$c"; return 0; fi
+  done
+  return 1
+}
+
+# Unpack the zip into downloads/aotr. A finished unpack leaves .complete, so a resumed install skips it.
+aotr_unpack() {
+  local zip="$1" pid rc=0 sevenzip
+  if [ -f "$AOTR_UNPACK/.complete" ] && [ "$(cat "$AOTR_UNPACK/.complete")" = "$(basename "$zip")" ]; then return 0; fi
+  sevenzip="$(aotr_sevenzip)" \
+    || die "7-Zip is needed to unpack the download. Install it (Debian/Ubuntu: p7zip-full, Fedora: 7zip, Arch: 7zip) and try again."
+  rm -rf -- "$AOTR_UNPACK"
+  mkdir -p "$AOTR_UNPACK"
+  # 7-Zip also checks every file's CRC, so a damaged download fails here and not later in the installer.
+  "$sevenzip" x -y -bd -bso0 -bsp0 -o"$AOTR_UNPACK" "$zip" >"$LOGS/aotr-unpack.log" 2>&1 9>&- &
+  pid=$!
+  watch_progress "$pid" aotr_unpack_percent
+  wait "$pid" || rc=$?
+  [ "$rc" -eq 0 ] || die "The file could not be unpacked. It may be damaged: download it again from ModDB. See $LOGS/aotr-unpack.log"
+  basename "$zip" >"$AOTR_UNPACK/.complete"
+  machine PROGRESS 100
+}
+
+# Run the Age of the Ring installer without its own window; the wizard shows the progress instead.
+aotr_run_installer() {
+  local exe="$1" pid rc=0
+  : >"$PREFIX/.bfme-aotr-installing"
+  (cd "$AOTR_UNPACK" && run_in_runner inprefix "./$exe" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART '/LOG=C:\aotr-install.log') \
+    >"$LOGS/aotr-install.log" 2>&1 9>&- &
+  pid=$!
+  watch_progress "$pid" aotr_install_percent stop_wine_session
+  wait "$pid" || rc=$?
+  # Keep the installer's own log with ours.
+  if [ -f "$PREFIX/drive_c/aotr-install.log" ]; then
+    mv -f "$PREFIX/drive_c/aotr-install.log" "$LOGS/aotr-installer.log"
+  fi
+  [ "$rc" -eq 0 ] && [ -f "$AOTR_EXE" ] \
+    || die "Age of the Ring was not installed (exit $rc). See $LOGS/aotr-installer.log"
+  rm -f "$PREFIX/.bfme-aotr-installing"
+  machine PROGRESS 100
+}
+
+cmd_aotr_install() {
+  local zip="${1:-}"
+  [ -n "$zip" ] || die "Use: aotr-install <path to AotR_Standalone_..._Installer.zip>. Download it from $AOTR_PAGE_URL"
+  prefix_ready && launcher_installed && [ -f "$ARENA_EXE" ] || die "Finish the setup first. Run: install"
+  acquire_setup_lock
+  mkdir -p "$LOGS"
+  step_start aotr-check
+  aotr_check_zip "$zip"
+  aotr_check_space
+  ensure_runner
+  prepare_prefix
+  step_done aotr-check
+  step_start aotr-unpack
+  aotr_unpack "$zip"
+  step_done aotr-unpack
+  step_start aotr-install
+  aotr_run_installer "$AOTR_EXE_NAME"
+  step_done aotr-install
+  step_start aotr-settings
+  rm -rf -- "$AOTR_UNPACK"
+  step_done aotr-settings
+  machine DONE
+  say ""
+  say "Age of the Ring is installed. You can delete $(basename "$zip") now."
+}
+
+cmd_aotr() {
+  aotr_installed || die "Age of the Ring is not installed. Run: aotr-install <zip>"
+  ensure_prefix
+  start_app "aotr" "$AOTR_DIR" "$AOTR_EXE"
+}
+
 # ------------------------------------------------------------------ games ----
 cmd_game() {
   local dir exe
@@ -904,6 +1135,7 @@ cmd_status() {
   say "Prefix:     $PREFIX $(prefix_ready && echo '(ready)' || echo '(not created)')"
   say "Launcher:   $(launcher_installed && echo installed || echo 'not installed')"
   say "Arena:      $([ -f "$ARENA_EXE" ] && echo installed || echo 'not installed')"
+  say "Age of the Ring: $(aotr_installed && echo installed || echo 'not installed')"
   local g
   for g in BFME1 BFME2 RotWK; do
     say "$(printf '%-11s' "$g:") $([ -d "$PREFIX/drive_c/$g" ] && echo 'folder present' || echo 'not installed')"
@@ -918,6 +1150,7 @@ cmd_status() {
   machine STATUS prefix "$p"
   machine STATUS launcher "$l"
   machine STATUS arena "$a"
+  if aotr_installed; then machine STATUS aotr installed; else machine STATUS aotr missing; fi
   # A game counts as installed when its program is there, not just its folder.
   local game
   for game in bfme1:BFME1/lotrbfme.exe bfme2:BFME2/lotrbfme2.exe rotwk:RotWK/lotrbfme2ep1.exe; do
@@ -955,6 +1188,8 @@ main() {
     launcher)     cmd_launcher ;;
     arena)        cmd_arena ;;
     game)         cmd_game "$@" ;;
+    aotr-install) cmd_aotr_install "$@" ;;
+    aotr)         cmd_aotr ;;
     shortcuts)    cmd_shortcuts ;;
     status)       cmd_status ;;
     reset-prefix) cmd_reset_prefix "$@" ;;

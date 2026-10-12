@@ -12,7 +12,8 @@ from gi.repository import Adw, Gdk, Gio, GLib, GObject, Gtk  # noqa: E402
 from .controller import Controller
 from .diagnostics import any_log, build_report, data_dir
 from .home import GameFoldersPage, HomePage, TroubleshootPage
-from .model import STEPS, description_of, title_of
+from .aotr import MODDB_URL, AotrInstallPage
+from .model import description_of, title_of
 from .updater import make_updater
 from .widgets import clear, first_icon, pill
 
@@ -55,7 +56,8 @@ class WizardWindow(Adw.ApplicationWindow):
         self._build_welcome()
         self._build_run()
         self._build_problem()
-        self.home = HomePage(self.controller, lambda: self.updater.local or "dev", offer, self.show_troubleshoot, self.show_game_folders)
+        self.home = HomePage(self.controller, lambda: self.updater.local or "dev", offer, self.show_troubleshoot, self.show_game_folders,
+                         self.show_aotr_install)
         self.stack.add_named(self.home.box, "home")
 
         self.connect("close-request", self._on_close_request)
@@ -133,6 +135,51 @@ class WizardWindow(Adw.ApplicationWindow):
             return
         self.nav.push(Adw.NavigationPage.new(GameFoldersPage(self.open_folder).view, "Game folders"))
 
+    # --------------------------------------------------------------- age of the ring
+    def show_aotr_install(self) -> None:
+        if self.nav.get_visible_page().get_title() == "Install Age of the Ring":
+            return
+        page = AotrInstallPage(self.open_moddb, self.choose_aotr_zip)
+        self.nav.push(Adw.NavigationPage.new(page.view, "Install Age of the Ring"))
+
+    def open_moddb(self) -> None:
+        def opened(launcher: Gtk.UriLauncher, result: Gio.AsyncResult) -> None:
+            try:
+                launcher.launch_finish(result)
+            except GLib.Error:
+                toast = Adw.Toast.new("Could not open your browser.")
+                toast.set_button_label("Copy link")
+                toast.connect("button-clicked", lambda *_: self.copy(MODDB_URL, "Link copied"))
+                self.toasts.add_toast(toast)
+
+        Gtk.UriLauncher.new(MODDB_URL).launch(self, None, opened)
+
+    def choose_aotr_zip(self) -> None:
+        zips = Gtk.FileFilter()
+        zips.set_name("Zip files")
+        zips.add_pattern("*.zip")
+        filters = Gio.ListStore.new(Gtk.FileFilter)
+        filters.append(zips)
+        dialog = Gtk.FileDialog(title="Choose the Age of the Ring download", filters=filters, default_filter=zips)
+        downloads = GLib.get_user_special_dir(GLib.UserDirectory.DIRECTORY_DOWNLOAD)
+        if downloads and os.path.isdir(downloads):
+            dialog.set_initial_folder(Gio.File.new_for_path(downloads))
+
+        def chosen(source: Gtk.FileDialog, result: Gio.AsyncResult) -> None:
+            try:
+                picked = source.open_finish(result)
+            except GLib.Error:
+                return   # the player closed the chooser
+            path = picked.get_path() if picked is not None else None
+            if not path:
+                self.toasts.add_toast(Adw.Toast.new("That file cannot be read from here."))
+                return
+            while self.nav.get_visible_page().get_title() != "BFME Installer":
+                self.nav.pop()
+            self.controller.install_aotr(path)
+
+        dialog.open(self, None, chosen)
+
     def copy_diagnostics(self) -> None:
         report = build_report(self.updater.local or "dev", self.model, data_dir() / "logs")
         self.copy(report, "Diagnostics copied. Check it before you share it.")
@@ -167,8 +214,8 @@ class WizardWindow(Adw.ApplicationWindow):
     def confirm_reset(self) -> None:
         dialog = Adw.AlertDialog(
             heading="Delete the game environment?",
-            body="This deletes the game environment, including every game you installed. This cannot be undone.\n\n"
-                 "Close the Launcher and the Arena first.",
+            body="This deletes the game environment, including every game you installed and Age of the Ring. "
+                 "This cannot be undone.\n\nClose the Launcher, the Arena and Age of the Ring first.",
         )
         dialog.add_response("cancel", "Cancel")
         dialog.add_response("reset", "Delete and set up again")
@@ -245,8 +292,9 @@ class WizardWindow(Adw.ApplicationWindow):
 
     def _render_run(self) -> None:
         m = self.model
-        step_id = m.current or (STEPS[min(m.done_count, len(STEPS) - 1)][0])
-        self.run_count.set_text(f"Step {m.step_number} of {len(STEPS)}")
+        defs = m.step_defs
+        step_id = m.current or (defs[min(m.done_count, len(defs) - 1)][0])
+        self.run_count.set_text(f"Step {m.step_number} of {len(defs)}")
         self.run_title.set_text(title_of(step_id))
         self.run_desc.set_text(description_of(step_id))
         if m.progress is not None:
@@ -299,6 +347,8 @@ class WizardWindow(Adw.ApplicationWindow):
             self.problem.set_title("Something went wrong")
             self.problem.set_description(f"{step}: {message}\n\nNothing was lost. You can try this step again.")
             self.problem_box.append(pill("Retry", self.controller.retry))
+            if m.kind == "aotr":
+                self.problem_box.append(pill("Back to home", self.controller.back_home, suggested=False))
             self.problem_box.append(pill("Copy log", lambda: self.copy(m.log_text(), "Log copied"), suggested=False))
 
     def _problem_row(self, message: str, command: str | None) -> Adw.ActionRow:
