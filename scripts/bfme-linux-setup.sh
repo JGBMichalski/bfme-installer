@@ -978,8 +978,9 @@ aotr_run_installer() {
   if [ -f "$PREFIX/drive_c/aotr-install.log" ]; then
     mv -f "$PREFIX/drive_c/aotr-install.log" "$LOGS/aotr-installer.log"
   fi
-  [ "$rc" -eq 0 ] && [ -f "$AOTR_EXE" ] \
-    || die "Age of the Ring was not installed (exit $rc). See $LOGS/aotr-installer.log"
+  if [ "$rc" -ne 0 ] || [ ! -f "$AOTR_EXE" ]; then
+    die "Age of the Ring was not installed (exit $rc). See $LOGS/aotr-installer.log"
+  fi
   rm -f "$PREFIX/.bfme-aotr-installing"
   machine PROGRESS 100
 }
@@ -987,7 +988,9 @@ aotr_run_installer() {
 cmd_aotr_install() {
   local zip="${1:-}"
   [ -n "$zip" ] || die "Use: aotr-install <path to AotR_Standalone_..._Installer.zip>. Download it from $AOTR_PAGE_URL"
-  prefix_ready && launcher_installed && [ -f "$ARENA_EXE" ] || die "Finish the setup first. Run: install"
+  if ! prefix_ready || ! launcher_installed || [ ! -f "$ARENA_EXE" ]; then
+    die "Finish the setup first. Run: install"
+  fi
   acquire_setup_lock
   mkdir -p "$LOGS"
   step_start aotr-check
