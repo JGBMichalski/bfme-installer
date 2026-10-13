@@ -1,61 +1,90 @@
 """Connects the model to the script. No GTK: the UI calls these methods and re-renders on `on_change`."""
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 
 from .apps import AppLauncher
 from .model import SetupModel
 from .runner import ScriptRunner
 
+# Script command per job. The aotr job also takes the file path.
+JOB_COMMANDS = {
+    "environment": "prepare",
+    "launcher": "launcher-install",
+    "aotr": "aotr-install"
+}
+
+# Shortcut target to the program that provides it.
+PROGRAM_OF = {
+    "launcher": "launcher",
+    "arena": "launcher",
+    "aotr": "aotr"
+}
+
 
 class Controller:
-    def __init__(self, runner: ScriptRunner, on_change: Callable[[], None]) -> None:
+    def __init__(self, runner: ScriptRunner, on_change: Callable[[], None], offer: str | None = None) -> None:
         self.runner = runner
         self.model = SetupModel()
         self._on_change = on_change
         self.apps = AppLauncher(runner.script, on_change)
-        self._last_aotr: str | None = None   # the zip of the last Age of the Ring install, for Retry
+        self._aotr_zip: str | None = None   # the file the player chose for Age of the Ring, kept for Retry and Resume
+        self._offer = offer                 # what the shortcut that opened the wizard wanted, used once (see start)
 
-    # ---------------------------------------------------------------- actions
     def start(self) -> None:
-        """Find out what is already installed."""
+        """Check what is installed. The old plan is dropped, the choice stays."""
         if self.runner.busy:
             return
+        self._aotr_zip = None
         self.model.begin_check()
         self.model.installed.clear()   # what the script reports now replaces what was known before (a reset, say)
         self._on_change()
         self.runner.run(["status"], self._line, self._status_done)
 
-    def install(self) -> None:
-        """Run (or resume) the install. Safe to call again after a failure or a cancel."""
+    def install(self, programs: Iterable[str]) -> None:
+        """Install the choice. After a stop, the same choice resumes and a different one starts over."""
         if self.runner.busy:
             return
-        self.model.begin_install()
-        self._on_change()
-        self.runner.run(["install"], self._line, self._install_done)
+        if self.model.resumes(programs):
+            self.resume()
+            return
+        if not self.model.begin_plan(programs):
+            return
+        self._aotr_zip = None   # a new choice asks for the file again
+        self._run_job(self.model.first_unfinished_job())
 
-    def install_aotr(self, zip_path: str) -> None:
-        """Install Age of the Ring from the zip the player downloaded."""
+    def resume(self) -> None:
+        """Continue the plan after Cancel or a fixed system check."""
         if self.runner.busy:
             return
-        self._last_aotr = zip_path
-        self.model.begin_install("aotr")
-        self._on_change()
-        self.runner.run(["aotr-install", zip_path], self._line, self._install_done)
+        self._run_job(self.model.first_unfinished_job())
 
     def retry(self) -> None:
-        """Run again whatever failed: the setup, or the Age of the Ring install."""
-        if self.model.kind == "aotr" and self._last_aotr is not None:
-            self.install_aotr(self._last_aotr)
-        else:
-            self.install()
+        """Run the failed job again."""
+        if self.runner.busy:
+            return
+        self._run_job(self.model.job)
+
+    def choose_aotr_file(self, zip_path: str) -> None:
+        """Install the Age of the Ring file the player chose."""
+        if self.runner.busy:
+            return
+        self._aotr_zip = zip_path
+        self._run_job("aotr")
+
+    def choose_another_aotr_file(self) -> None:
+        """Ask for the Age of the Ring file again."""
+        if self.runner.busy:
+            return
+        self._aotr_zip = None
+        self._run_job("aotr")
 
     def back_home(self) -> None:
-        """Leave a failed Age of the Ring install and look at the setup again (the home screen)."""
+        """Leave the plan: home screen, or start page when nothing is installed."""
         self.start()
 
     def recheck(self) -> None:
-        """Run the system checks again after the user fixed something. Continues the install if they now pass."""
+        """Recheck after a fix. Continues the plan if the checks pass."""
         if self.runner.busy:
             return
         self.model.begin_check()
@@ -71,11 +100,11 @@ class Controller:
         self.runner.terminate()
 
     def open_app(self, name: str) -> None:
-        """Start the Launcher or the Arena. The window keeps showing whether it is still running."""
+        """Start a program."""
         self.apps.start(name)
 
     def run_checks(self) -> bool:
-        """Run the system checks again without leaving the current screen. False if the script is busy."""
+        """Rerun system checks in place. False if the script is busy."""
         if self.runner.busy:
             return False
         self.model.begin_quiet_check()
@@ -88,8 +117,7 @@ class Controller:
         return self.runner.busy
 
     def blocked_reason(self) -> str | None:
-        """Why Reset must not run right now, or None. A program started from a menu entry is not tracked, so the
-        Reset dialog also asks the player to close it; the script ends the Wine session before deleting anything."""
+        """Why Reset cannot run now, or None. Shortcut-started programs are not tracked, so the Reset dialog asks to close them."""
         if self.model.state == "running":
             return "The setup is running."
         if self.apps.any_running:
@@ -99,7 +127,7 @@ class Controller:
         return None
 
     def reset(self, on_done: Callable[[bool], None]) -> bool:
-        """Delete the game environment (every installed game with it), then look at the setup again."""
+        """Delete the game environment, then check the setup again."""
         if self.blocked_reason() is not None:
             return False
 
@@ -112,31 +140,62 @@ class Controller:
         self.runner.run(["reset-prefix", "--yes"], self._line, finished)
         return True
 
-    # -------------------------------------------------------------- callbacks
+    def _run_job(self, name: str | None) -> None:
+        """Run a job, or wait for the player when the file is not chosen yet."""
+        if name is None:
+            self.start()
+            return
+        if name == "aotr" and self._aotr_zip is None:
+            self.model.wait_for_file()
+            self._on_change()
+            return
+        self.model.begin_job(name)
+        self._on_change()
+        args = [JOB_COMMANDS[name]]
+        if name == "aotr":
+            args.append(self._aotr_zip)
+        self.runner.run(args, self._line, self._job_done)
+
     def _line(self, line: str) -> None:
         self.model.feed_line(line)
         self._on_change()
 
     def _status_done(self, code: int) -> None:
         self.model.finish_status(code)
+        offered = PROGRAM_OF.get(self._offer or "")
+        self._offer = None   # a shortcut is answered once, not every time the player comes back to the home screen
+        done = self.model.state == "done"
+        wants_aotr = done and offered == "aotr" and not self.model.aotr_installed
+        if offered and not done:
+            self.model.choose([offered])
+        self._sync_shortcuts(lambda: self._after_status(done, wants_aotr))
+
+    def _after_status(self, done: bool, wants_aotr: bool) -> None:
+        if wants_aotr:
+            self.install(["aotr"])   # the shortcut of a mod that is not installed: go and install it
+            return
         self._on_change()
-        if self.model.state == "done":
-            self.run_checks()   # quietly: a failed check shows a banner on the home screen
+        if done:
+            self.run_checks()        # quietly: a failed check shows a banner on the home screen
+
+    def _sync_shortcuts(self, then: Callable[[], None]) -> None:
+        """Sync shortcuts with what is installed, then continue."""
+        self.runner.run(["shortcuts"], lambda _line: None, lambda _code: then())
 
     def _checks_done(self, code: int) -> None:
         self.model.error = None   # the script ends a failing check with an ERROR line; it is not a setup error
         self._on_change()
 
-    def _install_done(self, code: int) -> None:
-        self.model.finish_install(code)
+    def _job_done(self, code: int) -> None:
+        # Every job ends with STATUS lines, so no second status question is needed.
+        following = self.model.finish_install(code)
         self._on_change()
-        if self.model.state == "done":
-            # Learn which games exist now, without leaving the screen.
-            self.runner.run(["status"], self._line, lambda _code: self._on_change())
+        if following is not None:
+            self._run_job(following)
 
     def _recheck_done(self, code: int) -> None:
         self.model.finish_check(code)
         if code == 0:
-            self.install()
+            self.resume()
         else:
             self._on_change()

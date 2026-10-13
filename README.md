@@ -21,13 +21,13 @@ Running these games on Linux used to mean hand-building a Wine prefix, picking t
 multiplayer "Out of Sync" error by trial and error. BFME Installer does that once, the same way every time, and then
 gets out of your way.
 
-- **One command to install.** Paste one line into a terminal and the wizard opens, ready to set up the Launcher and the Arena.
+- **One command to install.** Paste one line into a terminal and the wizard opens on a page where you choose what to install.
+- **Install only what you want.** Choose the All-in-One Launcher (the Arena comes with it), Age of the Ring, or both.
 - **A guided window.** Checks your system, downloads Proton, builds the game environment and tells you in plain words
   when something needs your attention.
 - **Launcher and Arena side by side.** Both share one game environment, so maps and games installed in one are there
   in the other.
-- **Age of the Ring.** An optional install from the home screen. You download the file from ModDB and
-  the app does the rest.
+- **Age of the Ring.** You download the file from ModDB and the app does the rest.
 - **Online play with Windows players.** The prefix settings that stop "Out of Sync" errors are applied for you.
 - **Updates itself.** The app tells you when a new release exists and installs it through Flatpak.
 - **Easy to fix.** A Troubleshoot page re-runs the system checks, copies a report for bug reports, opens the logs, and
@@ -45,9 +45,9 @@ gets out of your way.
 
 <br>
 
-| Welcome | Troubleshoot |
+| Start | Troubleshoot |
 | :---: | :---: |
-| <img src="docs/images/welcome.png" alt="The welcome screen with an Install button" width="340"> | <img src="docs/images/troubleshoot.png" alt="The Troubleshoot page" width="340"> |
+| <img src="docs/images/start.png" alt="The start page, where you choose what to install" width="340"> | <img src="docs/images/troubleshoot.png" alt="The Troubleshoot page" width="340"> |
 
 </details>
 
@@ -65,6 +65,8 @@ The same commands are also available on the [install page](https://jgbmichalski.
 
 To update, press **Update** in the app when it offers one, or run the same command again.
 
+The app asks for one permission beyond its own data: access to `~/.local/share/applications`, your menu folder, which is how it adds and removes the shortcuts of the programs you install ([details](docs/flatpak.md#shortcuts)).
+
 ### Requirements
 
 - A 64-bit (x86_64) Linux distribution with [Flatpak](https://flatpak.org/setup/). The installer prints the command for
@@ -75,20 +77,25 @@ To update, press **Update** in the app when it offers one, or run the same comma
 
 ## Using it
 
-1. Open **BFME Installer** from your menu and press **Install**. The first run downloads Proton, so it takes a few
-   minutes. You can cancel and resume.
-2. On the home screen, open the **Launcher** and install your games.
-3. Start online matches from the **Arena**. Always start it on its own, never from the Launcher's Multiplayer tab, where
-   it draws outside the Launcher's window.
+1. Open **BFME Installer** from your menu. Tick what you want, the **All-in-One Launcher**, **Age of the Ring**, or
+   both, and press **Install**. Nothing is ticked at first. The first run downloads Proton, so it takes a few minutes.
+   You can cancel and resume.
+2. If you chose the Launcher, open it from the home screen and install your games.
 
-### Install Age of the Ring (optional)
+Skipped something? Every program that is not installed has an **Install** button on the home screen.
 
-[Age of the Ring](https://www.moddb.com/mods/the-horse-lords-a-total-modification-for-bfme) is not part of the All-in-One Launcher. It has its own Launcher and its own copies of BFME 2 and the Rise of the Witch-king, so it does not touch the games you already have.
+Each program you install gets a shortcut in your application menu, and only while it is installed. **Reset** removes them all, and a program you delete yourself loses its shortcut the next time you open BFME Installer.
 
-1. Finish the setup first. On the home screen, press **Install** on the **Age of the Ring** card.
+### Install Age of the Ring
+
+[Age of the Ring](https://www.moddb.com/mods/the-horse-lords-a-total-modification-for-bfme) is not part of the All-in-One Launcher. It has its own Launcher and its own copies of BFME 2 and the Rise of the Witch-king, so it does not touch the games you already have. It does not need the Launcher or the Arena either.
+
+1. Tick **Age of the Ring** on the first page, or press **Install** on its card on the home screen later. The setup prepares the game environment first, then stops at the download step.
 2. Press **Open ModDB**, click **Download Now**, and wait until your browser has finished the file (about 14 GB). ModDB only lets a web browser download it, so the app cannot do this step for you.
 3. Back in the app, press **Choose file...** and pick the zip you downloaded. Do not unpack it. The app checks it, unpacks it, installs the mod and shows its progress. You need about 40 GB of free space, and the install can take an hour.
 4. When it is done you can delete the zip. The card now says **Open**. The Age of the Ring Launcher updates the mod itself.
+
+Not ready to download 14 GB? Press **Back to start** (or **Back to home**) on the download step. Whatever finished before it stays installed. If the file turns out to be unfinished or damaged, the app says so and offers **Choose another file**.
 
 Resetting the game environment also deletes Age of the Ring.
 
@@ -125,7 +132,15 @@ Run the setup script in a terminal. It does the same setup without the wizard.
 Then open **BFME All-in-One Launcher** from your menu and install the games. Start the Arena from its own
 **BFME Online Arena** shortcut.
 
-Other commands: `launcher`, `arena`, `game bfme1|bfme2|rotwk`, `shortcuts`, `status`, `reset-prefix --yes`, `help`.
+Only want Age of the Ring? Skip `install` and prepare the game environment on its own, then give it the file you downloaded from ModDB:
+
+```sh
+./scripts/bfme-linux-setup.sh prepare
+./scripts/bfme-linux-setup.sh aotr-install ~/Downloads/AotR_Standalone_9.3.0_Installer.zip
+```
+
+Other commands: `launcher-install` (the Launcher and the Arena, after `prepare`), `launcher`, `arena`, `aotr`,
+`game bfme1|bfme2|rotwk`, `shortcuts`, `status`, `reset-prefix --yes`, `version`, `help`.
 Configuration variables (such as `BFME_HOME` and `BFME_RUNNER=wine`) are in [How it works](docs/how-it-works.md).
 
 ## Planned

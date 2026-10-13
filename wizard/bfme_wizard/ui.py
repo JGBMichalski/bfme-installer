@@ -1,4 +1,4 @@
-"""The wizard window. One page at a time, then the home screen once the setup is complete. Renders the model."""
+"""The wizard window. Renders the model one page at a time."""
 from __future__ import annotations
 
 import os
@@ -9,21 +9,21 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, Gdk, Gio, GLib, GObject, Gtk  # noqa: E402
 
+from .aotr import MODDB_URL, AotrDownloadPage
 from .controller import Controller
 from .diagnostics import any_log, build_report, data_dir
 from .home import GameFoldersPage, HomePage, TroubleshootPage
-from .aotr import MODDB_URL, AotrInstallPage
 from .model import description_of, title_of
+from .start import StartPage
 from .updater import make_updater
 from .widgets import clear, first_icon, pill
 
-# Inside a Flatpak the app ID is whatever it was built as, so a copy built under another ID can run beside this one.
+# Flatpak builds under another ID run beside this one.
 APP_ID = os.environ.get("FLATPAK_ID") or "com.jgbmichalski.BfmeInstaller"
-INTRO = "This installs Proton, the launcher and the Arena. It takes a few minutes."
 
 
 class WizardWindow(Adw.ApplicationWindow):
-    def __init__(self, app: Adw.Application, controller_factory, offer: str | None = None) -> None:
+    def __init__(self, app: Adw.Application, controller_factory) -> None:
         super().__init__(application=app, title="BFME Installer")
         self.set_default_size(640, 560)
         self.controller: Controller = controller_factory(self.render)
@@ -34,11 +34,9 @@ class WizardWindow(Adw.ApplicationWindow):
         header = Adw.HeaderBar()
         header.pack_end(self._build_menu())
         toolbar.add_top_bar(header)
-        # A system check failed: say so above the home screen and point at Troubleshoot.
         self.check_banner = Adw.Banner(title="Your system needs a change.", button_label="Troubleshoot")
         self.check_banner.connect("button-clicked", lambda *_: self.show_troubleshoot())
         toolbar.add_top_bar(self.check_banner)
-        # The app updating itself (see updater.py). Hidden until there is something to say.
         self.updater = make_updater(self._render_update_banner)
         self.update_banner = Adw.Banner(use_markup=False)
         self.update_banner.connect("button-clicked", self._on_update_button)
@@ -53,32 +51,26 @@ class WizardWindow(Adw.ApplicationWindow):
         self.set_content(self.toasts)
 
         self._build_checking()
-        self._build_welcome()
+        self.start = StartPage(self.controller)
+        self.stack.add_named(self.start.view, "start")
         self._build_run()
         self._build_problem()
-        self.home = HomePage(self.controller, lambda: self.updater.local or "dev", offer, self.show_troubleshoot, self.show_game_folders,
-                         self.show_aotr_install)
+        self.aotr = AotrDownloadPage(self.open_moddb, self.choose_aotr_zip, self.controller.back_home)
+        self.stack.add_named(self.aotr.view, "aotr")
+        self.home = HomePage(self.controller, lambda: self.updater.local or "dev", self.show_troubleshoot,
+                             self.show_game_folders)
         self.stack.add_named(self.home.box, "home")
 
         self.connect("close-request", self._on_close_request)
         self.updater.check()
         GLib.timeout_add(120, self._pulse)  # keeps the bar moving when a step reports no percentage
 
-    # ---------------------------------------------------------------- pages
     def _build_checking(self) -> None:
         page = Adw.StatusPage(title="Checking your setup...")
         spinner = Gtk.Spinner(spinning=True, halign=Gtk.Align.CENTER)
         spinner.set_size_request(32, 32)
         page.set_child(spinner)
         self.stack.add_named(page, "checking")
-
-    def _build_welcome(self) -> None:
-        self.welcome = Adw.StatusPage(
-            icon_name=first_icon("system-software-install-symbolic", "folder-download-symbolic", "emblem-system-symbolic")
-        )
-        self.welcome_button = pill("Install", self.controller_call("install"))
-        self.welcome.set_child(self.welcome_button)
-        self.stack.add_named(self.welcome, "welcome")
 
     def _build_run(self) -> None:
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12, valign=Gtk.Align.CENTER, halign=Gtk.Align.CENTER)
@@ -103,7 +95,7 @@ class WizardWindow(Adw.ApplicationWindow):
         self.stack.add_named(self.problem, "problem")
 
     def _build_menu(self) -> Gtk.MenuButton:
-        """The header menu: Troubleshoot is reachable from every page, even while the setup runs."""
+        """Header menu. Troubleshoot works on every page."""
         popover = Gtk.Popover()
         item = Gtk.Button(label="Troubleshoot", css_classes=["flat"])
         item.connect("clicked", lambda *_: (popover.popdown(), self.show_troubleshoot()))
@@ -112,11 +104,6 @@ class WizardWindow(Adw.ApplicationWindow):
         button.set_popover(popover)
         return button
 
-    def controller_call(self, name: str):
-        return lambda: getattr(self.controller, name)()
-
-    # --------------------------------------------------------------- render
-    # --------------------------------------------------------------- troubleshoot
     def _render_check_banner(self) -> None:
         m = self.model
         self.check_banner.set_revealed(m.state == "done" and bool(m.problems))
@@ -134,13 +121,6 @@ class WizardWindow(Adw.ApplicationWindow):
         if self.nav.get_visible_page().get_title() == "Game folders":
             return
         self.nav.push(Adw.NavigationPage.new(GameFoldersPage(self.open_folder).view, "Game folders"))
-
-    # --------------------------------------------------------------- age of the ring
-    def show_aotr_install(self) -> None:
-        if self.nav.get_visible_page().get_title() == "Install Age of the Ring":
-            return
-        page = AotrInstallPage(self.open_moddb, self.choose_aotr_zip)
-        self.nav.push(Adw.NavigationPage.new(page.view, "Install Age of the Ring"))
 
     def open_moddb(self) -> None:
         def opened(launcher: Gtk.UriLauncher, result: Gio.AsyncResult) -> None:
@@ -174,9 +154,7 @@ class WizardWindow(Adw.ApplicationWindow):
             if not path:
                 self.toasts.add_toast(Adw.Toast.new("That file cannot be read from here."))
                 return
-            while self.nav.get_visible_page().get_title() != "BFME Installer":
-                self.nav.pop()
-            self.controller.install_aotr(path)
+            self.controller.choose_aotr_file(path)
 
         dialog.open(self, None, chosen)
 
@@ -236,10 +214,8 @@ class WizardWindow(Adw.ApplicationWindow):
         else:
             self.toasts.add_toast(Adw.Toast.new(self.controller.blocked_reason() or "Not now."))
 
-    # --------------------------------------------------------------- updating the app itself
     def _render_update_banner(self) -> None:
         u = self.updater
-        # Not while the setup is running: the banner would compete with the progress screen.
         if u.state == "idle" or self.model.state == "running":
             self.update_banner.set_revealed(False)
             return
@@ -277,18 +253,22 @@ class WizardWindow(Adw.ApplicationWindow):
         elif m.state == "running":
             self._render_run()
             self.stack.set_visible_child_name("run")
+        elif m.state == "waiting":
+            self.aotr.refresh(m.step_number, len(m.step_defs), self._leave_label())
+            self.stack.set_visible_child_name("aotr")
         elif m.state in ("blocked", "failed"):
             self._render_problem()
             self.stack.set_visible_child_name("problem")
-        else:  # idle, cancelled
-            self._render_welcome()
-            self.stack.set_visible_child_name("welcome")
+        else:  # idle, cancelled: the start page
+            if self.stack.get_visible_child_name() != "start":
+                self.start.enter()   # it comes into view: tick what is remembered, and leave the player's own ticks alone after
+            else:
+                self.start.refresh()
+            self.stack.set_visible_child_name("start")
 
-    def _render_welcome(self) -> None:
-        m = self.model
-        self.welcome.set_title("Setup paused" if m.paused else "Set up BFME on Linux")
-        self.welcome.set_description("Resume where you left off." if m.paused else INTRO)
-        self.welcome_button.set_label("Resume" if m.paused else "Install")
+    def _leave_label(self) -> str:
+        """Label of the button that leaves the plan."""
+        return "Back to home" if self.model.has_home_screen else "Back to start"
 
     def _render_run(self) -> None:
         m = self.model
@@ -331,8 +311,7 @@ class WizardWindow(Adw.ApplicationWindow):
             if os.environ.get("FLATPAK_ID") and any(
                 c.level == "fail" and cid == "flatpak-32bit" for cid, c in m.checks.items()
             ):
-                # A running Flatpak mounts its extensions once, at launch, so installing them now cannot be seen from
-                # inside this window. Only a fresh start picks them up.
+                # A running Flatpak mounts extensions at launch only. A fresh start is needed.
                 self.problem_box.append(Gtk.Label(
                     label="After the command finishes, close this window and open BFME Installer again.",
                     wrap=True,
@@ -347,9 +326,14 @@ class WizardWindow(Adw.ApplicationWindow):
             self.problem.set_title("Something went wrong")
             self.problem.set_description(f"{step}: {message}\n\nNothing was lost. You can try this step again.")
             self.problem_box.append(pill("Retry", self.controller.retry))
-            if m.kind == "aotr":
-                self.problem_box.append(pill("Back to home", self.controller.back_home, suggested=False))
-            self.problem_box.append(pill("Copy log", lambda: self.copy(m.log_text(), "Log copied"), suggested=False))
+            # One row: four stacked buttons do not fit.
+            others = Gtk.Box(spacing=12, halign=Gtk.Align.CENTER)
+            if m.job == "aotr":
+                # Most Age of the Ring failures come from the file.
+                others.append(pill("Choose another file", self.controller.choose_another_aotr_file, suggested=False))
+            others.append(pill(self._leave_label(), self.controller.back_home, suggested=False))
+            others.append(pill("Copy log", lambda: self.copy(m.log_text(), "Log copied"), suggested=False))
+            self.problem_box.append(others)
 
     def _problem_row(self, message: str, command: str | None) -> Adw.ActionRow:
         row = Adw.ActionRow(title=GLib.markup_escape_text(message))
@@ -367,7 +351,6 @@ class WizardWindow(Adw.ApplicationWindow):
         self.get_clipboard().set_content(Gdk.ContentProvider.new_for_value(GObject.Value(str, text)))
         self.toasts.add_toast(Adw.Toast.new(toast))
 
-    # --------------------------------------------------------------- closing
     def _on_close_request(self, _window) -> bool:
         if self.model.state != "running":
             return False
@@ -393,12 +376,12 @@ class WizardApp(Adw.Application):
     def __init__(self, runner, offer: str | None = None) -> None:
         super().__init__(application_id=APP_ID)
         self.runner = runner
-        self.offer = offer   # the app a menu entry wanted to open before the setup was complete
+        self.offer = offer   # the program a shortcut wanted to open, when it was not installed (any more)
         self.connect("activate", self._activate)
 
     def _activate(self, _app) -> None:
         window = self.props.active_window
         if window is None:
-            window = WizardWindow(self, lambda on_change: Controller(self.runner, on_change), self.offer)
+            window = WizardWindow(self, lambda on_change: Controller(self.runner, on_change, offer=self.offer))
             window.controller.start()
         window.present()

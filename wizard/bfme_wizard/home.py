@@ -1,4 +1,4 @@
-"""The home screen (cards) and the Troubleshoot page. They only show the model and call back into the window."""
+"""The home screen cards and the Troubleshoot page. They show the model and call back into the window."""
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -10,7 +10,7 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, GLib, Gtk  # noqa: E402
 
-from .controller import Controller
+from .controller import PROGRAM_OF, Controller
 from .model import games_line
 from .paths import game_folders
 from .widgets import clear, first_icon, pill
@@ -18,11 +18,15 @@ from .widgets import clear, first_icon, pill
 CARDS = [
     ("launcher", "Launcher", "Install, patch and start your games", ("applications-games-symbolic", "input-gaming-symbolic")),
     ("arena", "Arena", "Play online matches against other players", ("network-workgroup-symbolic", "system-users-symbolic")),
-    ("aotr", "Age of the Ring", "A large mod with its own Launcher", ("media-optical-symbolic", "starred-symbolic")),
+    ("aotr", "Age of the Ring", "A large mod with its own launcher", ("media-optical-symbolic", "starred-symbolic")),
 ]
-AOTR_NOT_INSTALLED = "An optional mod with its own Launcher"
+# Card text for a program that is not installed.
+NOT_INSTALLED = {
+    "arena": "Comes with the Launcher",
+    "aotr": "An optional mod with its own launcher",
+}
 QUICK_EXIT_NOTE = "Closed after a few seconds. If it didn't open, see Troubleshoot."
-# Things the sandbox cannot see. Plain advice and a command to copy, never a pass or fail.
+# The sandbox cannot see these. Advice only, never pass or fail.
 CANT_CHECK = [
     ("Firewall", "If you cannot host or join games, check that your firewall (ufw or firewalld) allows them.", "sudo ufw status"),
     ("Graphics drivers", "The Launcher and the Arena need working Vulkan drivers on your computer.", "vulkaninfo --summary"),
@@ -30,14 +34,12 @@ CANT_CHECK = [
 
 
 class HomePage:
-    def __init__(self, controller: Controller, version: Callable[[], str], offer: str | None,
-                 on_troubleshoot: Callable[[], None], on_game_folders: Callable[[], None] = lambda: None,
-                 on_aotr_install: Callable[[], None] = lambda: None) -> None:
-        self.controller, self.version, self.offer, self.on_troubleshoot = controller, version, offer, on_troubleshoot
+    """One card per program: Open when installed, Install when not."""
+
+    def __init__(self, controller: Controller, version: Callable[[], str], on_troubleshoot: Callable[[], None],
+                 on_game_folders: Callable[[], None] = lambda: None) -> None:
+        self.controller, self.version, self.on_troubleshoot = controller, version, on_troubleshoot
         self.on_game_folders = on_game_folders
-        self.on_aotr_install = on_aotr_install
-        self._offer_shown = False
-        # The page fills the window: the content sits in the middle and the version at the bottom edge.
         self.box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         self.content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=18, vexpand=True, valign=Gtk.Align.CENTER,
                                halign=Gtk.Align.CENTER, margin_start=24, margin_end=24)
@@ -47,10 +49,6 @@ class HomePage:
         self.box.append(self.version_label)
 
     def refresh(self) -> None:
-        # The Age of the Ring menu entry on a computer without it: go straight to the page that installs it, once.
-        if self.offer == "aotr" and not self._offer_shown and not self.controller.model.aotr_installed:
-            self._offer_shown = True
-            self.on_aotr_install()
         clear(self.content)
         self.version_label.set_text(f"Version {self.version()}")
         line = games_line(self.controller.model)
@@ -68,25 +66,27 @@ class HomePage:
 
     def _card(self, name: str, title: str, description: str, icons: tuple[str, ...]) -> Gtk.Widget:
         state = self.controller.apps.state[name]
+        installed = self.controller.model.is_installed(name)
         inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10, margin_top=18, margin_bottom=18, margin_start=18, margin_end=18)
         image = Gtk.Image.new_from_icon_name(first_icon(*icons))
         image.set_pixel_size(48)
         inner.append(image)
         inner.append(Gtk.Label(label=title, css_classes=["title-2"]))
-        installed = name != "aotr" or self.controller.model.aotr_installed
         if not installed:
-            description = AOTR_NOT_INSTALLED
+            description = NOT_INSTALLED.get(name, description)
         inner.append(Gtk.Label(label=description, wrap=True, justify=Gtk.Justification.CENTER, css_classes=["dim-label"], max_width_chars=20))
         if state == "running":
             running = Gtk.Box(spacing=8, halign=Gtk.Align.CENTER, margin_top=4, margin_bottom=4)
             running.append(Gtk.Spinner(spinning=True))
             running.append(Gtk.Label(label="Running"))
             inner.append(running)
+        elif installed:
+            inner.append(pill("Open", lambda n=name: self.controller.open_app(n)))
         else:
-            if installed:
-                inner.append(pill("Open", lambda n=name: self.controller.open_app(n)))
-            else:
-                inner.append(pill("Install", self.on_aotr_install))
+            install = pill("Install", lambda n=name: self.controller.install([PROGRAM_OF[n]]))
+            # The script ignores clicks while system checks run.
+            install.set_sensitive(not self.controller.checking)
+            inner.append(install)
         if state == "quick":
             inner.append(Gtk.Label(label=QUICK_EXIT_NOTE, wrap=True, justify=Gtk.Justification.CENTER,
                                    css_classes=["caption", "warning"], max_width_chars=26))
@@ -96,7 +96,7 @@ class HomePage:
 
 
 class GameFoldersPage:
-    """The page behind the home screen's Game folders button: one group per game, a row per folder to open."""
+    """Game folders page: one group per game, one row per folder."""
 
     def __init__(self, open_folder: Callable[[Path], None]) -> None:
         self.view = Adw.ToolbarView()
@@ -123,7 +123,7 @@ class GameFoldersPage:
 
 
 class TroubleshootPage:
-    """The second page. Rebuilt only when what it shows has changed, so an expanded row stays open."""
+    """Rebuilt only when its content changes, so expanded rows stay open."""
 
     def __init__(self, controller: Controller, *, copy_text: Callable[[str, str], None], copy_diagnostics: Callable[[], None],
                  open_logs: Callable[[], None], confirm_reset: Callable[[], None]) -> None:
@@ -146,7 +146,6 @@ class TroubleshootPage:
         page.add(self._tools_group())
         self.view.set_content(page)
 
-    # ------------------------------------------------------------------------------- groups
     def _checks_group(self) -> Adw.PreferencesGroup:
         c, m = self.controller, self.controller.model
         group = Adw.PreferencesGroup(title="System checks")
@@ -212,7 +211,6 @@ class TroubleshootPage:
         group.add(reset)
         return group
 
-    # ------------------------------------------------------------------------------- rows
     @staticmethod
     def _icon(level: str) -> Gtk.Image:
         name = {"ok": "emblem-ok-symbolic", "warn": "dialog-warning-symbolic", "fail": "dialog-error-symbolic"}[level]

@@ -4,6 +4,21 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- A start page where you choose what to install: the All-in-One Launcher (with the Arena), Age of the Ring, or both.
+- The home screen offers **Install** on the Launcher and the Arena cards too, for whatever you skipped.
+- `prepare` and `launcher-install` commands in the setup script. `install` still does both.
+- The `shortcuts` command removes the shortcuts of programs that are no longer installed, as well as writing the missing ones.
+
+### Changed
+
+- The setup counts as complete when the game environment is ready and at least one program is installed, not only when the Launcher and the Arena both are.
+- The Flatpak no longer adds shortcuts for the Launcher, the Arena and Age of the Ring to your application menu when you install it. The app adds each one when you install that program and removes it when the program goes, so only **BFME Installer** is in your menu until you install something. Reset removes them all.
+- The Cancel button also stops before the next program when it is pressed during the last step of one.
+
 ## [1.1.1]
 
 ### Added

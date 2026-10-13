@@ -1,6 +1,6 @@
 """Where the game folders are inside the game environment. No GTK.
 
-Mirrors the layout in scripts/bfme-linux-setup.sh (BASE, PREFIX, WINE_USER), so keep the two in step.
+Mirrors BASE, PREFIX and WINE_USER in scripts/bfme-linux-setup.sh.
 """
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from pathlib import Path
 from .diagnostics import data_dir
 from .model import GAMES
 
-# Per game: the folder under drive_c, and the folder the game itself makes under AppData/Roaming on its first start.
+# Per game: folder under drive_c, and the user-data folder under AppData/Roaming made on first start.
 GAME_DIRS = {
     "bfme1": ("BFME1", "My Battle for Middle-earth Files"),
     "bfme2": ("BFME2", "My Battle for Middle-earth II Files"),
@@ -32,7 +32,7 @@ class GameFolders:
         return self.game.is_dir()
 
     def maps_target(self) -> Path:
-        """The nearest folder that exists: Maps, then the user-data folder, then the game folder."""
+        """First existing of: Maps, user-data folder, game folder."""
         for path in (self.user_data / "Maps", self.user_data, self.game):
             if path.is_dir():
                 return path
@@ -48,7 +48,7 @@ def wine_user(environ: dict[str, str] | None = None) -> str:
     env = os.environ if environ is None else environ
     if env.get("BFME_RUNNER", "proton") == "wine":
         return env.get("USER") or getpass.getuser()
-    return "steamuser"  # Proton always names the user steamuser
+    return "steamuser"  # Proton always uses steamuser
 
 
 def game_folders(environ: dict[str, str] | None = None) -> list[GameFolders]:

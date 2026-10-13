@@ -1,6 +1,6 @@
 """Parse the status lines printed by `bfme-linux-setup.sh --machine` (see docs/status-lines.md).
 
-Pure Python, no GTK. Every status line starts with "@bfme ". Anything else is ordinary text for the log.
+No GTK. Status lines start with "@bfme "; anything else is plain log text.
 """
 from __future__ import annotations
 
@@ -64,7 +64,7 @@ Event = Step | Progress | Check | Fix | Warn | Error | Cancelled | Done | Status
 
 
 def parse_line(line: str) -> Event | None:
-    """Return the event for a status line, or None for ordinary text or a line we do not understand."""
+    """The event for a status line; None for plain text or unknown lines."""
     if not line.startswith(PREFIX):
         return None
     parts = line[len(PREFIX):].rstrip("\r\n").split(" ", 1)

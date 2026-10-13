@@ -1,8 +1,6 @@
-"""The page that walks a player through downloading Age of the Ring from ModDB and handing the file to the wizard.
+"""The step where the player downloads Age of the Ring from ModDB and picks the file.
 
-ModDB only lets a web browser download the file (a bot check stands in front of it), so the player does that part.
-The wizard opens the page, then asks for the downloaded file with the system file chooser. That chooser works inside
-the Flatpak sandbox without any extra permission.
+A bot check blocks non-browser downloads. The system file chooser works in the Flatpak sandbox without extra permission.
 """
 from __future__ import annotations
 
@@ -14,33 +12,35 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, GLib, Gtk  # noqa: E402
 
+from .widgets import pill
+
 MODDB_URL = "https://www.moddb.com/mods/the-horse-lords-a-total-modification-for-bfme/downloads/age-of-the-ring-version-90"
 DOWNLOAD_GB = 14
 SPACE_GB = 40
+INTRO = (
+    "It comes with its own launcher and its own copy of the games, so the games you already have stay as they are. "
+    "ModDB only lets a web browser download it, so you do that part and this app does the rest."
+)
 
 
-class AotrInstallPage:
-    def __init__(self, open_moddb: Callable[[], None], choose_file: Callable[[], None]) -> None:
-        self.view = Adw.ToolbarView()
-        self.view.add_top_bar(Adw.HeaderBar())
-        page = Adw.PreferencesPage(
-            title="Install Age of the Ring",
-            description=(
-                "Age of the Ring is a big mod with its own Launcher and its own copy of the games, so it does not "
-                "touch the games you already have. ModDB only lets a web browser download it, so you download the "
-                "file and this app does the rest."
-            ),
-        )
-
-        need = Adw.PreferencesGroup(title="Before you start")
-        need.add(Adw.ActionRow(
-            title=f"The download is {DOWNLOAD_GB} GB",
-            subtitle=f"Installing needs about {SPACE_GB} GB more free space, on top of the file you download.",
-            subtitle_lines=3,
+class AotrDownloadPage:
+    def __init__(self, open_moddb: Callable[[], None], choose_file: Callable[[], None],
+                 leave: Callable[[], None]) -> None:
+        self.view = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER)
+        clamp = Adw.Clamp(maximum_size=560, margin_top=16, margin_bottom=16, margin_start=18, margin_end=18)
+        # Keep tight so Choose file stays visible at the default window height.
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        self.count = Gtk.Label(css_classes=["dim-label"])
+        box.append(self.count)
+        box.append(Gtk.Label(label="Download Age of the Ring", css_classes=["title-1"], wrap=True,
+                             justify=Gtk.Justification.CENTER))
+        box.append(Gtk.Label(
+            label=f"The download is {DOWNLOAD_GB} GB, and installing needs about {SPACE_GB} GB more free space.",
+            css_classes=["heading"], wrap=True, justify=Gtk.Justification.CENTER,
         ))
-        page.add(need)
+        box.append(Gtk.Label(label=INTRO, wrap=True, justify=Gtk.Justification.CENTER, css_classes=["dim-label"]))
 
-        steps = Adw.PreferencesGroup(title="Steps")
+        steps = Adw.PreferencesGroup()
         first = Adw.ActionRow(
             title="1. Open the download page",
             subtitle="It opens in your web browser.", subtitle_lines=2,
@@ -61,7 +61,7 @@ class AotrInstallPage:
             title="3. Choose the file you downloaded",
             subtitle=GLib.markup_escape_text(
                 "It is named like AotR_Standalone_9.3.0_Installer.zip and is usually in your Downloads folder. "
-                "Do not unpack it."
+                "Do not unpack it. When the install is done you can delete it."
             ),
             subtitle_lines=4,
         )
@@ -69,9 +69,14 @@ class AotrInstallPage:
         choose.connect("clicked", lambda *_: choose_file())
         third.add_suffix(choose)
         steps.add(third)
-        page.add(steps)
+        box.append(steps)
 
-        after = Adw.PreferencesGroup()
-        after.set_description("When the install is done you can delete the file you downloaded.")
-        page.add(after)
-        self.view.set_content(page)
+        # The download is 14 GB, so the player may want to leave.
+        self.leave_button = pill("Not now", leave, suggested=False)
+        box.append(self.leave_button)
+        clamp.set_child(box)
+        self.view.set_child(clamp)
+
+    def refresh(self, number: int, total: int, leave_label: str) -> None:
+        self.count.set_text(f"Step {number} of {total}")
+        self.leave_button.set_label(leave_label)

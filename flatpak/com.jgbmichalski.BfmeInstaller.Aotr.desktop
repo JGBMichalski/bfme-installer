@@ -1,9 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=Age of the Ring
-Comment=Play the Age of the Ring mod for Battle for Middle-earth 2
-Exec=bfme-installer --open aotr
-Icon=com.jgbmichalski.BfmeInstaller
-Terminal=false
-Categories=Game;
-StartupNotify=true

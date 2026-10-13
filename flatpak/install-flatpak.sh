@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # BFME Installer for Linux: installs the Flatpak and the 32-bit Flatpak extensions it needs, then opens the
-# setup wizard. Flatpak does not install those extensions for apps outside Flathub, so this does it for you.
-# Runs as your user. The only time it uses sudo is to install Flatpak itself, and only if you say yes after
-# seeing the exact command. Safe to run again: it updates an existing install.
-# The app comes from a signed Flatpak repository. This script carries the project's public signing key and only
-# accepts software signed with it.
+# setup wizard. Flatpak does not install those extensions for apps outside Flathub.
+# Runs as your user. It uses sudo only to install Flatpak itself, and only after you say yes to the exact command.
+# Safe to run again: it updates an existing install.
+# The app comes from a signed Flatpak repository. This script carries the project's public signing key and accepts only
+# software signed with it.
 #
 # Install:   curl -fsSL <release or site address>/install-flatpak.sh | bash
 # Options go after "bash -s --", for example:   ... | bash -s -- --uninstall
@@ -16,8 +16,7 @@ set -euo pipefail
 readonly APP_ID="com.jgbmichalski.BfmeInstaller"
 readonly RUNTIME_VERSION="25.08"
 readonly REMOTE_NAME="bfme-installer"
-# CI replaces these placeholders in the copy it publishes: the Flatpak repository on GitHub Pages, and the
-# project's public signing key (base64). A copy straight from the repository still has the placeholders.
+# CI replaces these placeholders in the published copy: the repository URL and the public signing key (base64).
 readonly REPO="@BFME_DEFAULT_REPO@"
 readonly SIGNING_KEY="@BFME_SIGNING_KEY@"
 
@@ -42,7 +41,7 @@ EOF
 
 has_display() { [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; }
 
-# The command that installs Flatpak on this distribution. Prints nothing for a distribution we do not know.
+# The command that installs Flatpak here. Prints nothing for an unknown distribution.
 flatpak_install_command() {
   local id="" like=""
   if [ -r /etc/os-release ]; then
@@ -57,8 +56,8 @@ flatpak_install_command() {
   esac
 }
 
-# Ask a yes/no question on the terminal. When run as "curl | bash", stdin is the script, so read from /dev/tty.
-# Returns 1 (no) when there is no terminal. The default is no.
+# Ask a yes/no question. Under "curl | bash" stdin is the script, so read from /dev/tty.
+# Returns 1 (no) without a terminal. The default is no.
 ask_yes_no() {
   local answer=""
   { : < /dev/tty > /dev/tty; } 2>/dev/null || return 1
@@ -107,7 +106,7 @@ no_flatpak() {
 
 install_extensions() {
   local ext=("org.freedesktop.Platform.Compat.i386//${RUNTIME_VERSION}" "org.freedesktop.Platform.GL32.default//${RUNTIME_VERSION}")
-  # NVIDIA: the 32-bit driver must match the 64-bit one Flatpak already installed for your card.
+  # NVIDIA: the 32-bit driver must match the 64-bit one Flatpak installed for your card.
   local nvidia line
   nvidia="$(flatpak list --runtime --columns=application,branch 2>/dev/null \
     | awk '$1 ~ /^org\.freedesktop\.Platform\.GL\.nvidia-/ {print $1 "//" $2}' | sort -u || true)"
@@ -119,10 +118,10 @@ install_extensions() {
   flatpak install --user -y --noninteractive flathub "${ext[@]}"
 }
 
-# Point the app's remote at the repository, with the signing key: the remote checks every download against it.
-# This also switches checking on for a remote that an older version of this script added without it.
-# The commands are chained with && on purpose: this runs under "|| die", where "set -e" does not stop at a failure,
-# and the install must never go ahead from a remote that did not get checking switched on.
+# Point the remote at the repository with the signing key, so it checks every download.
+# This also turns checking on for a remote an older version of this script added without it.
+# Chained with && on purpose: under "|| die" "set -e" does not stop at a failure,
+# and the install must never go ahead from a remote without checking.
 add_remote() {
   local key ok=0
   key="$(mktemp)"
@@ -148,15 +147,29 @@ start_setup() {
     nohup flatpak run --user "$APP_ID" >/dev/null 2>&1 &
     disown || true
   else
-    # No window is possible (SSH, a text console). The app notices this itself and runs the setup right here.
+    # No window possible (SSH, text console). The app notices and runs the setup in place.
     say "Step 4: no display found, so the setup runs in this terminal."
     flatpak run --user "$APP_ID" || say "Setup did not finish. Run it again with: flatpak run --command=bfme-linux-setup $APP_ID install"
   fi
 }
 
+# The app writes a menu shortcut per installed program. They are not exported with the app, so
+# Flatpak does not remove them with it.
+remove_shortcuts() {
+  local data="${XDG_DATA_HOME:-}" program file removed=0
+  if [ -z "$data" ] && [ -n "${HOME:-}" ]; then data="$HOME/.local/share"; fi
+  [ -n "$data" ] || return 0
+  for program in Launcher Arena Aotr; do
+    file="$data/applications/$APP_ID.$program.desktop"
+    if [ -e "$file" ]; then rm -f -- "$file"; removed=1; fi
+  done
+  if [ "$removed" = "1" ]; then say "Removed the app's shortcuts from your menu"; fi
+}
+
 do_uninstall() {
   say "Removing the BFME Installer"
   flatpak uninstall --user -y --noninteractive "$APP_ID" || say "The app is not installed."
+  remove_shortcuts
   flatpak remote-delete --user --force "$REMOTE_NAME" >/dev/null 2>&1 || true
   if [ "$PURGE" = "1" ]; then
     local data="${HOME:-}/.var/app/$APP_ID"

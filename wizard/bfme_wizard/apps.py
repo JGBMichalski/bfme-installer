@@ -1,9 +1,7 @@
-"""Starting the Launcher and the Arena, and knowing whether they are still running. No GTK.
+"""Start programs and watch whether they still run. No GTK.
 
-A program the wizard starts keeps running after the wizard closes, so this only watches it for the window's sake:
-a button shows "running" until the program ends. The script returns 0 whether or not the program worked, so the only
-sign of trouble is a program that ends within seconds. That is reported softly ("closed after a few seconds"), because
-a player may also close it that fast on purpose.
+The script exits 0 even when the program fails, so a program that ends within seconds is the only sign of trouble.
+It is reported softly, since a player may close it that fast on purpose.
 """
 from __future__ import annotations
 
@@ -20,7 +18,7 @@ APPS = ("launcher", "arena", "aotr")
 
 
 class AppLauncher:
-    """state per app: idle | running | quick (it ended within QUICK_EXIT_SECONDS of starting)"""
+    """state per app: idle | running | quick (ended within QUICK_EXIT_SECONDS)"""
 
     def __init__(self, script: str, on_change: Callable[[], None], quick_seconds: float = QUICK_EXIT_SECONDS,
                  clock: Callable[[], float] = time.monotonic) -> None:

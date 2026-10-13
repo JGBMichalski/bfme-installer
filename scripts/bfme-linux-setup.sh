@@ -1,22 +1,24 @@
 #!/usr/bin/env bash
 # BFME Foundation Project - Linux setup (runs the Windows apps under Proton).
 #
-# Sets up one shared Proton environment (a "prefix") and two shortcuts:
-#   - All-in-One Launcher
-#   - Online Arena (started on its own, not from the launcher's Multiplayer tab)
+# Sets up one shared Proton environment (a "prefix") and installs what you choose into it:
+#   - All-in-One Launcher, with the Online Arena (started on its own, not from the launcher's Multiplayer tab)
+#   - Age of the Ring (optional)
 #
 # It never uses sudo and never installs system packages. If something is
 # missing, "doctor" tells you what to install.
 #
 # Usage: bfme-linux-setup.sh [--machine] <command>
 #   doctor              Check system requirements for the chosen runner.
-#   install             Set up everything (runner, prefix, settings, launcher, Arena, shortcuts).
+#   prepare             Set up the game environment only (runner, prefix, settings). Installs no program.
+#   launcher-install    Install the All-in-One Launcher and the Arena, and their shortcuts.
+#   install             Everything for the Launcher and the Arena: prepare, then launcher-install.
 #   launcher            Start the All-in-One Launcher (installs it first if needed).
 #   arena               Start the Online Arena (downloads or updates it first).
 #   game bfme1|bfme2|rotwk   Start a game without the Arena.
-#   aotr-install <zip>  Install Age of the Ring (optional) from the zip you downloaded from ModDB.
+#   aotr-install <zip>  Install Age of the Ring (needs prepare first) from the zip you downloaded from ModDB.
 #   aotr                Start the Age of the Ring Launcher.
-#   shortcuts           (Re)create the menu shortcuts (Age of the Ring too, once installed).
+#   shortcuts           Bring the menu shortcuts in line with what is installed: add the missing ones, remove the others.
 #   status              Show what is installed and where.
 #   reset-prefix --yes  Delete the prefix. This deletes installed games.
 #   help                Show this help.
@@ -41,14 +43,13 @@
 
 set -euo pipefail
 
-# CI replaces the placeholder with the release version (from the git tag). A copy straight from the repository
-# keeps it and reports "dev".
+# CI replaces the placeholder with the release version. A repository copy reports "dev".
 SCRIPT_VERSION="@BFME_VERSION@"
 case "$SCRIPT_VERSION" in "@"*) SCRIPT_VERSION="dev" ;; esac
 readonly SCRIPT_VERSION
-# Pinned on purpose: "UMU-Latest" moves, which re-downloads Proton and can change game behaviour
-# (and so risk "Out of Sync" against Windows players). Raise this together with a release.
-# umu can only download "latest" builds by name, so this exact build is fetched and verified here.
+# Pinned: "UMU-Latest" moves, which re-downloads Proton and can change game behaviour (risking "Out of Sync").
+# Raise it together with a release.
+# umu downloads only "latest" builds by name, so this build is fetched and verified here.
 readonly DEFAULT_PROTONPATH="UMU-Proton-10.0-4"
 readonly PROTON_URL="https://github.com/Open-Wine-Components/umu-proton/releases/download/${DEFAULT_PROTONPATH}/${DEFAULT_PROTONPATH}.tar.gz"
 readonly PROTON_SHA256="62e99e029a18fa313e6fa63d42390918101730a940e3491c54d9d58cab887c69"
@@ -70,12 +71,10 @@ DOWNLOADS="$BASE/downloads"
 LOGS="$BASE/logs"
 BIN="$BASE/bin"
 
-# Optional user settings.
 # shellcheck disable=SC1091
 [ -f "$BASE/config.env" ] && . "$BASE/config.env"
 
-# Inside the Flatpak, system requirements come from the Flatpak runtime, there is no system Wine,
-# and the menu entries are provided by the Flatpak itself.
+# Inside the Flatpak: no system Wine, system requirements come from the runtime, menu entries come from the Flatpak.
 IN_FLATPAK=0
 if [ -n "${FLATPAK_ID:-}" ]; then IN_FLATPAK=1; fi
 
@@ -103,12 +102,16 @@ ARENA_EXE="$ARENA_DIR/BfmeFoundationProject_OnlineArena.exe"
 AOTR_DIR="$PREFIX/drive_c/AgeoftheRing"
 AOTR_EXE="$AOTR_DIR/AotR_Launcher.exe"
 AOTR_UNPACK="$DOWNLOADS/aotr"
-APPS_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
+# Inside the Flatpak XDG_DATA_HOME is the app's own folder, but the menu is the host's.
+# The manifest makes that one folder writable (--filesystem=xdg-data/applications:create).
+if [ "$IN_FLATPAK" = "1" ]; then
+  APPS_DIR="$HOME/.local/share/applications"
+else
+  APPS_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
+fi
 
-# ---------------------------------------------------------------- output ----
 say()  { printf '%s\n' "$*"; }
 
-# Status lines for programs (--machine). One line each, always starting with "@bfme ".
 MACHINE="${BFME_PROGRESS:-0}"
 STEP_CURRENT=""
 ERROR_REPORTED=0
@@ -122,8 +125,7 @@ machine() {
 step_start() { check_cancel; STEP_CURRENT="$1"; machine STEP "$1" start; }
 step_done()  { machine STEP "$1" "done"; STEP_CURRENT=""; }
 step_skip()  { check_cancel; machine STEP "$1" skip; }
-# SIGUSR1 only sets a flag. Bash runs the trap after the current command ends, so the install
-# stops cleanly between steps and a later run carries on where this one stopped.
+# SIGUSR1 only sets a flag. Bash runs the trap after the current command, so an install stops between steps.
 check_cancel() {
   [ "$CANCEL_REQUESTED" = "1" ] || return 0
   CANCELLED=1
@@ -132,7 +134,7 @@ check_cancel() {
   exit 130
 }
 trap 'CANCEL_REQUESTED=1' USR1
-# Any failure that did not go through die() (for example a failed download) still reports an error.
+# Failures that skip die() (a failed download, say) still report an error.
 on_exit() {
   local rc=$?
   if [ "$rc" -ne 0 ] && [ "$ERROR_REPORTED" = "0" ] && [ "$CANCELLED" = "0" ]; then
@@ -149,10 +151,8 @@ die()  {
   exit 1
 }
 
-# ---------------------------------------------------------------- doctor ----
 DOCTOR_FAILS=0
 DOCTOR_WARNS=0
-# Each check has an id (first argument) so a program can tell the checks apart.
 pass()   { local id="$1"; shift; printf '  [ok]   %s\n' "$*"; machine CHECK "$id" ok "$*"; }
 fail()   { local id="$1"; shift; printf '  [FAIL] %s\n' "$*"; machine CHECK "$id" fail "$*"; DOCTOR_FAILS=$((DOCTOR_FAILS + 1)); }
 notice() { local id="$1"; shift; printf '  [warn] %s\n' "$*"; machine CHECK "$id" warn "$*"; DOCTOR_WARNS=$((DOCTOR_WARNS + 1)); }
@@ -173,7 +173,6 @@ distro_family() {
 }
 
 install_hint() {
-  # $1 check id; $2 what is missing; $3 debian packages; $4 fedora/suse packages; $5 arch packages
   local cmd=""
   case "$(distro_family)" in
     debian) cmd="sudo apt install $3" ;;
@@ -190,7 +189,6 @@ install_hint() {
 }
 
 check_cmd() {
-  # $1 command; $2 debian pkg; $3 fedora/suse pkg; $4 arch pkg
   if command -v "$1" >/dev/null 2>&1; then
     pass "cmd-$1" "$1 found"
   else
@@ -233,7 +231,6 @@ cmd_doctor() {
   elif [ "$RUNNER" = "proton" ]; then
     check_cmd python3 python3 python3 python
     check_cmd bwrap bubblewrap bubblewrap bubblewrap
-    # Proton's container needs bubblewrap to be allowed to create user namespaces.
     if command -v bwrap >/dev/null 2>&1; then
       if bwrap --ro-bind / / --dev /dev true >/dev/null 2>&1; then
         pass bwrap "bubblewrap can start a sandbox"
@@ -248,7 +245,6 @@ cmd_doctor() {
     if command -v wine >/dev/null 2>&1; then
       pass wine-version "Wine version: $(wine --version 2>/dev/null || echo unknown). Use one Wine version per prefix."
     fi
-    # Debian and Ubuntu need the 32-bit architecture enabled for 32-bit Wine.
     if command -v dpkg >/dev/null 2>&1; then
       if dpkg --print-foreign-architectures 2>/dev/null | grep -q i386; then
         pass i386-arch "32-bit (i386) packages enabled"
@@ -260,8 +256,8 @@ cmd_doctor() {
     fi
   fi
 
-  # Vulkan is needed for DXVK. The 32-bit loader matters because the games are 32-bit.
-  # (Inside a Flatpak, ldconfig sees the runtime and not the host, so the check would be wrong.)
+  # The 32-bit loader matters because the games are 32-bit.
+  # Inside a Flatpak ldconfig sees the runtime, not the host, so the check would be wrong.
   if [ "$IN_FLATPAK" = "0" ] && command -v ldconfig >/dev/null 2>&1; then
     # Capture first: "grep -q" closing the pipe early would make ldconfig fail under pipefail.
     local libs vulkan
@@ -289,8 +285,7 @@ cmd_doctor() {
     notice disk "less than $MIN_FREE_GB GB free where the data goes ($BASE)"
   fi
 
-  # Firewall: informational only. The script never changes firewall rules.
-  # (A Flatpak cannot see the host's firewall services.)
+  # A Flatpak cannot see the host's firewall services.
   local fw="" svc
   for svc in ufw firewalld; do
     if [ "$IN_FLATPAK" = "0" ] && command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet "$svc" 2>/dev/null; then
@@ -317,7 +312,6 @@ cmd_doctor() {
   fi
 }
 
-# Best-effort desktop notification, used for long steps when started from the menu (no terminal).
 notify() {
   [ -t 1 ] && return 0
   if command -v notify-send >/dev/null 2>&1; then
@@ -330,15 +324,14 @@ notify() {
   return 0
 }
 
-# Inside the Flatpak the 32-bit libraries come from two Flatpak extensions that Flatpak does not
-# install on its own for apps outside Flathub. Without them Proton's container fails silently.
+# Inside the Flatpak the 32-bit libraries come from two extensions that Flatpak does not install
+# for apps outside Flathub. Without them Proton's container fails silently.
 FLATPAK_RUNTIME_VERSION="25.08"
 flatpak_32bit_missing() {
-  # Succeeds (returns 0) when something is missing. Markers are the mounted extension files.
   [ ! -e /usr/lib/i386-linux-gnu/ld-linux.so.2 ] && return 0
   local d name found_gl32=0
-  # Every GL driver mounted for 64-bit (for example nvidia-550-107-02) needs the same 32-bit one.
-  # A host driver update changes this name and flatpak update does not fetch the 32-bit match.
+  # Each 64-bit GL driver (nvidia-550-107-02, say) needs the same 32-bit one.
+  # A host driver update changes the name and flatpak update does not fetch the 32-bit match.
   for d in /usr/lib/x86_64-linux-gnu/GL/nvidia-*; do
     [ -d "$d" ] || continue
     name="$(basename "$d")"
@@ -348,7 +341,6 @@ flatpak_32bit_missing() {
   [ "$found_gl32" = "1" ] || [ -d /usr/lib/i386-linux-gnu/GL/default ] || return 0
   return 1
 }
-# The exact command that fixes the above, for a program (such as the wizard) to show.
 flatpak_32bit_fix_command() {
   local ext="org.freedesktop.Platform.Compat.i386//${FLATPAK_RUNTIME_VERSION} org.freedesktop.Platform.GL32.default//${FLATPAK_RUNTIME_VERSION}" d
   for d in /usr/lib/x86_64-linux-gnu/GL/nvidia-*; do
@@ -370,9 +362,7 @@ and install the same name with GL32 in place of GL, for example org.freedesktop.
 EOF
 }
 
-# -------------------------------------------------------------- download ----
 download() {
-  # $1 url, $2 destination. Resumes a partial download.
   local url="$1" dest="$2"
   mkdir -p "$(dirname "$dest")"
   say "Downloading $(basename "$dest")"
@@ -385,10 +375,8 @@ download() {
   mv -f "$dest.part" "$dest"
 }
 
-# curl's own progress bar is for people. For programs, watch the growing file and print PROGRESS lines.
 # Without a size from the server there are no PROGRESS lines, so the reader shows "working".
 download_with_progress() {
-  # $1 url, $2 the .part file
   local url="$1" part="$2" total pid rc=0 size pct last=-1
   total="$(curl -fsIL -m 15 "$url" 2>/dev/null | awk 'tolower($1) == "content-length:" {v = $2} END {gsub(/\r/, "", v); print v}')" || total=""
   curl -fsSL --retry 3 --retry-delay 2 --connect-timeout 20 --speed-limit 1024 --speed-time 30 -C - -o "$part" "$url" 9>&- &
@@ -408,7 +396,6 @@ download_with_progress() {
 }
 
 verify_sha256() {
-  # $1 file; $2 expected hash
   local got
   got="$(sha256sum "$1" | awk '{print $1}')"
   if [ "$got" != "$2" ]; then
@@ -417,8 +404,6 @@ verify_sha256() {
   fi
 }
 
-# ---------------------------------------------------------------- runner ----
-# Everything that differs between Proton and Wine lives in this section.
 
 ensure_umu() {
   if [ -n "$UMU_RUN" ]; then
@@ -457,14 +442,12 @@ use_nvidia() {
     1) return 0 ;;
     0) return 1 ;;
   esac
-  # auto: an NVIDIA card together with another graphics card (laptops with PRIME).
   command -v lspci >/dev/null 2>&1 || return 1
   local cards
   cards="$(lspci 2>/dev/null | grep -iE 'vga|3d' || true)"
   [ "$(printf '%s\n' "$cards" | grep -c .)" -gt 1 ] && printf '%s\n' "$cards" | grep -qi nvidia
 }
 
-# Download the pinned Proton build. Other values of BFME_PROTONPATH are passed to umu unchanged.
 ensure_proton() {
   [ "$PROTONPATH_VALUE" = "$DEFAULT_PROTONPATH" ] || return 0
   local dir="$BASE/proton/$DEFAULT_PROTONPATH"
@@ -472,8 +455,8 @@ ensure_proton() {
     local tarball="$DOWNLOADS/$DEFAULT_PROTONPATH.tar.gz"
     download "$PROTON_URL" "$tarball"
     verify_sha256 "$tarball" "$PROTON_SHA256"
-    # Extract next to the final place and rename when done. The folder then exists only when it is complete, so
-    # an interrupted extraction cannot leave a Proton that looks installed but is missing files.
+    # Extract beside the final place and rename when done, so an interrupted extraction
+    # cannot leave a Proton that looks installed but is missing files.
     local tmp="$BASE/proton/.extracting"
     rm -rf "$dir" "$tmp"
     mkdir -p "$tmp"
@@ -486,15 +469,12 @@ ensure_proton() {
   PROTONPATH_VALUE="$dir"
 }
 
-# Run a program with the shared prefix.
-# $1: "inprefix" (use an existing prefix) or "create" (first start, may create it); the rest is the command.
 run_in_runner() {
   local mode="$1"
   shift
   (
     exec 9>&-   # the setup lock (acquire_setup_lock) must not follow the programs we start
     export WINEPREFIX="$PREFIX"
-    # DXVK otherwise writes its shader cache into whatever folder the script was started from.
     mkdir -p "$BASE/dxvk-cache"
     export DXVK_STATE_CACHE_PATH="$BASE/dxvk-cache"
     if use_nvidia; then
@@ -504,7 +484,6 @@ run_in_runner() {
       export PROTONPATH="$PROTONPATH_VALUE" GAMEID=0
       # runinprefix stops umu from waiting for another Wine session. Do not use it on the first start.
       if [ "$mode" = "inprefix" ]; then export PROTON_VERB=runinprefix; fi
-      # Anything else in the prefix is kept; umu-run sets up Proton and the runtime on first use.
     else
       export WINEARCH=win64 DXVK_CONFIG_FILE="$BASE/dxvk.conf"
     fi
@@ -523,9 +502,7 @@ run_in_runner() {
   )
 }
 
-# Registry write inside the prefix.
 reg_add() {
-  # $1 key; $2 value name; $3 type; $4 data
   if [ "$RUNNER" = "proton" ]; then
     run_in_runner inprefix reg add "$1" /v "$2" /t "$3" /d "$4" /f >>"$LOGS/prefix-settings.log" 2>&1 \
       || warn "Could not set $2. See $LOGS/prefix-settings.log"
@@ -535,13 +512,11 @@ reg_add() {
   fi
 }
 
-# The folders Wine makes first. They can exist long before the prefix is usable.
 prefix_dirs_exist() {
   [ -d "$PREFIX/drive_c/windows" ] && [ -d "$PREFIX/drive_c/users/$WINE_USER" ]
 }
 
-# A prefix is ready when it has its folders and its creation was not interrupted: create_prefix leaves
-# .bfme-creating behind until it has finished, so a killed creation is redone instead of trusted.
+# create_prefix leaves .bfme-creating behind until it finishes, so a killed creation is redone.
 prefix_ready() {
   [ ! -e "$PREFIX/.bfme-creating" ] && prefix_dirs_exist
 }
@@ -568,13 +543,11 @@ create_prefix() {
   if [ "$RUNNER" = "proton" ]; then
     say "Creating the Proton prefix. The first start downloads Proton and takes a few minutes."
     notify "First start: setting up Proton. This takes a few minutes."
-    # "umu-run ''" builds the prefix and then exits with an error because there is
-    # nothing to run. That is expected, so the result is checked by the files created.
+    # "umu-run ''" builds the prefix, then exits with an error because there is nothing to run.
+    # That is expected, so check the files it created.
     run_in_runner create "" >"$LOGS/prefix-create.log" 2>&1 || true
   else
     say "Creating the Wine prefix."
-    # The Windows 10 setting, DXVK (fast menus), D3DX9 (units in BFME 2 and RotWK) and fonts
-    # (the Arena password box) come from winetricks.
     { run_in_runner create wineboot -u \
         && run_in_runner create "$WINETRICKS" -q corefonts win10 dxvk d3dx9; } >"$LOGS/prefix-create.log" 2>&1 || true
   fi
@@ -588,8 +561,7 @@ create_prefix() {
   rm -f "$PREFIX/.bfme-creating"
 }
 
-# Settings the games and apps need. Tested in both runners (see the project notes).
-# They are applied once per SETTINGS_VERSION. Raise it to roll out a new setting.
+# SETTINGS_VERSION: raise it to roll out a new setting.
 SETTINGS_VERSION=3
 apply_prefix_settings() {
   local marker="$PREFIX/.bfme-settings-v$SETTINGS_VERSION"
@@ -598,18 +570,16 @@ apply_prefix_settings() {
   : >"$LOGS/prefix-settings.log"
   local dll
 
-  # Use the games' own Microsoft C++ runtime, not the runner's. The runner's copy rounds
-  # numbers slightly differently, so a Linux player and a Windows player drift apart and
-  # the match ends with "Out of Sync". dinput8 is set because the tested setups set it.
+  # Use the games' own Microsoft C++ runtime. The runner's copy rounds numbers slightly differently,
+  # so Linux and Windows players drift apart and the match ends in "Out of Sync".
   for dll in mfc71 msvcp71 msvcr71 dinput8; do
     reg_add 'HKCU\Software\Wine\DllOverrides' "$dll" REG_SZ 'native,builtin'
   done
 
-  # Without this, the launcher does not repaint a tab correctly after you leave the Multiplayer tab.
+  # Without this the launcher does not repaint a tab after you leave the Multiplayer tab.
   reg_add 'HKCU\Software\Microsoft\Avalon.Graphics' DisableHWAcceleration REG_DWORD 1
 
   if [ "$RUNNER" = "proton" ]; then
-    # Make sure the games use DXVK (Proton's Direct3D to Vulkan layer).
     for dll in d3d8 d3d9 d3d11 dxgi; do
       reg_add 'HKCU\Software\Wine\DllOverrides' "$dll" REG_SZ 'native,builtin'
     done
@@ -621,17 +591,14 @@ d3d9.floatEmulation = strict
 d3d9.maxFrameLatency = 1
 d3d9.presentInterval = 0
 EOF
-    # Normal 100% text size for the launcher.
     reg_add 'HKCU\Control Panel\Desktop' LogPixels REG_DWORD 96
   fi
 
   : >"$marker"
 }
 
-# Only one setup at a time, so two never write the same files. Everything that can change the setup takes the lock;
-# start_app gives it back before an app starts, so a running launcher does not block a later install.
-# The lock is file descriptor 9 of this script and ends with it. Programs started from here must close it (9>&-),
-# or a download left behind by a killed script would keep the lock and block every later run.
+# One setup at a time, so two never write the same files. start_app releases the lock before an app starts.
+# The lock is fd 9. Programs started here must close it (9>&-), or a download left by a killed script keeps the lock.
 SETUP_LOCK_HELD=0
 acquire_setup_lock() {
   [ "$SETUP_LOCK_HELD" = "1" ] && return 0
@@ -654,7 +621,6 @@ release_setup_lock() {
   SETUP_LOCK_HELD=0
 }
 
-# Everything after the runner is in place: create the prefix and apply its settings.
 prepare_prefix() {
   prefix_ready || create_prefix
   if [ "$RUNNER" = "wine" ] && [ -f "$PREFIX/.bfme-wine-version" ]; then
@@ -676,7 +642,6 @@ ensure_prefix() {
 }
 
 wait_for_stable_file() {
-  # $1 file; $2 timeout in seconds. Succeeds when the file exists and its size is unchanged for 3 seconds.
   local file="$1" limit="$2" waited=0 last=-1 size
   while [ "$waited" -lt "$limit" ]; do
     if [ -f "$file" ]; then
@@ -690,9 +655,7 @@ wait_for_stable_file() {
   return 1
 }
 
-# ----------------------------------------------------------- the launcher ----
-# Ends every program in the Wine session (the "Wine server"). Needed because the runner waits for the whole
-# session, not just the program it started.
+# Ends every program in the Wine session. The runner waits for the whole session, not just its program.
 stop_wine_session() {
   local ws="" candidate
   if [ "$RUNNER" = "wine" ]; then
@@ -711,8 +674,7 @@ stop_wine_session() {
   WINEPREFIX="$PREFIX" timeout 20 "$ws" -w >/dev/null 2>&1 || true   # wait until it has saved and exited
 }
 
-# The launcher is installed when its file is there and its setup was not interrupted: install_launcher leaves
-# .bfme-launcher-installing behind until it has finished, so a half-copied file is not mistaken for a launcher.
+# install_launcher leaves .bfme-launcher-installing behind until it finishes, so a half-copied file is not taken for a launcher.
 launcher_installed() {
   [ -f "$LAUNCHER_EXE" ] && [ ! -e "$PREFIX/.bfme-launcher-installing" ]
 }
@@ -723,16 +685,15 @@ install_launcher() {
   local setup="$DOWNLOADS/AllInOneLauncherSetup.exe"
   [ -f "$setup" ] || download "$LAUNCHER_SETUP_URL" "$setup"
   say "Installing the launcher. It may open for a moment; the setup closes it again."
-  # Start clean: a leftover half-copied file would look finished to wait_for_stable_file below.
+  # A leftover half-copied file would look finished to wait_for_stable_file.
   rm -f "$LAUNCHER_EXE"
   : >"$PREFIX/.bfme-launcher-installing"
   # The first start of the setup must not use runinprefix.
-  # (9>&- because a function started with & runs in a copy of this shell, which would otherwise hold the lock.)
+  # 9>&- because a function run with & copies this shell and would hold the lock.
   run_in_runner create "$setup" >"$LOGS/launcher-setup.log" 2>&1 9>&- &
   local setup_pid=$! installed=0
-  # When the setup finishes it starts the launcher, and the runner (Proton) does not return until every program
-  # in the session has ended, so waiting for the setup would wait until someone closes the launcher.
-  # Wait for the installed file to appear and stop growing instead, then end the session.
+  # The setup starts the launcher, and Proton does not return until every program in the session ends.
+  # Wait for the installed file to appear and stop growing, then end the session.
   wait_for_stable_file "$LAUNCHER_EXE" 180 && installed=1
   stop_wine_session || true
   wait "$setup_pid" 2>/dev/null || true
@@ -745,7 +706,10 @@ cmd_launcher() {
   start_app "launcher" "$LAUNCHER_DIR" "$LAUNCHER_EXE"
 }
 
-# -------------------------------------------------------------- the arena ----
+arena_installed() {
+  [ -f "$ARENA_EXE" ]
+}
+
 arena_remote_hash() {
   curl -fsS -m 10 "$ARENA_SERVER_HOST/api/applications/versionHash?name=online-arena&version=${ARENA_BRANCH}" 2>/dev/null || true
 }
@@ -792,30 +756,24 @@ cmd_arena() {
   start_app "arena" "$ARENA_DIR" "$ARENA_EXE"
 }
 
-# ------------------------------------------------------- age of the ring ----
-# Optional. ModDB only lets a browser download the installer, so the player downloads the zip and gives us
-# its path. The steps are aotr-check, aotr-unpack, aotr-install and aotr-settings.
+# ModDB only lets a browser download the installer, so the player gives us the zip's path.
 
-# Installed when the Launcher is there and the installer was not interrupted (same idea as the launcher).
 aotr_installed() {
   [ -f "$AOTR_EXE" ] && [ ! -e "$PREFIX/.bfme-aotr-installing" ]
 }
 
-# Apparent size in bytes of a folder (0 while it does not exist).
 dir_bytes() {
-  # du exits non-zero when a file vanishes while it counts (the installer deletes temporary files), but it still
-  # prints a size. Take that first number and ignore the exit status, so the answer is always exactly one number.
+  # du exits non-zero when a file vanishes mid-count (the installer deletes temp files) but still prints a size.
+  # Take the first number and ignore the exit status.
   local n
   n="$(du -sb "$1" 2>/dev/null | awk 'NR == 1 {print $1}' || true)"
   case "$n" in ""|*[!0-9]*) n=0 ;; esac
   printf '%s' "$n"
 }
 
-# Print PROGRESS while process $1 runs. $2 is a function that prints the percent done, or nothing when it cannot tell
-# yet. Capped at 99: only the process ending says it is finished. A cancel request stops the process; $3 is run to
-# clean up after it.
+# Print PROGRESS while process $1 runs. $2 prints the percent done (or nothing). Capped at 99: only the process ending means done.
+# A cancel request stops the process; $3 cleans up after it.
 watch_progress() {
-  # $1 pid; $2 function printing a percent; $3 command to stop what the pid started (may be empty)
   local pid="$1" measure="$2" stop="${3:-}" pct last=-1
   while kill -0 "$pid" 2>/dev/null; do
     if [ "$CANCEL_REQUESTED" = "1" ]; then
@@ -835,20 +793,17 @@ watch_progress() {
   done
 }
 
-# Percent of the unpacked files written so far (the zip says how big they will be).
 aotr_unpack_percent() {
   [ "$AOTR_UNPACKED_BYTES" -gt 0 ] || return 0
   echo $(( $(dir_bytes "$AOTR_UNPACK") * 100 / AOTR_UNPACKED_BYTES ))
 }
 
-# Percent of the installer's data files it has read. The installer reads its .bin files in order from start to end,
-# so how far into them it is says how far it is. It is found by the files it has open (matched by inode, which is the
-# same from inside and outside the Wine container). Prints nothing when it cannot be seen yet, for example between
-# two files or before it has started.
+# Percent of the installer's .bin files read. It reads them in order, so position in them is progress.
+# Found by open files, matched by inode (same inside and outside the Wine container).
+# Prints nothing when it cannot see them yet.
 aotr_install_percent() {
   local -A start=()
   local total=0 best=-1 key size path fd pos line
-  # The slices are named <installer>-<number><letter>.bin and are read in that order (1a, 1b, ..., 2a, ...).
   while IFS=' ' read -r key size; do
     start[$key]=$total
     total=$(( total + size ))
@@ -856,7 +811,6 @@ aotr_install_percent() {
     | sed -E 's/^(.*-)([0-9]+)([a-z])\.bin$/\2 \3 &/' | sort -k1,1n -k2,2 | cut -d' ' -f3- \
     | while IFS= read -r name; do stat -c '%d:%i %s' -- "$AOTR_UNPACK/$name"; done)
   [ "$total" -gt 0 ] || return 0
-  # Every open file of every process, as "<dev>:<inode> /proc/<pid>/fd/<fd>".
   while IFS=' ' read -r key path; do
     [ -n "${start[$key]+x}" ] || continue
     fd="${path#/proc/}"
@@ -872,10 +826,8 @@ aotr_install_percent() {
   echo $(( pos > 100 ? 100 : pos ))
 }
 
-# The download is a ZIP64 archive of about 14 GB packed with Deflate64. The unzip and bsdtar in the Flatpak runtime cannot
-# open it ("start of central directory not found"), so it is listed and unpacked with 7-Zip (the Flatpak ships it).
-# Prints "<size>\t<name>" per entry. Fails when the file is not a complete zip (a browser download that is not
-# finished has no zip directory at its end).
+# The download is a ZIP64 archive (~14 GB, Deflate64). The Flatpak runtime's unzip and bsdtar cannot open it, so 7-Zip lists and unpacks it.
+# Prints "<size>\t<name>" per entry. Fails on an incomplete zip (an unfinished browser download has no directory).
 aotr_zip_entries() {
   local sevenzip="$1" zip="$2" out
   out="$("$sevenzip" l -slt -ba -- "$zip" 2>/dev/null)" || return 1
@@ -885,8 +837,7 @@ aotr_zip_entries() {
     END          { if (path != "") print size "\t" path }'
 }
 
-# Check the zip the player downloaded. Sets AOTR_EXE_NAME (the installer inside it) and AOTR_UNPACKED_BYTES.
-# (Not called as $(...): a die inside that would lose its status line.)
+# Not called as $(...): a die there would lose its status line.
 AOTR_EXE_NAME=""
 AOTR_UNPACKED_BYTES=0
 aotr_check_zip() {
@@ -908,7 +859,6 @@ aotr_check_zip() {
   AOTR_UNPACKED_BYTES="$(printf '%s\n' "$listing" | awk -F'\t' '{s += $1} END {printf "%d", s}')"
 }
 
-# Check there is room for the unpacked files and the install (aotr_check_zip has to run first).
 aotr_check_space() {
   local need free
   need=$(( AOTR_UNPACKED_BYTES + AOTR_UNPACKED_BYTES * AOTR_INSTALL_RATIO_PERCENT / 100 - $(dir_bytes "$AOTR_UNPACK") - $(dir_bytes "$AOTR_DIR") ))
@@ -921,7 +871,6 @@ aotr_check_space() {
 
 readonly AOTR_NEED_7ZIP="7-Zip is needed to read the download. Install it (Debian/Ubuntu: p7zip-full, Fedora: 7zip, Arch: 7zip) and try again."
 
-# The 7-Zip program: 7zz (the Flatpak ships it), or a system 7z / 7za.
 aotr_sevenzip() {
   local c
   for c in 7zz 7z 7za; do
@@ -930,14 +879,14 @@ aotr_sevenzip() {
   return 1
 }
 
-# Unpack the zip into downloads/aotr. A finished unpack leaves .complete, so a resumed install skips it.
+# A finished unpack leaves .complete, so a resumed install skips it.
 aotr_unpack() {
   local zip="$1" pid rc=0 sevenzip
   if [ -f "$AOTR_UNPACK/.complete" ] && [ "$(cat "$AOTR_UNPACK/.complete")" = "$(basename "$zip")" ]; then return 0; fi
   sevenzip="$(aotr_sevenzip)" || die "$AOTR_NEED_7ZIP"
   rm -rf -- "$AOTR_UNPACK"
   mkdir -p "$AOTR_UNPACK"
-  # 7-Zip also checks every file's CRC, so a damaged download fails here and not later in the installer.
+  # 7-Zip checks every file's CRC, so a damaged download fails here, not in the installer.
   "$sevenzip" x -y -bd -bso0 -bsp0 -o"$AOTR_UNPACK" "$zip" >"$LOGS/aotr-unpack.log" 2>&1 9>&- &
   pid=$!
   watch_progress "$pid" aotr_unpack_percent
@@ -947,7 +896,6 @@ aotr_unpack() {
   machine PROGRESS 100
 }
 
-# Run the Age of the Ring installer without its own window; the wizard shows the progress instead.
 aotr_run_installer() {
   local exe="$1" pid rc=0
   : >"$PREFIX/.bfme-aotr-installing"
@@ -956,7 +904,6 @@ aotr_run_installer() {
   pid=$!
   watch_progress "$pid" aotr_install_percent stop_wine_session
   wait "$pid" || rc=$?
-  # Keep the installer's own log with ours.
   if [ -f "$PREFIX/drive_c/aotr-install.log" ]; then
     mv -f "$PREFIX/drive_c/aotr-install.log" "$LOGS/aotr-installer.log"
   fi
@@ -970,9 +917,7 @@ aotr_run_installer() {
 cmd_aotr_install() {
   local zip="${1:-}"
   [ -n "$zip" ] || die "Use: aotr-install <path to AotR_Standalone_..._Installer.zip>. Download it from $AOTR_PAGE_URL"
-  if ! prefix_ready || ! launcher_installed || [ ! -f "$ARENA_EXE" ]; then
-    die "Finish the setup first. Run: install"
-  fi
+  prefix_ready || die "Set up the game environment first. Run: prepare"
   acquire_setup_lock
   mkdir -p "$LOGS"
   step_start aotr-check
@@ -990,10 +935,8 @@ cmd_aotr_install() {
   step_start aotr-settings
   rm -rf -- "$AOTR_UNPACK"
   step_done aotr-settings
-  if [ "$IN_FLATPAK" != "1" ] && [ -x "$BIN/bfme-linux-setup.sh" ]; then
-    write_aotr_shortcut
-    update-desktop-database "$APPS_DIR" >/dev/null 2>&1 || true
-  fi
+  cmd_shortcuts || true
+  report_status
   machine DONE
   say ""
   say "Age of the Ring is installed. You can delete $(basename "$zip") now."
@@ -1005,7 +948,6 @@ cmd_aotr() {
   start_app "aotr" "$AOTR_DIR" "$AOTR_EXE"
 }
 
-# ------------------------------------------------------------------ games ----
 cmd_game() {
   local dir exe
   case "${1:-}" in
@@ -1014,16 +956,14 @@ cmd_game() {
     rotwk) dir=RotWK; exe=lotrbfme2ep1.exe ;;
     *) die "Use: game bfme1|bfme2|rotwk" ;;
   esac
-  # Do not build anything here: a game can only exist in a prefix that is already set up.
+  # A game can only exist in a prefix that is already set up, so build nothing here.
   prefix_ready || die "Nothing is set up yet. Run: install"
+  ensure_prefix   # applies newer prefix settings
   [ -d "$PREFIX/drive_c/$dir" ] || die "$dir is not installed. Install it in the Launcher first."
-  ensure_prefix   # picks up newer prefix settings; changes nothing if they are current
   start_app "$dir" "$PREFIX/drive_c/$dir" "$PREFIX/drive_c/$dir/$exe"
 }
 
-# ------------------------------------------------------------- start apps ----
 start_app() {
-  # $1 name; $2 working dir; $3 exe
   local name="$1" dir="$2" exe="$3"
   release_setup_lock
   mkdir -p "$LOGS"
@@ -1032,63 +972,168 @@ start_app() {
   say "Starting $name. Log: $log"
   cd "$dir"
   run_in_runner inprefix "$exe" >"$log" 2>&1 || true
-  # Keep only the 10 newest logs per app.
   # shellcheck disable=SC2012
   ls -1t "$LOGS/$name-"*.log 2>/dev/null | tail -n +11 | while IFS= read -r old; do rm -f "$old"; done
 }
 
-# -------------------------------------------------------------- shortcuts ----
+# Inside the Flatpak the shortcuts run the app (`flatpak run`) and go in the host's menu folder.
+# The Flatpak exports no entry of its own: one for an uninstalled program would lead nowhere.
+
+readonly RELEASE_FLATPAK_ID="com.jgbmichalski.BfmeInstaller"
+readonly SHORTCUT_PROGRAMS=(launcher arena aotr)
+
+program_installed() {
+  case "$1" in
+    launcher) launcher_installed ;;
+    arena)    arena_installed ;;
+    aotr)     aotr_installed ;;
+    *)        return 1 ;;
+  esac
+}
+
+shortcut_name() {
+  case "$1" in
+    launcher) printf 'BFME All-in-One Launcher' ;;
+    arena)    printf 'BFME Online Arena' ;;
+    aotr)     printf 'Age of the Ring' ;;
+  esac
+}
+
+shortcut_comment() {
+  case "$1" in
+    launcher) printf 'Install, mod and manage the Battle for Middle-earth games' ;;
+    arena)    printf 'Play Battle for Middle-earth online' ;;
+    aotr)     printf 'Play the Age of the Ring mod for Battle for Middle-earth 2' ;;
+  esac
+}
+
+# The Flatpak's shortcuts keep the names of the entries the app used to export, so panel pins still work.
+shortcut_file() {
+  if [ "$IN_FLATPAK" != "1" ]; then printf 'bfme-%s.desktop' "$1"; return 0; fi
+  case "$1" in
+    launcher) printf '%s.Launcher.desktop' "$FLATPAK_ID" ;;
+    arena)    printf '%s.Arena.desktop' "$FLATPAK_ID" ;;
+    aotr)     printf '%s.Aotr.desktop' "$FLATPAK_ID" ;;
+  esac
+}
+
+# The wrapper Flatpak exports for this app. It makes the right TryExec: a desktop hides a shortcut whose TryExec is gone.
+# BFME_FLATPAK_INFO and BFME_MOUNTINFO exist only so tests can stand in for a sandbox.
+flatpak_wrapper() {
+  local info="${BFME_FLATPAK_INFO:-/.flatpak-info}" app_path
+  [ -r "$info" ] || return 0
+  app_path="$(awk '/^original-app-path=/ {orig = substr($0, 19)} /^app-path=/ {app = substr($0, 10)} END {print (orig != "" ? orig : app)}' "$info")"
+  case "$app_path" in
+    *"app/$FLATPAK_ID/"*) printf '%sexports/bin/%s' "${app_path%%app/"$FLATPAK_ID"/*}" "$FLATPAK_ID" ;;
+  esac
+}
+
+# Whether the host's menu folder is really shared into the sandbox. Without the permission (a `flatpak override`, Flatseal)
+# writes land in sandbox scratch space and never reach the menu. A shared folder has its own mount or sits under a bigger share;
+# an unshared one sits under `/` only. Resolve the path first: the list has real paths and /home links to /var/home on some systems.
+menu_folder_reachable() {
+  [ "$IN_FLATPAK" = "1" ] || return 0
+  local real
+  real="$(realpath -m -- "$APPS_DIR" 2>/dev/null)" || real="$APPS_DIR"
+  awk -v dir="$real" '{
+    mount_point = $5; gsub(/\\040/, " ", mount_point)   # a space in a path is written \040
+    if (mount_point != "/" && (mount_point == dir || index(dir, mount_point "/") == 1)) found = 1
+  } END { exit !found }' "${BFME_MOUNTINFO:-/proc/self/mountinfo}"
+}
+
 self_path() {
   local src="${BASH_SOURCE[0]}"
   [ -n "$src" ] || die "Cannot work out where this script is."
   (cd "$(dirname "$src")" && printf '%s/%s' "$(pwd)" "$(basename "$src")")
 }
 
-write_desktop() {
-  # $1 file name; $2 display name; $3 comment; $4 command argument
-  cat >"$APPS_DIR/$1" <<EOF
+shortcut_text() {
+  local program="$1" name comment wrapper
+  name="$(shortcut_name "$program")"
+  comment="$(shortcut_comment "$program")"
+  if [ "$IN_FLATPAK" = "1" ]; then
+    # A copy built under another app ID (dev/install-local.sh) says so, so it can sit beside the release.
+    [ "$FLATPAK_ID" = "$RELEASE_FLATPAK_ID" ] || name="$name (Dev)"
+    wrapper="$(flatpak_wrapper)"
+    printf '%s\n' '[Desktop Entry]' 'Type=Application' "Name=$name" "Comment=$comment" \
+      "Exec=flatpak run --command=bfme-installer $FLATPAK_ID --open $program"
+    [ -z "$wrapper" ] || printf '%s\n' "TryExec=$wrapper"
+    printf '%s\n' "Icon=$FLATPAK_ID" 'Terminal=false' 'Categories=Game;' 'StartupNotify=true' "X-Flatpak=$FLATPAK_ID"
+  else
+    cat <<EOF
 [Desktop Entry]
 Type=Application
-Name=$2
-Comment=$3
-Exec=env BFME_HOME="$BASE" BFME_RUNNER="$RUNNER" "$BIN/bfme-linux-setup.sh" $4
+Name=$name
+Comment=$comment
+Exec=env BFME_HOME="$BASE" BFME_RUNNER="$RUNNER" "$BIN/bfme-linux-setup.sh" $program
 Icon=applications-games
 Terminal=false
 Categories=Game;
 StartupNotify=true
 EOF
+  fi
 }
 
-write_aotr_shortcut() {
-  write_desktop "bfme-aotr.desktop" "Age of the Ring" "Play the Age of the Ring mod for BFME 2" "aotr"
+# Leave a correct shortcut alone, so the desktop does not rebuild its menu on every wizard start.
+sync_shortcut() {
+  local program="$1" file text
+  file="$APPS_DIR/$(shortcut_file "$program")"
+  if ! program_installed "$program"; then
+    rm -f "$file" || return 1
+    return 0
+  fi
+  text="$(shortcut_text "$program")"
+  if [ -f "$file" ] && [ "$(cat "$file")" = "$text" ]; then return 0; fi
+  mkdir -p "$APPS_DIR" || return 1
+  if ! { printf '%s\n' "$text" >"$file.new" && mv -f "$file.new" "$file"; }; then
+    rm -f "$file.new"
+    return 1
+  fi
 }
 
 cmd_shortcuts() {
-  if [ "$IN_FLATPAK" = "1" ]; then
-    say "The menu entries are provided by the Flatpak. Nothing to do."
-    return
+  local program any=0 failed=0
+  for program in "${SHORTCUT_PROGRAMS[@]}"; do
+    if program_installed "$program"; then any=1; fi
+  done
+  # With nothing installed, create nothing (a first start leaves no folders). Leftover entries are still removed below.
+  if [ "$any" = "1" ]; then
+    if [ "$IN_FLATPAK" = "1" ]; then
+      if ! menu_folder_reachable; then
+        warn "This app cannot reach your menu folder ($APPS_DIR), so there are no shortcuts. To give it access: flatpak override --user --filesystem=xdg-data/applications:create $FLATPAK_ID"
+        return 1
+      fi
+    else
+      # The shortcuts run this script, so a copy of it must stay where they point.
+      local me
+      mkdir -p "$BIN"
+      me="$(self_path)"
+      if [ "$me" != "$BIN/bfme-linux-setup.sh" ]; then cp -f "$me" "$BIN/bfme-linux-setup.sh"; fi
+      chmod +x "$BIN/bfme-linux-setup.sh"
+    fi
   fi
-  mkdir -p "$BIN" "$APPS_DIR"
-  local me
-  me="$(self_path)"
-  if [ "$me" != "$BIN/bfme-linux-setup.sh" ]; then
-    cp -f "$me" "$BIN/bfme-linux-setup.sh"
+  for program in "${SHORTCUT_PROGRAMS[@]}"; do
+    sync_shortcut "$program" || failed=1
+  done
+  if [ "$failed" = "1" ]; then
+    warn "Could not update the shortcuts in $APPS_DIR."
+    return 1
   fi
-  chmod +x "$BIN/bfme-linux-setup.sh"
-  write_desktop "bfme-launcher.desktop" "BFME All-in-One Launcher" "Install, mod and manage the BFME games" "launcher"
-  write_desktop "bfme-arena.desktop" "BFME Online Arena" "Play BFME online" "arena"
-  if aotr_installed; then write_aotr_shortcut; else rm -f "$APPS_DIR/bfme-aotr.desktop"; fi
-  if command -v update-desktop-database >/dev/null 2>&1; then
+  if [ "$IN_FLATPAK" != "1" ] && [ "$any" = "1" ] && command -v update-desktop-database >/dev/null 2>&1; then
     update-desktop-database "$APPS_DIR" >/dev/null 2>&1 || true
   fi
-  say "Shortcuts written to $APPS_DIR"
+  say "Shortcuts are up to date in $APPS_DIR"
 }
 
-# ---------------------------------------------------------------- install ----
-# The steps are reported as status lines (--machine): doctor, runner, prefix, launcher, arena, shortcuts.
-cmd_install() {
+# Each job reports its steps as status lines and ends with DONE. Rerunning skips what is done.
+#   prepare           steps: doctor, runner, prefix            (the game environment)
+#   launcher-install  steps: launcher, arena, shortcuts        (the Launcher and the Arena)
+#   aotr-install      steps: aotr-check, aotr-unpack, aotr-install, aotr-settings
+#   install           prepare, then launcher-install           (what the terminal setup does)
+
+prepare_environment() {
   step_start doctor
-  cmd_doctor || die "Fix the problems above, then run install again."
+  cmd_doctor || die "Fix the problems above, then run $1 again."
   step_done doctor
   say ""
   acquire_setup_lock
@@ -1098,6 +1143,10 @@ cmd_install() {
   step_start prefix
   prepare_prefix
   step_done prefix
+}
+
+install_launcher_and_arena() {
+  acquire_setup_lock
   if launcher_installed; then
     step_skip launcher
   else
@@ -1108,49 +1157,72 @@ cmd_install() {
   step_start arena
   install_or_update_arena
   step_done arena
-  if [ "$IN_FLATPAK" = "1" ]; then
-    step_skip shortcuts
-    cmd_shortcuts
-  else
-    step_start shortcuts
-    cmd_shortcuts
-    step_done shortcuts
-  fi
+  step_start shortcuts
+  cmd_shortcuts || true   # the programs are installed whatever happens here, and cmd_shortcuts says what went wrong
+  step_done shortcuts
+}
+
+cmd_prepare() {
+  prepare_environment prepare
+  report_status
+  machine DONE
+  say ""
+  say "The game environment is ready. Install a program into it: launcher-install or aotr-install <zip>."
+}
+
+cmd_launcher_install() {
+  prefix_ready || die "Set up the game environment first. Run: prepare"
+  install_launcher_and_arena
+  report_status
   machine DONE
   say ""
   say "Done. Start 'BFME All-in-One Launcher' to install the games, and 'BFME Online Arena' to play online."
   say "Do not switch patches in the launcher after a game is installed. On Wine this once broke the BFME 2 files."
 }
 
-# ----------------------------------------------------------------- status ----
-cmd_status() {
-  say "Runner:     $RUNNER$([ "$RUNNER" = proton ] && printf ' (%s)' "$PROTONPATH_VALUE")"
-  say "Data dir:   $BASE"
-  say "Prefix:     $PREFIX $(prefix_ready && echo '(ready)' || echo '(not created)')"
-  say "Launcher:   $(launcher_installed && echo installed || echo 'not installed')"
-  say "Arena:      $([ -f "$ARENA_EXE" ] && echo installed || echo 'not installed')"
-  say "Age of the Ring: $(aotr_installed && echo installed || echo 'not installed')"
-  local g
-  for g in BFME1 BFME2 RotWK; do
-    say "$(printf '%-11s' "$g:") $([ -d "$PREFIX/drive_c/$g" ] && echo 'folder present' || echo 'not installed')"
-  done
-  # For programs: setup is complete when the prefix, launcher and Arena are all there.
-  local p="missing" l="missing" a="missing" done_all="no"
+cmd_install() {
+  prepare_environment install
+  install_launcher_and_arena
+  report_status
+  machine DONE
+  say ""
+  say "Done. Start 'BFME All-in-One Launcher' to install the games, and 'BFME Online Arena' to play online."
+  say "Do not switch patches in the launcher after a game is installed. On Wine this once broke the BFME 2 files."
+}
+
+report_status() {
+  [ "$MACHINE" = "1" ] || return 0
+  # Complete means the game environment is ready and at least one program is installed.
+  local p="missing" l="missing" a="missing" o="missing" done_all="no"
   prefix_ready && p="ready"
   launcher_installed && l="installed"
-  [ -f "$ARENA_EXE" ] && a="installed"
-  if [ "$p" = "ready" ] && [ "$l" = "installed" ] && [ "$a" = "installed" ]; then done_all="yes"; fi
+  arena_installed && a="installed"
+  aotr_installed && o="installed"
+  if [ "$p" = "ready" ] && { [ "$l" = "installed" ] || [ "$a" = "installed" ] || [ "$o" = "installed" ]; }; then done_all="yes"; fi
   machine STATUS runner "$RUNNER"
   machine STATUS prefix "$p"
   machine STATUS launcher "$l"
   machine STATUS arena "$a"
-  if aotr_installed; then machine STATUS aotr installed; else machine STATUS aotr missing; fi
-  # A game counts as installed when its program is there, not just its folder.
+  machine STATUS aotr "$o"
   local game
   for game in bfme1:BFME1/lotrbfme.exe bfme2:BFME2/lotrbfme2.exe rotwk:RotWK/lotrbfme2ep1.exe; do
     if [ -f "$PREFIX/drive_c/${game#*:}" ]; then machine STATUS "${game%%:*}" installed; else machine STATUS "${game%%:*}" missing; fi
   done
   machine STATUS complete "$done_all"
+}
+
+cmd_status() {
+  say "Runner:     $RUNNER$([ "$RUNNER" = proton ] && printf ' (%s)' "$PROTONPATH_VALUE")"
+  say "Data dir:   $BASE"
+  say "Prefix:     $PREFIX $(prefix_ready && echo '(ready)' || echo '(not created)')"
+  say "Launcher:   $(launcher_installed && echo installed || echo 'not installed')"
+  say "Arena:      $(arena_installed && echo installed || echo 'not installed')"
+  say "Age of the Ring: $(aotr_installed && echo installed || echo 'not installed')"
+  local g
+  for g in BFME1 BFME2 RotWK; do
+    say "$(printf '%-11s' "$g:") $([ -d "$PREFIX/drive_c/$g" ] && echo 'folder present' || echo 'not installed')"
+  done
+  report_status
 }
 
 cmd_reset_prefix() {
@@ -1159,38 +1231,38 @@ cmd_reset_prefix() {
     ""|"/"|"$HOME") die "Refusing to delete '$PREFIX'." ;;
   esac
   acquire_setup_lock
-  # A program that is still running would have its files deleted from under it, and Wine would write its
-  # registry back afterwards. End the Wine session first (stop_wine_session also waits for it to finish).
+  # End the Wine session first: a running program would lose its files, and Wine would write its registry back afterwards.
   if [ "$RUNNER" = "proton" ] && [ "$PROTONPATH_VALUE" = "$DEFAULT_PROTONPATH" ] && [ -d "$BASE/proton/$DEFAULT_PROTONPATH" ]; then
     PROTONPATH_VALUE="$BASE/proton/$DEFAULT_PROTONPATH"
   fi
   if [ -d "$PREFIX" ]; then stop_wine_session || true; fi
   rm -rf -- "$PREFIX"
-  rm -f "$APPS_DIR/bfme-aotr.desktop"
+  cmd_shortcuts || true
   say "Prefix deleted."
 }
 
 cmd_help() { sed -n '2,/^set -euo/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//'; }
 
-# ------------------------------------------------------------------- main ----
 main() {
   if [ "${1:-}" = "--machine" ]; then MACHINE=1; shift; fi
   local cmd="${1:-help}"
   if [ $# -gt 0 ]; then shift; fi
   case "$cmd" in
-    doctor)       cmd_doctor ;;
-    install)      cmd_install ;;
-    launcher)     cmd_launcher ;;
-    arena)        cmd_arena ;;
-    game)         cmd_game "$@" ;;
-    aotr-install) cmd_aotr_install "$@" ;;
-    aotr)         cmd_aotr ;;
-    shortcuts)    cmd_shortcuts ;;
-    status)       cmd_status ;;
-    reset-prefix) cmd_reset_prefix "$@" ;;
-    help|-h|--help) cmd_help ;;
+    doctor)            cmd_doctor ;;
+    prepare)           cmd_prepare ;;
+    launcher-install)  cmd_launcher_install ;;
+    install)           cmd_install ;;
+    launcher)          cmd_launcher ;;
+    arena)             cmd_arena ;;
+    game)              cmd_game "$@" ;;
+    aotr-install)      cmd_aotr_install "$@" ;;
+    aotr)              cmd_aotr ;;
+    shortcuts)         cmd_shortcuts ;;
+    status)            cmd_status ;;
+    reset-prefix)      cmd_reset_prefix "$@" ;;
+    help|-h|--help)    cmd_help ;;
     version|--version) say "$SCRIPT_VERSION" ;;
-    *) die "Unknown command '$cmd'. Run with 'help'." ;;
+    *)                 die "Unknown command '$cmd'. Run with 'help'." ;;
   esac
 }
 

@@ -1,4 +1,4 @@
-"""Run scripts/bfme-linux-setup.sh and stream its output. Uses GLib/Gio only (no GTK), so it can be tested headless."""
+"""Run scripts/bfme-linux-setup.sh and stream its output. GLib only, no GTK."""
 from __future__ import annotations
 
 import os
@@ -18,7 +18,7 @@ SETSID = shutil.which("setsid")
 
 
 def find_script() -> str | None:
-    """BFME_SETUP_SCRIPT, then the installed command (the Flatpak), then the script next to this checkout."""
+    """BFME_SETUP_SCRIPT, then the installed command, then the script in this checkout."""
     override = os.environ.get("BFME_SETUP_SCRIPT")
     if override:
         return override
@@ -30,7 +30,7 @@ def find_script() -> str | None:
 
 
 class ScriptRunner:
-    """One script process at a time. Output arrives line by line on the GLib main loop."""
+    """One script process at a time."""
 
     def __init__(self, script: str) -> None:
         self.script = script
@@ -41,12 +41,12 @@ class ScriptRunner:
         return self._proc is not None
 
     def run(self, args: list[str], on_line: Callable[[str], None], on_exit: Callable[[int], None]) -> None:
-        """Start `script --machine <args>`. Calls on_line per output line, then on_exit(code) once."""
+        """Start `script --machine <args>`; call on_line per line, then on_exit(code) once."""
         if self._proc is not None:
             raise RuntimeError("a script is already running")
         command = [self.script, "--machine", *args]
         if SETSID:
-            # A process group of its own, so terminate() can stop the downloads and Proton processes it starts too.
+            # Own process group, so terminate() also stops its downloads and Proton processes.
             command = [SETSID, *command]
         proc = Gio.Subprocess.new(command, Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_MERGE)
         self._proc = proc
@@ -63,7 +63,7 @@ class ScriptRunner:
                 line, _length = source.read_line_finish_utf8(result)
             except GLib.Error:
                 line = None
-            if line is None:  # end of output: the process is finishing
+            if line is None:  # end of output
                 proc.wait_async(None, exited)
                 return
             on_line(line)
@@ -72,17 +72,17 @@ class ScriptRunner:
         stream.read_line_async(GLib.PRIORITY_DEFAULT, None, got_line)
 
     def request_cancel(self) -> None:
-        """Ask the running install to stop cleanly before its next step (SIGUSR1)."""
+        """Ask the script to stop before its next step (SIGUSR1)."""
         if self._proc is not None:
             self._proc.send_signal(signal.SIGUSR1)
 
     def terminate(self) -> None:
-        """Stop the running script and everything it started, at once (SIGTERM). Partial downloads resume next time."""
+        """Kill the script and its children (SIGTERM). Partial downloads resume."""
         if self._proc is None:
             return
         pid = int(self._proc.get_identifier())
         try:
-            if os.getpgid(pid) == pid:  # the script leads its own group (it was started through setsid)
+            if os.getpgid(pid) == pid:  # setsid made the script a group leader
                 os.killpg(pid, signal.SIGTERM)
                 return
         except OSError:
@@ -99,13 +99,11 @@ def _status_lines(script: str, timeout: float) -> list[str]:
 
 
 def setup_is_complete(script: str, timeout: float = 20.0) -> bool:
-    """Ask the script whether the setup is complete, without a window (for the menu entries). False on any trouble."""
+    """Whether the setup is complete. False on any error."""
     return "@bfme STATUS complete yes" in _status_lines(script, timeout)
 
 
 def app_is_ready(script: str, app: str, timeout: float = 20.0) -> bool:
-    """Whether the app can be started at once: the setup is complete and, for Age of the Ring, it is installed."""
+    """Whether the game environment is ready and this program is installed in it."""
     lines = _status_lines(script, timeout)
-    if "@bfme STATUS complete yes" not in lines:
-        return False
-    return app != "aotr" or "@bfme STATUS aotr installed" in lines
+    return "@bfme STATUS prefix ready" in lines and f"@bfme STATUS {app} installed" in lines

@@ -1,7 +1,6 @@
-"""The text behind "Copy diagnostics", and where the logs are. No GTK.
+"""The Troubleshoot report text and log locations. No GTK.
 
-The report is for pasting into a bug report. It can contain the player's home folder and user name (log lines often
-do), so the window tells them to check it before sharing.
+The report can contain the home folder and user name, so the window tells players to check it before sharing.
 """
 from __future__ import annotations
 
@@ -14,7 +13,7 @@ LOG_LINES = 40
 
 
 def data_dir(environ: dict[str, str] | None = None) -> Path:
-    """The setup's data folder, the same place the script uses (BFME_HOME, else XDG_DATA_HOME/bfme-installer)."""
+    """The data folder the script uses: BFME_HOME, else XDG_DATA_HOME/bfme-installer."""
     env = os.environ if environ is None else environ
     if env.get("BFME_HOME"):
         return Path(env["BFME_HOME"])
@@ -29,7 +28,7 @@ def newest_log(log_dir: Path, prefix: str) -> Path | None:
 
 
 def any_log(log_dir: Path) -> Path | None:
-    """Some file in the logs folder, to show it in a file manager (None when there are no logs yet)."""
+    """A file in the logs folder to reveal in a file manager; None without logs."""
     files = sorted(log_dir.glob("*.log"), key=lambda p: p.stat().st_mtime) if log_dir.is_dir() else []
     return files[-1] if files else None
 

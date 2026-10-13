@@ -1,51 +1,57 @@
 # Setup wizard
 
-`wizard/` is the first-run window: a GTK4/libadwaita app (Python) that runs `scripts/bfme-linux-setup.sh --machine` and shows its progress. It is meant to run inside the Flatpak. Without a display (SSH, a text console) it runs the terminal setup instead.
+`wizard/` is a GTK4/libadwaita app (Python) that runs `scripts/bfme-linux-setup.sh --machine` and shows its progress. It is meant to run inside the Flatpak. Without a display it runs the terminal setup instead.
 
 ## Screens
 
-One thing on screen at a time:
+1. **Checking your setup**: asks the script what is installed (`status`).
+2. **Start page**: choose what to install. Nothing is ticked at first and **Install** stays inactive until something is.
+   - **All-in-One Launcher** installs the Launcher and the Arena. The Arena only plays games the Launcher installs, so it is not a choice of its own.
+   - **Age of the Ring** needs neither the Launcher nor the Arena.
+   - After a stop the page reads **Setup paused** and offers **Resume**. Choosing something else starts a new plan.
+3. **Running**: step *n* of *N* for the whole plan, and a progress bar. Cancel stops after the current step.
+4. **Download Age of the Ring**: only when chosen. The setup waits here.
+5. **Your system needs a change**: a failed system check, with a copyable fix and **Recheck**. A passing recheck continues the setup.
+6. **Something went wrong**: a failed step, with **Retry** and **Copy log**.
+7. **Home screen**: once the setup is complete, and the first screen when something is already installed.
 
-1. **Checking your setup**: asks the script what is already installed (`status`).
-2. **Set up BFME on Linux** (or **Setup paused**, with Resume): the Install button.
-3. **Running**: step *n* of 6, a plain-language description and a progress bar. Cancel stops after the current step.
-4. **Your system needs a change**: a failed system check. Shows each problem with a copyable command and a Recheck button. A passing recheck continues the install.
-5. **Something went wrong**: a failed step, with Retry and Copy log.
-6. **Home screen**: once the setup is complete, and the first screen when everything is already installed. See below.
+## The plan
 
-## Home screen
-
-Three cards, **Launcher**, **Arena** and **Age of the Ring**, a line above them that says which games are installed (or "No games installed yet. Open the Launcher to install them."), a **Game Folders** button that opens the installed games' folders, and a **Troubleshoot** button with the version beside it.
-
-- **Opening an app:** the window stays open. The card shows "Running" until the program ends, and both apps can run at once. A program that ends within 15 seconds gets a soft note, "Closed after a few seconds. If it didn't open, see Troubleshoot.", because the script returns 0 whether or not the program worked.
-- **Quiet check:** when the window opens with the setup complete, the system checks run in the background. If one **failed** (a warning does not count), a banner says "Your system needs a change" and links to Troubleshoot.
-- **Menu entries:** the Launcher and Arena entries run `bfme-installer --open launcher|arena`. With the setup complete, the app starts at once with no window. With the setup incomplete, the wizard opens and finishes the setup first.
+| Chosen | Steps |
+| --- | --- |
+| Launcher | Check your system, Get Proton, Create the game environment, Download the launcher, Download the Arena, Add menu shortcuts (6) |
+| Age of the Ring | The first three above, then Download Age of the Ring, Check the download, Unpack the download, Install Age of the Ring, Finish up (8) |
+| Both | All of the above (11) |
 
 ## Age of the Ring
 
-**Install** on its card pushes an instructions page: the size (about 14 GB to download, about 40 GB of free space), **Open ModDB** (the player's browser; ModDB's bot check stops a script from downloading), and **Choose file...**, which opens the system file chooser in Downloads. The chooser works in the Flatpak without access to the Downloads folder.
+The page shows the size (about 14 GB to download, 40 GB of free space), **Open ModDB** in the player's browser (ModDB's bot check blocks scripts), and **Choose file...**, which opens the file chooser in Downloads.
 
-The chosen file goes to `aotr-install <zip>`. The window shows the same progress page as the setup, with four steps (check, unpack, install, finish up), Cancel, and on a failure Retry (same file), Back to home and Copy log. Stopping the install returns to the home screen, not to the welcome page. When it is installed the card's button says **Open**, which runs `aotr`.
+## Home screen
+
+Cards for **Launcher**, **Arena** and **Age of the Ring**. Each shows **Open** or **Install**. **Install** on the Launcher or the Arena installs both. On Age of the Ring it goes to the download step. A line above the cards names the installed games, and is omitted when the Launcher is not installed. **Game folders** and **Troubleshoot** buttons sit below.
+
+- The window stays open when a program starts. The card shows "Running" until it ends, and programs can run at once. A program that ends within 15 seconds gets a note pointing to Troubleshoot, because the script returns 0 either way.
+- When the window opens with the setup complete, the system checks run in the background. A **failed** check (not a warning) shows a banner linking to Troubleshoot.
+- Each installed program has a menu shortcut running `bfme-installer --open launcher|arena|aotr`. It exists only while the program is installed.
 
 ## Troubleshoot
 
-A second page, reachable from the Troubleshoot button and from the header menu on every page, even while the setup runs.
+Reachable from the home screen and from the header menu on every page, even while the setup runs.
 
-- **System checks:** failures and warnings first, passing checks folded into one row, and **Check again**. The firewall check is left out, because it cannot be seen from the sandbox.
-- **Can't be checked from here:** the firewall and the graphics drivers, with plain advice and a command to copy. This keeps a green list from reading as "everything is fine".
-- **Copy diagnostics:** the version, runner, setup state, check results, and the end of the latest launcher, Arena and prefix-creation logs. It can contain your home folder and user name, so check it before you share it.
-- **Open logs folder:** shows the logs in your file manager through the portal.
-- **Reset game environment:** deletes the game environment, including every installed game, after a confirmation, then shows the setup again. It is disabled while the setup or a tracked app is running. The script ends the Wine session first, so a program started from a menu entry is not deleted from under itself.
+- **System checks:** failures and warnings first, passing checks folded into one row. The firewall check is left out because the sandbox cannot see it.
+- **Can't be checked from here:** the firewall and graphics drivers, with advice and a command to copy.
+- **Copy diagnostics:** version, runner, setup state, check results, and the end of the latest logs. It can contain your home folder and user name.
+- **Open logs folder**
+- **Reset game environment:** deletes the game environment and every installed game after a confirmation, removes every shortcut, then shows the start page. Disabled while the setup or a program is running.
 
 ## Updating the app
 
-When the window opens, the wizard asks GitHub which release is the latest (`github.com/.../releases/latest`, which redirects to the tag) and compares it with the version stamped into the installed app. If the latest is newer, a banner offers **Update**. The banner stays hidden while a setup is running.
+On start the wizard reads the latest release tag from `github.com/.../releases/latest` and compares it with the installed version. If it is newer, a banner offers **Update**, hidden while a setup runs. Pressing it asks Flatpak's update portal (`org.freedesktop.portal.Flatpak`) to install from the app's own repository, keeping the signature check. The new version is used after a restart.
 
-Pressing it asks Flatpak's update portal (`org.freedesktop.portal.Flatpak`) to install the update from the repository the app was installed from. The portal needs no extra permission and keeps the repository's signature check. The new version is used after the app is closed and reopened.
-
-- The portal only installs; it cannot say whether an update exists, and its own notification polls every 30 minutes, so the release check is separate.
-- If GitHub has the release but Pages does not have it yet, the banner says to try again in a few minutes.
-- The portal refuses an update that adds permissions. The banner then shows `flatpak update --user com.jgbmichalski.BfmeInstaller` to copy.
+- The portal cannot say whether an update exists, so the release check is separate.
+- If the release exists on GitHub but not yet on Pages, the banner says to try again later.
+- The portal refuses updates that add permissions. The banner then shows `flatpak update --user com.jgbmichalski.BfmeInstaller` to copy.
 - Development builds (version `dev`) and runs outside a Flatpak never check.
 
 Closing the window during an install asks first. Stopping keeps what was done, and the next start offers Resume.
@@ -54,39 +60,41 @@ Closing the window during an install asks first. Stopping keeps what was done, a
 
 | File | Job |
 | --- | --- |
-| `bfme_wizard/protocol.py` | Parses the `@bfme` status lines ([status-lines.md](status-lines.md)). |
-| `bfme_wizard/model.py` | The setup state, fed one line at a time. |
-| `bfme_wizard/runner.py` | Starts the script, streams its output, sends the cancel signal. |
-| `bfme_wizard/controller.py` | Connects the two: install, retry, recheck, cancel. |
-| `bfme_wizard/updater.py` | Release check and the update through the Flatpak portal. |
-| `bfme_wizard/apps.py` | Starts the Launcher and the Arena and watches whether they are still running. |
-| `bfme_wizard/diagnostics.py` | The "Copy diagnostics" report and the logs folder. |
-| `bfme_wizard/home.py` | The home screen and the Troubleshoot page. |
-| `bfme_wizard/aotr.py` | The Age of the Ring install page (instructions, Open ModDB, Choose file). |
-| `bfme_wizard/ui.py` | The window. Only renders the model and calls the controller. |
+| `bfme_wizard/protocol.py` | Parses the [status lines](status-lines.md). |
+| `bfme_wizard/model.py` | Setup state and the plan. |
+| `bfme_wizard/runner.py` | Starts the script, streams output, sends the cancel signal. |
+| `bfme_wizard/controller.py` | Runs the plan one job at a time: retry, resume, recheck, cancel. |
+| `bfme_wizard/updater.py` | Release check and portal update. |
+| `bfme_wizard/apps.py` | Starts programs and watches whether they still run. |
+| `bfme_wizard/diagnostics.py` | The diagnostics report and logs folder. |
+| `bfme_wizard/start.py` | Start page. |
+| `bfme_wizard/home.py` | Home screen, Game folders page, Troubleshoot page. |
+| `bfme_wizard/aotr.py` | Age of the Ring download step. |
+| `bfme_wizard/widgets.py` | Shared GTK helpers. |
+| `bfme_wizard/ui.py` | The window. Renders the model and calls the controller. |
 | `bfme_wizard/__main__.py` | Entry point, script lookup, no-display fallback. |
 
-Only `ui.py` needs GTK. The rest is testable without a display.
+The pages and window (`ui.py`, `start.py`, `home.py`, `aotr.py`, `widgets.py`) need GTK. The rest runs without a display, and page tests skip themselves where GTK is missing. `tests/test_script.py` runs the real setup script against a fake `curl` and `umu-run`.
 
-## Build and install a local copy
+## Build a local copy
 
-To test the whole app (Flatpak, wizard, menu entries) without pushing a release, build it under a different app ID. It installs **beside** a release install: separate data (`~/.var/app/<id>`, so a separate setup and Proton download), separate menu entries (named "(Dev)"), and the release app is untouched.
+To test the whole app without a release, build it under a different app ID. It installs beside a release install with its own data, Proton download, and "(Dev)" shortcuts.
 
 ```
-dev/install-local.sh --run      # build from this checkout, install, start it (--run is optional)
+dev/install-local.sh --run      # build from this checkout, install, start (--run is optional)
 dev/uninstall-local.sh          # remove it and its data
 ```
 
-Rerun the first command after a change. It builds from a temporary copy, so the checkout is not modified. The 32-bit extensions are shared with the release app, so only a first-ever install needs `install-flatpak.sh`. The self-update banner never shows in a dev build, because its version is `dev`.
+The 32-bit extensions are shared with the release app, so only a first-ever install needs `install-flatpak.sh`. Dev builds never show the update banner.
 
 ## Run and test
 
 ```
 cd wizard
-BFME_SETUP_SCRIPT=../scripts/bfme-linux-setup.sh python3 -m bfme_wizard    # needs PyGObject, GTK 4 and libadwaita
-python3 -m unittest discover -s tests -t .                                  # needs PyGObject only
+BFME_SETUP_SCRIPT=../scripts/bfme-linux-setup.sh python3 -m bfme_wizard    # needs PyGObject, GTK 4, libadwaita
+python3 -m unittest discover -s tests -t .                                  # needs PyGObject
 ```
 
-The script is found through `BFME_SETUP_SCRIPT`, then the `bfme-linux-setup` command (the Flatpak), then `../scripts/` in a checkout.
+The script is found through `BFME_SETUP_SCRIPT`, then the `bfme-linux-setup` command, then `../scripts/`.
 
-To try the wizard without installing anything real, put a fake `curl` and `umu-run` first on `PATH` and point `BFME_UMU_RUN` at the fake; use `BFME_HOME` and `XDG_DATA_HOME` to keep it away from your real setup.
+To avoid a real install, put a fake `curl` and `umu-run` first on `PATH`, set `BFME_UMU_RUN` to the fake, and set `BFME_HOME` and `XDG_DATA_HOME` away from your real setup.

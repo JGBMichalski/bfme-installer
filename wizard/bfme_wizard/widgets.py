@@ -1,4 +1,4 @@
-"""Small GTK helpers shared by the window and its pages."""
+"""GTK helpers shared by the window and its pages."""
 from __future__ import annotations
 
 import gi
@@ -8,7 +8,7 @@ from gi.repository import Gdk, Gtk  # noqa: E402
 
 
 def first_icon(*names: str) -> str:
-    """The first icon the current theme has, so a missing icon never shows as a blurry placeholder."""
+    """First icon the theme has, to avoid a blurry placeholder."""
     theme = Gtk.IconTheme.get_for_display(Gdk.Display.get_default())
     return next((n for n in names if theme.has_icon(n)), "image-missing")
 

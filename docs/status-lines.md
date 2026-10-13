@@ -1,8 +1,6 @@
 # Status lines
 
-`scripts/bfme-linux-setup.sh --machine <command>` (or `BFME_PROGRESS=1`) prints status lines for a program to read, such as the setup wizard. The normal text output is unchanged and is still printed, so a program can show it as a log.
-
-Each status line is one line, starts with `@bfme `, and goes to stdout. Ignore every other line.
+`scripts/bfme-linux-setup.sh --machine <command>` (or `BFME_PROGRESS=1`) prints status lines alongside its normal output. Each starts with `@bfme ` and goes to stdout. Ignore every other line.
 
 ## Lines
 
@@ -10,48 +8,58 @@ Each status line is one line, starts with `@bfme `, and goes to stdout. Ignore e
 | --- | --- |
 | `@bfme STEP <id> start` | A step began. |
 | `@bfme STEP <id> done` | The step finished. |
-| `@bfme STEP <id> skip` | The step was not needed (already in place, or not applicable). |
-| `@bfme PROGRESS <0-100>` | Download progress for the current step. A step that prints none is working with no known size. |
+| `@bfme STEP <id> skip` | Nothing to do (already in place, or not applicable). |
+| `@bfme PROGRESS <0-100>` | Progress of the current step. Steps of unknown size print none. |
 | `@bfme CHECK <id> <ok\|warn\|fail> <message>` | One system check from `doctor`. |
-| `@bfme FIX <check id> <command>` | A command that fixes a failed check. Only the user's system can run it. Show it with a Copy button. |
+| `@bfme FIX <check id> <command>` | Command that fixes a failed check. Show it with a Copy button. |
 | `@bfme WARN <message>` | A non-fatal problem. |
-| `@bfme ERROR <step\|-> <message>` | The command failed. The step is `-` if no step was running. Always the last status line before a non-zero exit, except after `CANCELLED`. |
-| `@bfme CANCELLED` | The install stopped cleanly because it was asked to. Exit status 130. |
-| `@bfme DONE` | `install` finished. |
-| `@bfme STATUS <key> <value>` | Printed by `status`. Keys: `runner`, `prefix` (`ready` or `missing`), `launcher`, `arena` and `aotr` (`installed` or `missing`; `aotr` is Age of the Ring), `bfme1`, `bfme2` and `rotwk` (`installed` when the game's program is there, else `missing`), `complete` (`yes` or `no`). |
+| `@bfme ERROR <step\|-> <message>` | The command failed. The step is `-` if none was running. Last status line before a non-zero exit, except after `CANCELLED`. |
+| `@bfme CANCELLED` | Stopped cleanly on request. Exit status 130. |
+| `@bfme DONE` | The job finished: `install`, `prepare`, `launcher-install` or `aotr-install`. |
+| `@bfme STATUS <key> <value>` | Printed by `status` and before every `DONE`. |
 
-## Steps
+`STATUS` keys: `runner`; `prefix` (`ready` or `missing`); `launcher`, `arena` and `aotr` (`installed` or `missing`; `aotr` is Age of the Ring); `bfme1`, `bfme2` and `rotwk` (`installed` when the game's program is present, else `missing`); `complete` (`yes` or `no`: the game environment is ready and holds at least one of `launcher`, `arena` and `aotr`).
 
-`install` runs these steps in order:
+## Jobs and steps
+
+The wizard runs only the jobs the player chose, one after the other. Each job ends with `DONE` and can be rerun, skipping work already in place.
+
+| Command | Steps | What it is for |
+| --- | --- | --- |
+| `prepare` | `doctor`, `runner`, `prefix` | Game environment only. |
+| `launcher-install` | `launcher`, `arena`, `shortcuts` | The All-in-One Launcher and the Arena. Needs `prepare` first. |
+| `aotr-install <zip>` | `aotr-check`, `aotr-unpack`, `aotr-install`, `aotr-settings` | Age of the Ring. Needs only `prepare`. |
+| `install` | `prepare`, then `launcher-install` | The terminal setup. |
+
+The wizard adds `aotr-download` before Age of the Ring's steps, where the player gets the file from ModDB. The script never prints it.
 
 | Id | What it does |
 | --- | --- |
-| `doctor` | System checks (`CHECK` and `FIX` lines come from here). |
+| `doctor` | System checks (prints `CHECK` and `FIX`). |
 | `runner` | Downloads and verifies umu and Proton (`PROGRESS` lines). |
 | `prefix` | Creates the prefix and applies its settings. |
 | `launcher` | Downloads and installs the All-in-One Launcher. `skip` if already installed. |
 | `arena` | Downloads or updates the Online Arena. |
-| `shortcuts` | Writes the menu shortcuts. `skip` inside the Flatpak, which provides its own. |
+| `shortcuts` | Writes missing menu shortcuts and removes those of programs not installed. A shortcut that cannot be written is a warning. |
 
-`aotr-install <zip>` installs Age of the Ring (optional, after the setup is complete) and runs these steps:
+`aotr-install <zip>` runs these steps:
 
 | Id | What it does |
 | --- | --- |
-| `aotr-check` | Checks the zip the player downloaded (name, complete, every part present) and the free space. |
-| `aotr-unpack` | Unpacks the zip into the downloads folder (`PROGRESS` lines, from how much has been written). Skipped work is not repeated on a second run. |
-| `aotr-install` | Runs the Age of the Ring installer without its own window. `PROGRESS` lines come from how far the installer has read into its data files (capped at 99 until it ends). No `PROGRESS` lines when the installer cannot be seen, and the reader shows "working". |
+| `aotr-check` | Checks the zip (name, every part present) and free space. |
+| `aotr-unpack` | Unpacks the zip into the downloads folder, with `PROGRESS`. Not repeated on a rerun. |
+| `aotr-install` | Runs the Age of the Ring installer without its window. `PROGRESS` tracks how far it has read its data files, capped at 99 until it ends. None if that cannot be seen. |
 | `aotr-settings` | Deletes the unpacked files. |
 
 ## Check ids
 
-`cpu`, `cmd-curl`, `cmd-tar`, `cmd-python3`, `cmd-bwrap`, `cmd-wine`, `cmd-cabextract`, `bwrap`, `wine-version`, `i386-arch`, `vulkan64`, `vulkan32`, `disk`, `firewall`, `flatpak` and `flatpak-32bit`. The Flatpak build only prints the ones that apply there.
+`cpu`, `cmd-curl`, `cmd-tar`, `cmd-python3`, `cmd-bwrap`, `cmd-wine`, `cmd-cabextract`, `bwrap`, `wine-version`, `i386-arch`, `vulkan64`, `vulkan32`, `disk`, `firewall`, `flatpak` and `flatpak-32bit`. The Flatpak build prints only those that apply.
 
 ## Running and stopping
 
-- A failed `doctor` inside `install` prints its `CHECK` and `FIX` lines, then `ERROR doctor ...`, and exits 1.
-- To check again after the user ran a `FIX`, run `--machine doctor`.
-- To stop an install cleanly, send the script `SIGUSR1`. It finishes the step that is running, prints `CANCELLED` and exits 130 before the next one. A later `install` carries on where it stopped, because every step can run again.
-- Any other termination (for example `SIGTERM`) stops the script at once. Partial downloads resume.
+- A failed `doctor` prints its `CHECK` and `FIX` lines, then `ERROR doctor ...`, and exits 1. Run `--machine doctor` to check again.
+- `SIGUSR1` stops cleanly: the script finishes the running step, prints `CANCELLED` and exits 130. Rerunning carries on from there.
+- Any other signal (such as `SIGTERM`) stops at once. Partial downloads resume.
 
 ## Example
 

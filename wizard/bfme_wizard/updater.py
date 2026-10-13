@@ -1,13 +1,6 @@
-"""The app updating itself: find out whether a newer release exists, then let Flatpak install it.
+"""Check GitHub for a newer release and install it through the Flatpak update portal. No GTK.
 
-Two separate jobs, because Flatpak's update portal can only *install* (it has no "is there an update?" call, and its own
-notification polls only every 30 minutes):
-
-  1. Ask GitHub which release is the latest and compare it with the installed version.
-  2. Ask the Flatpak update portal (org.freedesktop.portal.Flatpak) to install it. It updates from the remote the app
-     was installed from, so the signature checking of that remote applies, and it needs no extra sandbox permission.
-
-No GTK here. The window shows `state` and calls `check()` and `install()`.
+Two jobs because the portal can only install; it cannot say whether an update exists.
 """
 from __future__ import annotations
 
@@ -26,12 +19,12 @@ PORTAL = "org.freedesktop.portal.Flatpak"
 PORTAL_PATH = "/org/freedesktop/portal/Flatpak"
 MONITOR_IFACE = "org.freedesktop.portal.Flatpak.UpdateMonitor"
 
-# Progress "status" values of the portal
+# Portal progress "status" values
 RUNNING, EMPTY, DONE, FAILED = 0, 1, 2, 3
 
 
 def parse_version(text: str | None) -> tuple[int, int, int] | None:
-    """'v0.2.3' or '0.2.3' -> (0, 2, 3). Anything else (such as 'dev') -> None."""
+    """'v0.2.3' -> (0, 2, 3); None for anything else."""
     match = re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)", (text or "").strip())
     return tuple(int(part) for part in match.groups()) if match else None  # type: ignore[return-value]
 
@@ -42,7 +35,7 @@ def is_newer(remote: str | None, local: str | None) -> bool:
 
 
 def installed_version(app_id: str, metainfo_dir: str = "/app/share/metainfo") -> str | None:
-    """The version stamped into this app's metainfo by the release build. None for a development build."""
+    """Version stamped into the metainfo by the release build; None in development."""
     path = Path(metainfo_dir) / f"{app_id}.metainfo.xml"
     try:
         match = re.search(r'<release\s+version="([^"]+)"', path.read_text(encoding="utf-8"))
@@ -93,7 +86,6 @@ class Updater:
         self.state = state
         self.on_change()
 
-    # ----------------------------------------------------------------- 1. is there a newer release?
     def check(self) -> None:
         if not self.enabled or self.state != "idle":
             return
@@ -103,7 +95,7 @@ class Updater:
                 Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_SILENCE,
             )
         except GLib.Error:
-            return  # no curl: not worth a message
+            return  # no curl: stay silent
 
         def done(source: Gio.Subprocess, result: Gio.AsyncResult) -> None:
             try:
@@ -117,7 +109,6 @@ class Updater:
 
         proc.communicate_utf8_async(None, None, done)
 
-    # ----------------------------------------------------------------- 2. install it through the portal
     def install(self) -> None:
         if self.state not in ("available", "empty", "failed"):
             return
@@ -145,7 +136,7 @@ class Updater:
     def _update_called(self, bus: Gio.DBusConnection, result: Gio.AsyncResult) -> None:
         try:
             bus.call_finish(result)
-        except GLib.Error as error:  # for example NotSupported: the new version asks for more permissions
+        except GLib.Error as error:  # e.g. NotSupported: the new version needs more permissions
             self._fail(error.message)
 
     def _progress(self, _conn, _sender, _path, _iface, _name, params: GLib.Variant) -> None:
@@ -157,7 +148,7 @@ class Updater:
         elif status == DONE:
             self._finish("done")
         elif status == EMPTY:
-            self._finish("empty")  # the release exists, but the repository does not have it yet
+            self._finish("empty")  # release exists, repository does not have it yet
         else:
             self._fail(info.get("error_message") or info.get("error") or "The update failed.")
 
@@ -175,7 +166,7 @@ class Updater:
 
 
 def make_updater(on_change: Callable[[], None]) -> Updater:
-    """The updater for the running app. BFME_UPDATE_URL points the check somewhere else (for tests)."""
+    """BFME_UPDATE_URL overrides the check URL for tests."""
     return Updater(
         os.environ.get("FLATPAK_ID"),
         on_change,

@@ -21,6 +21,7 @@ finish-args:
   - --allow=devel                   # Proton's container needs this
   - --allow=per-app-dev-shm         # Wine server shared memory
   - --filesystem=xdg-data/umu:create   # umu's runtime location
+  - --filesystem=xdg-data/applications:create
   - --env=PATH=/app/bin:/usr/bin
   - --env=XDG_DATA_DIRS=/app/share:/usr/lib/extensions/vulkan/share:/usr/share:/usr/share/runtime/share:/run/host/user-share:/run/host/share:/usr/lib/pressure-vessel/overrides/share
 
@@ -74,9 +75,6 @@ modules:
     build-commands:
       - install -Dm755 bfme-linux-setup.sh /app/bin/bfme-linux-setup
       - install -Dm644 com.jgbmichalski.BfmeInstaller.desktop /app/share/applications/com.jgbmichalski.BfmeInstaller.desktop
-      - install -Dm644 com.jgbmichalski.BfmeInstaller.Launcher.desktop /app/share/applications/com.jgbmichalski.BfmeInstaller.Launcher.desktop
-      - install -Dm644 com.jgbmichalski.BfmeInstaller.Arena.desktop /app/share/applications/com.jgbmichalski.BfmeInstaller.Arena.desktop
-      - install -Dm644 com.jgbmichalski.BfmeInstaller.Aotr.desktop /app/share/applications/com.jgbmichalski.BfmeInstaller.Aotr.desktop
       - install -Dm644 com.jgbmichalski.BfmeInstaller.png /app/share/icons/hicolor/128x128/apps/com.jgbmichalski.BfmeInstaller.png
       - install -Dm644 com.jgbmichalski.BfmeInstaller.metainfo.xml /app/share/metainfo/com.jgbmichalski.BfmeInstaller.metainfo.xml
     sources:
@@ -85,12 +83,6 @@ modules:
         dest-filename: bfme-linux-setup.sh
       - type: file
         path: com.jgbmichalski.BfmeInstaller.desktop
-      - type: file
-        path: com.jgbmichalski.BfmeInstaller.Launcher.desktop
-      - type: file
-        path: com.jgbmichalski.BfmeInstaller.Arena.desktop
-      - type: file
-        path: com.jgbmichalski.BfmeInstaller.Aotr.desktop
       - type: file
         path: com.jgbmichalski.BfmeInstaller.png
       - type: file

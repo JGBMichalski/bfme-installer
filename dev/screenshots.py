@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Regenerates the README screenshots in docs/images/ from the real wizard.
 
-Runs the wizard against a stub setup script and a throwaway game environment, so it changes nothing on your
-computer. Needs a desktop session (it opens a window). Usage: dev/screenshots.py [output-dir]
+Runs the wizard against a stub script and a throwaway game environment. Needs a desktop session.
+Usage: dev/screenshots.py [output-dir]
 """
 from __future__ import annotations
 
@@ -14,22 +14,32 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SCENES = ("welcome", "running", "home", "folders", "troubleshoot", "aotr-download", "aotr-running", "aotr-installed")
+SCENES = ("start", "running", "home", "folders", "troubleshoot", "aotr-download", "aotr-running", "aotr-home")
 
 STUB = r"""#!/bin/bash
-# Pretends to be bfme-linux-setup.sh. STUB_SCENE picks the story.
+# Stub for bfme-linux-setup.sh. STUB_SCENE picks the scene:
+#   start, running                  nothing is set up yet
+#   aotr-download, aotr-running     the game environment is ready, no program is installed
+#   aotr-home                       only Age of the Ring is installed
+#   anything else                   the Launcher and the Arena are installed
 [ "$1" = "--machine" ] && shift
 case "$1" in
   status)
-    if [ "$STUB_SCENE" = welcome ] || [ "$STUB_SCENE" = running ]; then
-      echo "@bfme STATUS prefix missing"; echo "@bfme STATUS complete no"
-    else
-      for k in prefix launcher arena bfme1 bfme2 rotwk; do
-        [ "$k" = prefix ] && v=ready || v=installed; echo "@bfme STATUS $k $v"
-      done
-      echo "@bfme STATUS complete yes"
-      if [ "$STUB_SCENE" = aotr-installed ]; then echo "@bfme STATUS aotr installed"; fi
-    fi ;;
+    case "$STUB_SCENE" in
+      start|running)
+        echo "@bfme STATUS prefix missing"; echo "@bfme STATUS complete no" ;;
+      aotr-download|aotr-running)
+        echo "@bfme STATUS prefix ready"; echo "@bfme STATUS launcher missing"; echo "@bfme STATUS arena missing"
+        echo "@bfme STATUS aotr missing"; echo "@bfme STATUS complete no" ;;
+      aotr-home)
+        echo "@bfme STATUS prefix ready"; echo "@bfme STATUS launcher missing"; echo "@bfme STATUS arena missing"
+        echo "@bfme STATUS aotr installed"; echo "@bfme STATUS complete yes" ;;
+      *)
+        for k in prefix launcher arena bfme1 bfme2 rotwk; do
+          [ "$k" = prefix ] && v=ready || v=installed; echo "@bfme STATUS $k $v"
+        done
+        echo "@bfme STATUS aotr missing"; echo "@bfme STATUS complete yes" ;;
+    esac ;;
   aotr-install)
     echo "@bfme STEP aotr-check start"; echo "@bfme STEP aotr-check done"
     echo "@bfme STEP aotr-unpack start"; echo "@bfme STEP aotr-unpack done"
@@ -40,7 +50,7 @@ case "$1" in
     echo "@bfme CHECK vulkan64 ok 64-bit Vulkan works"
     echo "@bfme CHECK vulkan32 ok 32-bit Vulkan works"
     echo "@bfme CHECK disk ok enough free disk space" ;;
-  install)
+  prepare)
     echo "@bfme STEP doctor start"; echo "@bfme STEP doctor done"
     echo "@bfme STEP runner start"; echo "@bfme PROGRESS 62"; sleep 30 ;;
 esac
@@ -66,7 +76,7 @@ def run_scene(scene: str, out: str) -> None:
     from bfme_wizard import ui
     from bfme_wizard.runner import ScriptRunner
 
-    if scene in ("folders", "troubleshoot", "aotr-download"):                 # tall enough to show every group
+    if scene in ("folders", "troubleshoot", "aotr-download"):                 # tall window
         init = ui.WizardWindow.__init__
         def tall(self, *args, **kwargs):
             init(self, *args, **kwargs)
@@ -77,19 +87,23 @@ def run_scene(scene: str, out: str) -> None:
 
     def step(window, n=[0]):
         n[0] += 1
-        if n[0] == 1:                                    # let the status check finish
+        if n[0] == 1:                                    # wait for the status check
             window.updater.local = re.search(r"^## \[(\d[^\]]*)\]", (ROOT / "CHANGELOG.md").read_text(), re.M).group(1)
             window.render()
-            if scene == "running":
-                window.controller.install()
+            if scene == "start":                          # start page, both ticked
+                for check in window.start._checks.values():
+                    check.set_active(True)
+            elif scene == "running":
+                window.controller.install(["launcher"])
             elif scene == "folders":
                 window.show_game_folders()
             elif scene == "troubleshoot":
                 window.show_troubleshoot()
-            elif scene == "aotr-download":
-                window.show_aotr_install()
+            elif scene == "aotr-download":                # environment ready: go to download
+                window.controller.install(["aotr"])
             elif scene == "aotr-running":
-                window.controller.install_aotr("/tmp/AotR_Standalone_9.3.0_Installer.zip")
+                window.controller.install(["aotr"])
+                window.controller.choose_aotr_file("/tmp/AotR_Standalone_9.3.0_Installer.zip")
             return True
         capture(window, out)
         app.quit()
