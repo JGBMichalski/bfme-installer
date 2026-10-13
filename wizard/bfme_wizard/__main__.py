@@ -3,18 +3,18 @@
   bfme-installer                     the wizard
   bfme-installer --open launcher     the "BFME All-in-One Launcher" menu entry
   bfme-installer --open arena        the "BFME Online Arena" menu entry
+  bfme-installer --open aotr         the "Age of the Ring" menu entry
 
-With --open and the setup complete, the app starts at once with no window. With the setup incomplete, the wizard opens
-instead and offers that app when the setup is done.
+With --open and the setup complete, the app starts at once with no window. With the setup incomplete, the wizard opens instead and offers that app when the setup is done. With --open aotr and Age of the Ring not installed, the wizard opens on the page that installs it.
 """
 from __future__ import annotations
 
 import os
 import sys
 
-from .runner import ScriptRunner, find_script, setup_is_complete
+from .runner import ScriptRunner, app_is_ready, find_script
 
-OPENABLE = ("launcher", "arena")
+OPENABLE = ("launcher", "arena", "aotr")
 
 
 def has_display() -> bool:
@@ -35,7 +35,7 @@ def main() -> int:
         print("ERROR: bfme-linux-setup.sh was not found. Set BFME_SETUP_SCRIPT to its path.", file=sys.stderr)
         return 1
     offer = parse_args(sys.argv[1:])
-    if offer and setup_is_complete(script):
+    if offer and app_is_ready(script, offer):
         os.execv(script, [script, offer])   # nothing to show: start the app and be gone
     if not has_display():
         # Over SSH or on a text console there is no window to show: run the terminal setup instead.

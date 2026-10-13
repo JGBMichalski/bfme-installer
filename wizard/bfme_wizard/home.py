@@ -36,6 +36,7 @@ class HomePage:
         self.controller, self.version, self.offer, self.on_troubleshoot = controller, version, offer, on_troubleshoot
         self.on_game_folders = on_game_folders
         self.on_aotr_install = on_aotr_install
+        self._offer_shown = False
         # The page fills the window: the content sits in the middle and the version at the bottom edge.
         self.box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         self.content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=18, vexpand=True, valign=Gtk.Align.CENTER,
@@ -46,6 +47,10 @@ class HomePage:
         self.box.append(self.version_label)
 
     def refresh(self) -> None:
+        # The Age of the Ring menu entry on a computer without it: go straight to the page that installs it, once.
+        if self.offer == "aotr" and not self._offer_shown and not self.controller.model.aotr_installed:
+            self._offer_shown = True
+            self.on_aotr_install()
         clear(self.content)
         self.version_label.set_text(f"Version {self.version()}")
         line = games_line(self.controller.model)

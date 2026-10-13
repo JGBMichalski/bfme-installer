@@ -16,7 +16,7 @@
 #   game bfme1|bfme2|rotwk   Start a game without the Arena.
 #   aotr-install <zip>  Install Age of the Ring (optional) from the zip you downloaded from ModDB.
 #   aotr                Start the Age of the Ring Launcher.
-#   shortcuts           (Re)create the two menu shortcuts.
+#   shortcuts           (Re)create the menu shortcuts (Age of the Ring too, once installed).
 #   status              Show what is installed and where.
 #   reset-prefix --yes  Delete the prefix. This deletes installed games.
 #   help                Show this help.
@@ -990,6 +990,10 @@ cmd_aotr_install() {
   step_start aotr-settings
   rm -rf -- "$AOTR_UNPACK"
   step_done aotr-settings
+  if [ "$IN_FLATPAK" != "1" ] && [ -x "$BIN/bfme-linux-setup.sh" ]; then
+    write_aotr_shortcut
+    update-desktop-database "$APPS_DIR" >/dev/null 2>&1 || true
+  fi
   machine DONE
   say ""
   say "Age of the Ring is installed. You can delete $(basename "$zip") now."
@@ -1055,6 +1059,10 @@ StartupNotify=true
 EOF
 }
 
+write_aotr_shortcut() {
+  write_desktop "bfme-aotr.desktop" "Age of the Ring" "Play the Age of the Ring mod for BFME 2" "aotr"
+}
+
 cmd_shortcuts() {
   if [ "$IN_FLATPAK" = "1" ]; then
     say "The menu entries are provided by the Flatpak. Nothing to do."
@@ -1069,6 +1077,7 @@ cmd_shortcuts() {
   chmod +x "$BIN/bfme-linux-setup.sh"
   write_desktop "bfme-launcher.desktop" "BFME All-in-One Launcher" "Install, mod and manage the BFME games" "launcher"
   write_desktop "bfme-arena.desktop" "BFME Online Arena" "Play BFME online" "arena"
+  if aotr_installed; then write_aotr_shortcut; else rm -f "$APPS_DIR/bfme-aotr.desktop"; fi
   if command -v update-desktop-database >/dev/null 2>&1; then
     update-desktop-database "$APPS_DIR" >/dev/null 2>&1 || true
   fi
@@ -1157,6 +1166,7 @@ cmd_reset_prefix() {
   fi
   if [ -d "$PREFIX" ]; then stop_wine_session || true; fi
   rm -rf -- "$PREFIX"
+  rm -f "$APPS_DIR/bfme-aotr.desktop"
   say "Prefix deleted."
 }
 

@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1]
+
+### Added
+
+- An Age of the Ring menu entry. In the Flatpak it opens the wizard on the Age of the Ring install page when the mod is not installed. Without the Flatpak it appears once the mod is installed.
+
 ## [1.1.0]
 
 ### Added

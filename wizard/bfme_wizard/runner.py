@@ -90,10 +90,22 @@ class ScriptRunner:
         self._proc.send_signal(signal.SIGTERM)
 
 
-def setup_is_complete(script: str, timeout: float = 20.0) -> bool:
-    """Ask the script whether the setup is complete, without a window (for the menu entries). False on any trouble."""
+def _status_lines(script: str, timeout: float) -> list[str]:
     try:
         done = subprocess.run([script, "--machine", "status"], capture_output=True, text=True, timeout=timeout)
     except (OSError, subprocess.SubprocessError):
+        return []
+    return done.stdout.splitlines() if done.returncode == 0 else []
+
+
+def setup_is_complete(script: str, timeout: float = 20.0) -> bool:
+    """Ask the script whether the setup is complete, without a window (for the menu entries). False on any trouble."""
+    return "@bfme STATUS complete yes" in _status_lines(script, timeout)
+
+
+def app_is_ready(script: str, app: str, timeout: float = 20.0) -> bool:
+    """Whether the app can be started at once: the setup is complete and, for Age of the Ring, it is installed."""
+    lines = _status_lines(script, timeout)
+    if "@bfme STATUS complete yes" not in lines:
         return False
-    return done.returncode == 0 and "@bfme STATUS complete yes" in done.stdout.splitlines()
+    return app != "aotr" or "@bfme STATUS aotr installed" in lines

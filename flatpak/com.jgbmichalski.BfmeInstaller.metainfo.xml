@@ -11,6 +11,7 @@
   <launchable type="desktop-id">com.jgbmichalski.BfmeInstaller.desktop</launchable>
   <launchable type="desktop-id">com.jgbmichalski.BfmeInstaller.Launcher.desktop</launchable>
   <launchable type="desktop-id">com.jgbmichalski.BfmeInstaller.Arena.desktop</launchable>
+  <launchable type="desktop-id">com.jgbmichalski.BfmeInstaller.Aotr.desktop</launchable>
   <url type="homepage">https://github.com/JGBMichalski/bfme-installer</url>
   <url type="vcs-browser">https://github.com/JGBMichalski/bfme-installer</url>
   <content_rating type="oars-1.1"/>
