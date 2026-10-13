@@ -9,7 +9,7 @@ Installs and runs the community All-in-One Launcher and Online Arena from [bfmel
 
 [![Latest release](https://img.shields.io/github/v/release/JGBMichalski/bfme-installer?label=release)](https://github.com/JGBMichalski/bfme-installer/releases/latest)
 [![Build](https://img.shields.io/github/actions/workflow/status/JGBMichalski/bfme-installer/build-linux.yml?label=build)](https://github.com/JGBMichalski/bfme-installer/actions/workflows/build-linux.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)](LICENSE)
 
 <img src="docs/images/home.png" alt="The BFME Installer home screen with Launcher, Arena and Age of the Ring cards" width="460">
 

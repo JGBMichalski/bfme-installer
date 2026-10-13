@@ -21,4 +21,4 @@ Testing your modifications:
 - Add or update a test for any logic you change.
 - Add a line under **Unreleased** in the [changelog](CHANGELOG.md) for anything a player would notice.
 
-By contributing, you agree that your work is released under the [MIT license](LICENSE).
+By contributing, you agree that your work is released under the [GPL-3.0-or-later license](LICENSE).

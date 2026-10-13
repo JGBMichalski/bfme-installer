@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - An Age of the Ring menu entry. In the Flatpak it opens the wizard on the Age of the Ring install page when the mod is not installed. Without the Flatpak it appears once the mod is installed.
 
+### Changed
+
+- The project is now licensed under GPL-3.0-or-later instead of MIT. Earlier releases stay under MIT.
+
 ## [1.1.0]
 
 ### Added
