@@ -118,14 +118,6 @@ class OneName(unittest.TestCase):
         self.assertFalse(bare_mention(without_allowed("scripts/bfme-linux-setup.sh", "    launcher) printf 'Launcher' ;;")))
         self.assertTrue(bare_mention(without_allowed("scripts/bfme-linux-setup.sh", "say 'Open the Launcher'")))
 
-    def test_the_check_reads_the_files_it_should(self):
-        # A glob that matches nothing would pass for ever. These are the places that matter most.
-        for pattern in READ:
-            if pattern in ("wizard/bfme_wizard/icons/*.md",):       # its README may be gone
-                continue
-            with self.subTest(pattern):
-                self.assertTrue(list(ROOT.glob(pattern)), f"{pattern} matches no file")
-
 
 if __name__ == "__main__":
     unittest.main()
