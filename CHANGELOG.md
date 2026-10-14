@@ -4,6 +4,13 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1]
+
+### Fixed
+
+- The Flatpak installer reads the active GPU drivers from Flatpak and installs the matching 64-bit and 32-bit Vulkan/GL extensions for each one. Ported from [#4](https://github.com/JGBMichalski/bfme-installer/pull/4).
+- The Flatpak accepts the `25.08-extra` branch of the 32-bit GL extension. Ported from [#4](https://github.com/JGBMichalski/bfme-installer/pull/4).
+
 ## [2.0.0]
 
 ### Added

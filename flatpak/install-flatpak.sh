@@ -106,15 +106,12 @@ no_flatpak() {
 
 install_extensions() {
   local ext=("org.freedesktop.Platform.Compat.i386//${RUNTIME_VERSION}" "org.freedesktop.Platform.GL32.default//${RUNTIME_VERSION}")
-  # NVIDIA: the 32-bit driver must match the 64-bit one Flatpak installed for your card.
-  local nvidia line
-  nvidia="$(flatpak list --runtime --columns=application,branch 2>/dev/null \
-    | awk '$1 ~ /^org\.freedesktop\.Platform\.GL\.nvidia-/ {print $1 "//" $2}' | sort -u || true)"
-  if [ -n "$nvidia" ]; then
-    while IFS= read -r line; do
-      ext+=("${line/Platform.GL.nvidia/Platform.GL32.nvidia}")
-    done <<<"$nvidia"
-  fi
+  # Read every active driver from Flatpak rather than from installed extensions.
+  local driver
+  while IFS= read -r driver; do
+    ext+=("org.freedesktop.Platform.GL.${driver}//1.4")
+    ext+=("org.freedesktop.Platform.GL32.${driver}//1.4")
+  done < <(flatpak --gl-drivers 2>/dev/null | awk '$1 != "" && $1 != "default" && $1 != "host" {print $1}' | sort -u)
   flatpak install --user -y --noninteractive flathub "${ext[@]}"
 }
 
