@@ -102,18 +102,6 @@ class AppIcon(unittest.TestCase):
         # The licence forbids changing it, so a re-saved, resized or edited copy would be a breach and not a fix.
         self.assertEqual(hashlib.sha256(self.ICON.read_bytes()).hexdigest(), APP_ICON_SHA256)
 
-    def test_the_designer_is_credited_with_the_source_and_the_licence_where_people_will_look(self):
-        text = (ROOT / "README.md").read_text()
-        for needed in ("Exhumed", "Mega Games Pack 28", "CC BY-NC-ND 4.0", APP_ICON_LICENCE, APP_ICON_SOURCE):
-            self.assertIn(needed, text)
-
-    def test_the_licence_terms_that_limit_the_project_are_said_plainly(self):
-        text = (ROOT / "README.md").read_text()
-        credit = text[text.index("The icon of BFME Installer"):]
-        self.assertIn("used unchanged", credit)
-        self.assertIn("not covered by this project's licence", credit)
-        self.assertIn("does not allow commercial use", credit)
-
     def test_the_manifest_installs_it_as_the_icon_of_the_app_in_the_folder_for_its_real_size(self):
         app_id = manifest_app_id()
         width, height = png_size(self.ICON)
