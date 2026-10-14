@@ -54,7 +54,7 @@ def build_report(version: str, model: SetupModel, log_dir: Path) -> str:
                 out.append(f"      fix: {fix}")
     else:
         out.append("  (not run yet)")
-    for title, prefix in (("launcher", "launcher"), ("Arena", "arena"), ("prefix creation", "prefix-create")):
+    for title, prefix in (("AIO Launcher", "launcher"), ("Arena", "arena"), ("prefix creation", "prefix-create")):
         log = newest_log(log_dir, prefix)
         out += ["", f"--- latest {title} log ({log.name}, last {LOG_LINES} lines) ---" if log else f"--- no {title} log ---"]
         if log:

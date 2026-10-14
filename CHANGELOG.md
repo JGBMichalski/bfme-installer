@@ -8,16 +8,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- A **Programs** page, reached with the download arrow in the top right corner of the home screen. It lists the AIO Launcher, the Arena and Age of the Ring.
+- A `remove <launcher|arena|aotr>` command in the setup script, which does the same.
 - A start page where you choose what to install: the All-in-One Launcher (with the Arena), Age of the Ring, or both.
-- The home screen offers **Install** on the Launcher and the Arena cards too, for whatever you skipped.
 - `prepare` and `launcher-install` commands in the setup script. `install` still does both.
 - The `shortcuts` command removes the shortcuts of programs that are no longer installed, as well as writing the missing ones.
 
 ### Changed
 
-- The setup counts as complete when the game environment is ready and at least one program is installed, not only when the Launcher and the Arena both are.
-- The Flatpak no longer adds shortcuts for the Launcher, the Arena and Age of the Ring to your application menu when you install it. The app adds each one when you install that program and removes it when the program goes, so only **BFME Installer** is in your menu until you install something. Reset removes them all.
+- The home screen shows only the programs you installed. The cards for the others, with their **Install** buttons, are gone: **Install** is on the Programs page.
+- **Game folders** and **Troubleshoot** are now icon buttons in the top right corner of the page, under the title bar (a folder, and a lifebuoy), instead of buttons under the cards.
+- The setup counts as complete when the game environment is ready and at least one program is installed, not only when the AIO Launcher and the Arena both are.
+- The Flatpak no longer adds shortcuts for the AIO Launcher, the Arena and Age of the Ring to your application menu when you install it. The app adds each one when you install that program and removes it when the program goes, so only **BFME Installer** is in your menu until you install something. Reset removes them all.
+- The AIO Launcher, the Arena and Age of the Ring show their own pictures instead of generic icons.
+- The Game folders page has a group for Age of the Ring.
+- The Game folders page lists only the games that are installed. Before, each missing game had a heading that said "Not installed". With none installed, the page says so.
 - The Cancel button also stops before the next program when it is pressed during the last step of one.
+- The icon of BFME Installer itself, in your menu and on its window, is now the Battle for Middle-earth II icon.
 
 ## [1.1.1]
 

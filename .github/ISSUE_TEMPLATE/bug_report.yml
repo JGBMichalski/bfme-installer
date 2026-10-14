@@ -40,7 +40,7 @@ body:
     id: what
     attributes:
       label: What happened?
-      description: What you did, what you expected, and what you saw instead. Mention the game (BFME, BFME 2 or Rise of the Witch-king) and whether it was the Launcher or the Arena.
+      description: What you did, what you expected, and what you saw instead. Mention the game (BFME, BFME 2 or Rise of the Witch-king) and whether it was the AIO Launcher, the Arena, or Age of the Ring.
     validations:
       required: true
   - type: textarea

@@ -12,6 +12,7 @@ States:
   idle       nothing running; the setup is not complete: the start page
   running    a job of the plan is running
   waiting    the plan needs the player: download Age of the Ring from ModDB and choose the file
+  removing   a program is being taken out of the game environment
   cancelled  the plan stopped cleanly between steps
   failed     a step failed; retrying may help
   blocked    the system itself needs a change (a failed system check); the user must act, then recheck
@@ -24,8 +25,10 @@ from dataclasses import dataclass
 
 from . import protocol as p
 
-# Start page choices, in install order. The Arena is not one: it comes with the Launcher.
+# Start page choices, in install order. The Arena is not one: it comes with the AIO Launcher.
 PROGRAMS = ("launcher", "aotr")
+# Everything that can be opened, and removed again.
+ALL_PROGRAMS = ("launcher", "arena", "aotr")
 
 JOB_STEPS: dict[str, list[tuple[str, str, str]]] = {
     "environment": [
@@ -34,9 +37,9 @@ JOB_STEPS: dict[str, list[tuple[str, str, str]]] = {
         ("prefix", "Create the game environment", "Setting up a private folder for the launchers and games."),
     ],
     "launcher": [
-        ("launcher", "Download the launcher", "Fetching the All-in-One Launcher for managing the games."),
+        ("launcher", "Download the AIO Launcher", "Fetching the All-in-One Launcher for managing the games."),
         ("arena", "Download the Arena", "Fetching the Online Arena for playing multiplayer."),
-        ("shortcuts", "Add menu shortcuts", "Adding the Launcher and the Arena to your application menu."),
+        ("shortcuts", "Add menu shortcuts", "Adding the AIO Launcher and the Arena to your application menu."),
     ],
     "aotr": [
         ("aotr-download", "Download Age of the Ring", "Getting the file from ModDB, then choosing it here."),
@@ -93,6 +96,7 @@ class SetupModel:
         self.job: str | None = None            # the job that is running, waiting for the player, or failed
         self.started_from_home = False         # the plan began on the home screen: stopping it goes back there
         self.just_finished = False             # this session ran a plan to the end
+        self.removing: str | None = None       # the program being removed, while the state is "removing"
         self.steps: dict[str, str] = {}
         self._reset_run()
 
@@ -167,8 +171,15 @@ class SetupModel:
     def begin_check(self) -> None:
         """Start a status or recheck question. Drops old check results."""
         self.state = "checking"
+        self.removing = None
         self.checks.clear()
         self.fixes.clear()
+        self.error = None
+
+    def begin_remove(self, program: str) -> None:
+        """A program is being removed. The plan that finished before stays as it was."""
+        self.state = "removing"
+        self.removing = program
         self.error = None
 
     def begin_quiet_check(self) -> None:
@@ -282,7 +293,9 @@ class SetupModel:
     def step_number(self) -> int:
         """1-based position of the running step in the plan."""
         ids = self.step_ids
-        return ids.index(self.current) + 1 if self.current in ids else max(1, self.done_count + 1)
+        if self.current in ids:
+            return ids.index(self.current) + 1
+        return max(1, min(self.done_count + 1, len(ids)))   # not past the last step, while the script is finishing up
 
     @property
     def last_check_message(self) -> str:
@@ -332,9 +345,9 @@ class SetupModel:
 
 
 def games_line(model: SetupModel) -> str:
-    """The home screen's top sentence. Empty when games are installed or there is no Launcher."""
+    """The home screen's top sentence. Empty when games are installed or there is no AIO Launcher."""
     if model.games or not model.is_installed("launcher"):
         return ""
     if model.just_finished:
-        return "Setup is complete. Open the Launcher to install your games."
-    return "No games installed yet. Open the Launcher to install them."
+        return "Setup is complete. Open the AIO Launcher to install your games."
+    return "No games installed yet. Open the AIO Launcher to install them."

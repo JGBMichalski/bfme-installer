@@ -9,13 +9,14 @@ from bfme_wizard.controller import Controller
 from bfme_wizard.runner import ScriptRunner
 
 # A fake setup script. State lives in flag files in $FAKE_DIR; every call is appended to $FAKE_DIR/calls.
-#   prefix, launcher, aotr   what is installed
+#   prefix, launcher, arena, aotr   what is installed
 #   curl-fixed               the system check passes (without it `prepare` fails its check)
 #   flaky                    `prepare` fails once, in the runner step
-#   launcher-flaky           `launcher-install` fails once, in the launcher step
+#   launcher-flaky           `launcher-install` fails once, in the `launcher` step
 #   cancel-once              `launcher-install` is stopped once, before the arena step
 #   aotr-bad                 `aotr-install` fails once, in the check
 #   shortcuts-fails          `shortcuts` fails (the permission is gone, say)
+#   remove-fails             `remove` fails and deletes nothing
 FAKE = r"""#!/usr/bin/env bash
 shift  # --machine
 cmd="$1"
@@ -24,10 +25,10 @@ once() { [ -f "$FAKE_DIR/$1" ] && [ ! -f "$FAKE_DIR/$1-used" ] && touch "$FAKE_D
 # What the real script prints for `status`, and at the end of every job just before DONE.
 report() {
   if [ -f "$FAKE_DIR/prefix" ]; then echo "@bfme STATUS prefix ready"; else echo "@bfme STATUS prefix missing"; fi
-  if [ -f "$FAKE_DIR/launcher" ]; then echo "@bfme STATUS launcher installed"; echo "@bfme STATUS arena installed"
-  else echo "@bfme STATUS launcher missing"; echo "@bfme STATUS arena missing"; fi
+  if [ -f "$FAKE_DIR/launcher" ]; then echo "@bfme STATUS launcher installed"; else echo "@bfme STATUS launcher missing"; fi
+  if [ -f "$FAKE_DIR/arena" ]; then echo "@bfme STATUS arena installed"; else echo "@bfme STATUS arena missing"; fi
   if [ -f "$FAKE_DIR/aotr" ]; then echo "@bfme STATUS aotr installed"; else echo "@bfme STATUS aotr missing"; fi
-  if [ -f "$FAKE_DIR/prefix" ] && { [ -f "$FAKE_DIR/launcher" ] || [ -f "$FAKE_DIR/aotr" ]; }; then
+  if [ -f "$FAKE_DIR/prefix" ] && { [ -f "$FAKE_DIR/launcher" ] || [ -f "$FAKE_DIR/arena" ] || [ -f "$FAKE_DIR/aotr" ]; }; then
     echo "@bfme STATUS complete yes"; else echo "@bfme STATUS complete no"; fi
 }
 case "$cmd" in
@@ -35,7 +36,10 @@ case "$cmd" in
   shortcuts)
     echo "Shortcuts are up to date in /fake"
     if [ -f "$FAKE_DIR/shortcuts-fails" ]; then echo "@bfme ERROR - Could not update the shortcuts"; exit 1; fi ;;
-  reset-prefix) rm -f "$FAKE_DIR/prefix" "$FAKE_DIR/launcher" "$FAKE_DIR/aotr"; echo "Prefix deleted." ;;
+  reset-prefix) rm -f "$FAKE_DIR/prefix" "$FAKE_DIR/launcher" "$FAKE_DIR/arena" "$FAKE_DIR/aotr"; echo "Prefix deleted." ;;
+  remove)
+    if [ -f "$FAKE_DIR/remove-fails" ]; then echo "@bfme ERROR - Could not remove it"; exit 1; fi
+    rm -f "$FAKE_DIR/$2"; report; echo "@bfme DONE" ;;
   doctor)
     if [ -f "$FAKE_DIR/curl-fixed" ]; then echo "@bfme CHECK cmd-curl ok curl found"; exit 0; fi
     echo "@bfme CHECK cmd-curl fail curl not found"; echo "@bfme FIX cmd-curl sudo apt install curl"; exit 1 ;;
@@ -57,7 +61,7 @@ case "$cmd" in
     echo "@bfme STEP launcher done"; echo "@bfme STEP arena start"
     if once cancel-once; then echo "@bfme CANCELLED"; exit 130; fi
     echo "@bfme STEP arena done"; echo "@bfme STEP shortcuts skip"
-    touch "$FAKE_DIR/launcher"; report; echo "@bfme DONE" ;;
+    touch "$FAKE_DIR/launcher" "$FAKE_DIR/arena"; report; echo "@bfme DONE" ;;
   aotr-install)
     echo "@bfme STEP aotr-check start"
     if once aotr-bad; then echo "@bfme ERROR aotr-check This file is incomplete."; exit 1; fi
@@ -117,7 +121,7 @@ class Base(unittest.TestCase):
 
 
 class Flow(Base):
-    def test_fresh_start_then_install_the_launcher(self):
+    def test_fresh_start_then_install_the_aio_launcher(self):
         self.run_until("idle", self.c.start)
         self.assertFalse(self.c.model.paused)
         self.flag("curl-fixed")
@@ -170,7 +174,7 @@ class Flow(Base):
         self.run_until("done", self.c.retry)
         self.assertEqual(self.calls(), ["prepare", "launcher-install", "launcher-install"])
 
-    def test_stopping_pauses_the_setup_and_resume_carries_on_with_the_launcher(self):
+    def test_stopping_pauses_the_setup_and_resume_carries_on_with_the_aio_launcher(self):
         self.flag("curl-fixed", "cancel-once")
         self.run_until("cancelled", lambda: self.c.install(["launcher"]))
         self.assertTrue(self.c.model.paused)
@@ -215,7 +219,7 @@ class Flow(Base):
 
 
 class AgeOfTheRing(Base):
-    def test_alone_it_installs_neither_the_launcher_nor_the_arena(self):
+    def test_alone_it_installs_neither_the_aio_launcher_nor_the_arena(self):
         self.flag("curl-fixed")
         self.run_until("idle", self.c.start)
         self.run_until("waiting", lambda: self.c.install(["aotr"]))
@@ -229,7 +233,7 @@ class AgeOfTheRing(Base):
         self.assertFalse(m.is_installed("arena"))
         self.assertTrue(m.just_finished)
 
-    def test_with_the_launcher_it_comes_last(self):
+    def test_with_the_aio_launcher_it_comes_last(self):
         self.flag("curl-fixed")
         self.run_until("waiting", lambda: self.c.install(["aotr", "launcher"]))
         self.assertEqual(self.calls(), ["prepare", "launcher-install"])
@@ -238,7 +242,7 @@ class AgeOfTheRing(Base):
         self.assertTrue(self.c.model.aotr_installed and self.c.model.is_installed("launcher"))
 
     def test_the_download_page_knows_what_the_jobs_before_it_installed(self):
-        # Regression: its exit said "Back to start" with the Launcher already installed, because it went by the
+        # Regression: its exit said "Back to start" with the AIO Launcher already installed, because it went by the
         # status taken when the app opened. Each job reports where things stand, so leaving lands where it says.
         self.flag("curl-fixed")
         self.run_until("idle", self.c.start)
@@ -259,7 +263,7 @@ class AgeOfTheRing(Base):
         self.run_until("done", self.c.start)
         before = self.calls()
         self.run_until("waiting", lambda: self.c.install(["aotr"]))
-        self.assertEqual(self.calls(), before)   # nothing ran: the environment and the Launcher are already there
+        self.assertEqual(self.calls(), before)   # nothing ran: the environment and the AIO Launcher are already there
         self.assertTrue(self.c.model.started_from_home)
 
     def test_a_failed_check_can_be_retried_with_the_same_file(self):
@@ -385,6 +389,93 @@ class Shortcuts(Base):
         self.assertEqual(first, [(True, False)])
 
 
+class Removal(Base):
+    """Taking one program out of the game environment, from the Programs page."""
+
+    EVERYTHING = ("prefix", "launcher", "arena", "aotr")
+
+    def started(self, *flags):
+        self.flag(*(flags or self.EVERYTHING))
+        self.run_until("done", self.c.start)
+
+    def remove(self, program, results=None):
+        results = [] if results is None else results
+        self.run_until("done", lambda: self.assertTrue(self.c.remove(program, results.append)))
+        return results
+
+    def test_a_program_goes_and_the_others_stay(self):
+        self.started()
+        self.assertEqual(self.remove("arena"), [True])
+        m = self.c.model
+        self.assertEqual([m.is_installed(p) for p in ("launcher", "arena", "aotr")], [True, False, True])
+        self.assertEqual(self.calls(), ["status", "doctor", "remove arena", "status", "doctor"])
+
+    def test_each_program_can_go_by_itself(self):
+        for program in ("launcher", "arena", "aotr"):
+            with self.subTest(program):
+                self.setUp()
+                self.started()
+                self.assertEqual(self.remove(program), [True])
+                gone = [p for p in ("launcher", "arena", "aotr") if not self.c.model.is_installed(p)]
+                self.assertEqual(gone, [program])
+
+    def test_the_window_sees_it_as_a_state_of_its_own_and_then_looks_at_the_setup_again(self):
+        self.started()
+        self.states.clear()
+        self.remove("launcher")
+        self.assertEqual(self.states, ["removing", "checking", "done"])
+
+    def test_the_last_program_to_go_leaves_the_start_page_with_a_ready_environment(self):
+        self.started("prefix", "aotr")
+        self.states.clear()
+        self.run_until("idle", lambda: self.c.remove("aotr", lambda ok: None))
+        self.assertEqual((self.c.model.environment_ready, self.c.model.has_home_screen), (True, False))
+        self.assertEqual(self.states[-1], "idle")
+
+    def test_a_failed_removal_says_what_went_wrong_and_looks_again(self):
+        self.started()
+        self.flag("remove-fails")
+        seen = []
+        self.run_until("done", lambda: self.c.remove("launcher", lambda ok: seen.append((ok, self.c.model.error.message))))
+        self.assertEqual(seen, [(False, "Could not remove it")])
+        self.assertTrue(self.c.model.is_installed("launcher"))      # nothing was deleted
+        self.assertIsNone(self.c.model.error)                        # and the home screen is not an error page
+
+    def test_it_is_refused_while_the_setup_runs_or_a_program_is_open_or_the_script_is_busy(self):
+        self.started()
+        before = self.calls()
+        self.c.model.state = "running"
+        self.assertFalse(self.c.remove("arena", lambda ok: None))
+        self.c.model.state = "done"
+        self.c.apps.state["launcher"] = "running"
+        self.assertFalse(self.c.remove("arena", lambda ok: None))
+        self.c.apps.state["launcher"] = "idle"
+        self.c.run_checks()
+        self.assertFalse(self.c.remove("arena", lambda ok: None))
+        self.run_until("done", lambda: None)
+        self.assertEqual(self.calls()[len(before):], ["doctor"])     # only the checks ran
+
+    def test_only_a_program_can_be_removed(self):
+        self.started()
+        for name in ("everything", "prefix", "", "BFME2", "launcher-install"):
+            self.assertFalse(self.c.remove(name, lambda ok: None), name)
+        self.assertEqual([c for c in self.calls() if c.startswith("remove")], [])
+
+    def test_the_reason_it_waits_is_told(self):
+        self.started()
+        self.c.model.state = "removing"
+        self.assertIn("being removed", self.c.blocked_reason())
+        self.c.model.state = "running"
+        self.assertIn("setup is running", self.c.blocked_reason())
+
+    def test_a_program_that_was_removed_can_be_installed_again(self):
+        self.started()
+        self.remove("launcher")
+        self.flag("curl-fixed")
+        self.run_until("done", lambda: self.c.install(["launcher"]))
+        self.assertTrue(self.c.model.is_installed("launcher"))
+
+
 class Offer(Base):
     """What a shortcut wanted, when the setup could not just start it."""
 
@@ -415,7 +506,7 @@ class Offer(Base):
         self.c = self.controller(offer="aotr")
         self.run_until("done", self.c.start)
 
-    def test_a_launcher_entry_on_a_complete_setup_just_shows_the_home_screen(self):
+    def test_an_aio_launcher_entry_on_a_complete_setup_just_shows_the_home_screen(self):
         self.flag("prefix", "aotr")
         self.c = self.controller(offer="launcher")
         self.run_until("done", self.c.start)

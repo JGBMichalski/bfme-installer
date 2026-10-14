@@ -5,7 +5,9 @@ umu-run in front of the real ones, so nothing is downloaded and nothing outside 
 `prepare` is left out on purpose: its only work is the system checks (unchanged), which depend on the computer the
 tests run on.
 """
+import fcntl
 import os
+import re
 import shutil
 import stat
 import subprocess
@@ -13,7 +15,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from tests.helpers import EXPORT_SUFFIX, manifest_app_id, manifest_icon_exports
+
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "bfme-linux-setup.sh"
+PICTURES = SCRIPT.parents[1] / "wizard" / "bfme_wizard" / "icons"   # the pictures of the programs, beside the scripts folder
 HAVE_SEVENZIP = any(shutil.which(c) for c in ("7zz", "7z", "7za"))
 
 # Answers the few requests the script makes: the Arena's hash, a HEAD for a size, and any download.
@@ -35,7 +40,7 @@ mkdir -p "$(dirname "$out")"
 case "$url" in *online-arena*) printf 'arena-binary' > "$out" ;; *) printf 'fake-download' > "$out" ;; esac
 """
 
-# "Creates" the prefix, "runs" the Launcher's setup and the Age of the Ring installer, and ignores registry writes.
+# "Creates" the prefix, "runs" the AIO Launcher's setup and the Age of the Ring installer, and ignores registry writes.
 FAKE_UMU = r"""#!/usr/bin/env bash
 case "${1:-}" in
   "") mkdir -p "$WINEPREFIX/drive_c/windows" "$WINEPREFIX/drive_c/users/steamuser" ;;
@@ -73,8 +78,8 @@ class ScriptCase(unittest.TestCase):
             PATH=f"{bin_dir}:{os.environ['PATH']}",
         )
 
-    def run_script(self, *args, machine=True):
-        command = [str(SCRIPT), *(["--machine"] if machine else []), *args]
+    def run_script(self, *args, machine=True, script=None):
+        command = [str(script or SCRIPT), *(["--machine"] if machine else []), *args]
         return subprocess.run(command, env=self.env, capture_output=True, text=True, timeout=120)
 
     def status_lines(self, proc):
@@ -107,6 +112,19 @@ class ScriptCase(unittest.TestCase):
     def remove(self, program):
         """What a player deleting a program by hand does: its file is gone. Nothing tells the script."""
         self.program_file(program).unlink()
+
+    def make_games(self):
+        """The games the AIO Launcher installed. They live beside the programs, not inside them."""
+        for folder, exe in (("BFME2", "lotrbfme2.exe"), ("RotWK", "lotrbfme2ep1.exe")):
+            (self.prefix / "drive_c" / folder).mkdir(parents=True, exist_ok=True)
+            (self.prefix / "drive_c" / folder / exe).write_text("game")
+
+    def aotr_user_data(self):
+        """Age of the Ring keeps its settings away from the program, in the player's own folder."""
+        return self.prefix / "drive_c/users/steamuser/AppData/Roaming/Age of the Ring/Options.ini"
+
+    def program_folder(self, program):
+        return self.program_file(program).parent
 
     def uninstall_everything(self):
         shutil.rmtree(self.prefix / "drive_c/users/steamuser/AppData", ignore_errors=True)
@@ -142,7 +160,7 @@ class Status(ScriptCase):
                 self.assertEqual(self.complete(program), "yes")
                 self.assertEqual(self.status()[program], "installed")
 
-    def test_age_of_the_ring_alone_does_not_need_the_launcher_or_the_arena(self):
+    def test_age_of_the_ring_alone_does_not_need_the_aio_launcher_or_the_arena(self):
         self.assertEqual(self.complete("aotr"), "yes")
         status = self.status()
         self.assertEqual((status["launcher"], status["arena"]), ("missing", "missing"))
@@ -167,7 +185,7 @@ class Status(ScriptCase):
     def test_the_text_output_is_unchanged_by_the_status_lines(self):
         self.make_prefix()
         plain = self.run_script("status", machine=False)
-        self.assertIn("Launcher:   not installed", plain.stdout)
+        self.assertIn("AIO Launcher: not installed", plain.stdout)
         self.assertIn("Age of the Ring: not installed", plain.stdout)
         self.assertNotIn("@bfme", plain.stdout)
 
@@ -202,7 +220,7 @@ class ShortcutLifetime:
         self.run_script("shortcuts")
         self.assertEqual(self.shortcuts(), ["aotr", "arena", "launcher"])
 
-    def test_removing_the_launcher_removes_its_shortcut_and_only_its_shortcut(self):
+    def test_removing_the_aio_launcher_removes_its_shortcut_and_only_its_shortcut(self):
         self.install_all()
         self.remove("launcher")
         self.assertEqual(self.run_script("shortcuts").returncode, 0)
@@ -249,7 +267,8 @@ class ShortcutLifetime:
     def test_nothing_installed_creates_nothing(self):
         # A first start leaves no folders or script copies.
         self.assertEqual(self.run_script("shortcuts").returncode, 0)
-        self.assertEqual((self.apps.exists(), (self.base / "bin").exists()), (False, False))
+        self.assertEqual((self.apps.exists(), (self.base / "bin").exists(), (self.base / "icons").exists()),
+                         (False, False, False))
 
     def test_a_shortcut_that_is_already_right_is_left_alone(self):
         # The desktop rebuilds its menu on file changes, and the wizard asks on every start.
@@ -287,6 +306,84 @@ class ShortcutsOutsideFlatpak(ShortcutLifetime, ScriptCase):
         text = (self.apps / "bfme-aotr.desktop").read_text()
         self.assertIn(f'"{self.base}/bin/bfme-linux-setup.sh" aotr', text)
         self.assertTrue((self.base / "bin/bfme-linux-setup.sh").is_file())
+
+    # ------------------------------------------------------------------ the pictures
+    def icon_line(self, program):
+        return re.search(r"^Icon=(.*)$", (self.apps / f"bfme-{program}.desktop").read_text(), re.M).group(1)
+
+    def a_copy_of_the_script_elsewhere(self):
+        """The script as it is when it sits outside a checkout: no folder of pictures near it."""
+        folder = self.tmp / "elsewhere"
+        folder.mkdir(exist_ok=True)
+        copy = folder / "bfme-linux-setup.sh"
+        shutil.copy2(SCRIPT, copy)
+        return copy
+
+    def test_each_shortcut_shows_its_programs_own_picture_from_a_copy_in_the_data_folder(self):
+        self.make_prefix()
+        for program in self.PROGRAMS:
+            self.install(program)
+        self.assertEqual(self.run_script("shortcuts").returncode, 0)
+        for program in self.PROGRAMS:
+            with self.subTest(program):
+                self.assertEqual(self.icon_line(program), f"{self.base}/icons/{program}.png")
+                self.assertEqual((self.base / "icons" / f"{program}.png").read_bytes(), (PICTURES / f"{program}.png").read_bytes())
+
+    def test_the_pictures_are_copied_so_the_shortcuts_do_not_depend_on_the_checkout(self):
+        # The same reason the script copies itself: a checkout that is moved or deleted must not take the icons with it.
+        self.make_prefix()
+        self.install("arena")
+        self.run_script("shortcuts")
+        self.assertNotIn(str(PICTURES), (self.apps / "bfme-arena.desktop").read_text())
+
+    def test_without_the_pictures_anywhere_the_shortcut_falls_back_to_a_themed_icon(self):
+        self.make_prefix()
+        self.install("launcher")
+        done = self.run_script("shortcuts", script=self.a_copy_of_the_script_elsewhere())
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual(self.icon_line("launcher"), "applications-games")
+        self.assertFalse((self.base / "icons").exists())
+
+    def test_a_later_run_that_cannot_find_the_pictures_keeps_the_ones_already_copied(self):
+        # The shortcuts' own copy of the script in <data dir>/bin has no checkout beside it.
+        self.make_prefix()
+        self.install("launcher")
+        self.run_script("shortcuts")
+        self.install("aotr")
+        self.assertEqual(self.run_script("shortcuts", script=self.base / "bin" / "bfme-linux-setup.sh").returncode, 0)
+        self.assertEqual(self.icon_line("launcher"), f"{self.base}/icons/launcher.png")
+        self.assertEqual(self.icon_line("aotr"), f"{self.base}/icons/aotr.png")     # copied for all three the first time
+
+    def test_a_picture_that_changed_is_copied_again_and_one_that_did_not_is_left_alone(self):
+        self.make_prefix()
+        self.install("launcher")
+        self.run_script("shortcuts")
+        stamp = lambda name: (self.base / "icons" / name).stat().st_mtime_ns
+        before = {name: stamp(name) for name in ("arena.png", "aotr.png")}
+        (self.base / "icons" / "launcher.png").write_bytes(b"an older version of the picture")
+        self.run_script("shortcuts")
+        self.assertEqual((self.base / "icons" / "launcher.png").read_bytes(), (PICTURES / "launcher.png").read_bytes())
+        self.assertEqual({name: stamp(name) for name in before}, before)
+
+    def test_a_removed_programs_picture_stays_so_installing_it_again_from_the_copy_of_the_script_still_has_one(self):
+        self.make_prefix()
+        self.install("launcher")
+        self.install("arena")
+        self.run_script("shortcuts")
+        self.remove("launcher")
+        self.run_script("shortcuts")
+        self.assertTrue((self.base / "icons" / "launcher.png").is_file())
+        self.assertFalse((self.apps / "bfme-launcher.desktop").exists())
+
+    def test_a_picture_that_cannot_be_copied_does_not_stop_the_shortcut(self):
+        self.make_prefix()
+        self.install("launcher")
+        (self.base).mkdir(parents=True, exist_ok=True)
+        (self.base / "icons").write_text("a file where the folder should be")
+        done = self.run_script("shortcuts")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual(self.icon_line("launcher"), "applications-games")
+        self.assertIn("Could not copy the picture", done.stderr)
 
     def test_an_install_does_not_fail_because_its_shortcuts_cannot_be_written(self):
         # The programs are installed whatever happens to the menu. A file where the folder should be stops the write.
@@ -363,9 +460,30 @@ class ShortcutsInFlatpak(ShortcutLifetime, ScriptCase):
             with self.subTest(program):
                 text = self.shortcut_text(program)
                 self.assertIn(f"Exec=flatpak run --command=bfme-installer {self.app_id} --open {program}\n", text)
-                self.assertIn(f"Icon={self.app_id}\n", text)
+                self.assertIn(f"Icon={self.app_id}.{EXPORT_SUFFIX[program]}\n", text)   # its own, not the app's
                 self.assertIn(f"X-Flatpak={self.app_id}\n", text)
                 self.assertTrue(text.startswith("[Desktop Entry]\nType=Application\n"))
+
+    def test_every_program_has_a_different_icon_and_none_is_the_apps_own(self):
+        self.make_prefix()
+        for program in self.PROGRAMS:
+            self.install(program)
+        self.run_script("shortcuts")
+        icons = {program: re.search(r"^Icon=(.*)$", self.shortcut_text(program), re.M).group(1) for program in self.PROGRAMS}
+        self.assertEqual(len(set(icons.values())), 3)
+        self.assertNotIn(self.app_id, icons.values())
+
+    def test_the_icon_of_each_shortcut_is_the_one_the_manifest_exports_for_it(self):
+        # Two files say the same name: the manifest installs the picture under it, and the script asks for it. If they drift
+        # apart the menu shows a missing-icon box, and nothing else notices.
+        self.sandbox(app_id=manifest_app_id())
+        self.make_prefix()
+        for program in self.PROGRAMS:
+            self.install(program)
+        self.assertEqual(self.run_script("shortcuts").returncode, 0)
+        exported = {name for _width, _height, name in manifest_icon_exports().values()}
+        used = {re.search(r"^Icon=(.*)$", self.shortcut_text(program), re.M).group(1) for program in self.PROGRAMS}
+        self.assertEqual(used, exported)
 
     def test_a_copy_built_under_another_id_says_so_and_the_release_does_not(self):
         self.with_launcher()
@@ -476,6 +594,133 @@ class ShortcutsInFlatpak(ShortcutLifetime, ScriptCase):
         self.assertEqual(self.shortcuts(), [])
 
 
+class Remove(ScriptCase):
+    """`remove <program>` takes one program out of the game environment: its folder and its shortcut. Everything else stays:
+    the other programs, the games the AIO Launcher installed, and the settings a program keeps in the player's own folder."""
+
+    PROGRAMS = ("launcher", "arena", "aotr")
+
+    def everything_installed(self):
+        self.make_prefix()
+        for program in self.PROGRAMS:
+            self.install(program)
+            (self.program_folder(program) / "settings.txt").write_text("the program's own files")
+        self.make_games()
+        self.aotr_user_data().parent.mkdir(parents=True, exist_ok=True)
+        self.aotr_user_data().write_text("Resolution = 2560 1080")
+        self.assertEqual(self.run_script("shortcuts").returncode, 0)
+
+    def shortcuts(self):
+        return sorted(p.name[len("bfme-"):-len(".desktop")] for p in self.apps.glob("bfme-*.desktop")) if self.apps.is_dir() else []
+
+    def test_it_takes_the_programs_folder_and_shortcut_and_nothing_else(self):
+        for gone in self.PROGRAMS:
+            with self.subTest(gone):
+                self.uninstall_everything()
+                shutil.rmtree(self.prefix / "drive_c", ignore_errors=True)
+                self.everything_installed()
+                done = self.run_script("remove", gone)
+                self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+                self.assertFalse(self.program_folder(gone).exists())
+                kept = [p for p in self.PROGRAMS if p != gone]
+                self.assertTrue(all((self.program_folder(p) / "settings.txt").is_file() for p in kept))
+                self.assertEqual(self.shortcuts(), sorted(kept))
+                # the games, and what Age of the Ring keeps in the player's folder, were never part of a program
+                self.assertTrue((self.prefix / "drive_c/BFME2/lotrbfme2.exe").is_file())
+                self.assertTrue((self.prefix / "drive_c/RotWK/lotrbfme2ep1.exe").is_file())
+                self.assertEqual(self.aotr_user_data().read_text(), "Resolution = 2560 1080")
+
+    def test_the_status_is_reported_for_a_program_that_runs_several_jobs(self):
+        self.everything_installed()
+        done = self.run_script("remove", "launcher")
+        lines = self.status_lines(done)
+        self.assertEqual(lines[-1], "@bfme DONE")
+        reported = dict(line.split(" ", 3)[2:] for line in lines if line.startswith("@bfme STATUS "))
+        self.assertEqual((reported["launcher"], reported["arena"], reported["aotr"], reported["complete"]),
+                         ("missing", "installed", "installed", "yes"))
+        self.assertEqual((reported["bfme2"], reported["rotwk"]), ("installed", "installed"))
+        self.assertEqual(reported, self.status())
+
+    def test_removing_the_last_program_leaves_a_ready_environment_that_is_not_complete(self):
+        self.make_prefix()
+        self.install("aotr")
+        self.run_script("shortcuts")
+        self.assertEqual(self.run_script("remove", "aotr").returncode, 0)
+        status = self.status()
+        self.assertEqual((status["prefix"], status["aotr"], status["complete"]), ("ready", "missing", "no"))
+        self.assertEqual(self.shortcuts(), [])
+
+    def test_it_can_be_run_again_and_for_a_program_that_is_not_there(self):
+        self.make_prefix()
+        for _ in range(2):
+            done = self.run_script("remove", "arena")
+            self.assertEqual((done.returncode, self.status_lines(done)[-1]), (0, "@bfme DONE"))
+
+    def test_a_half_installed_program_is_cleaned_up_as_well(self):
+        # An interrupted install leaves a marker and a partial folder: not installed, but not nothing either.
+        self.make_prefix()
+        self.install("aotr")
+        (self.prefix / ".bfme-aotr-installing").write_text("")
+        (self.base / "downloads/aotr").mkdir(parents=True)
+        (self.base / "downloads/aotr/part-1a.bin").write_text("15 GB of unpacked files, in real life")
+        self.assertEqual(self.run_script("remove", "aotr").returncode, 0)
+        self.assertEqual([self.program_folder("aotr").exists(), (self.prefix / ".bfme-aotr-installing").exists(),
+                          (self.base / "downloads/aotr").exists()], [False, False, False])
+
+    def test_the_arena_takes_its_leftover_download_with_it_and_the_aio_launcher_its_setup(self):
+        self.make_prefix()
+        self.install("arena")
+        self.install("launcher")
+        downloads = self.base / "downloads"
+        downloads.mkdir(parents=True)
+        for name in ("OnlineArena.exe.part", "AllInOneLauncherSetup.exe", "umu-launcher.tar", "Proton.tar.gz"):
+            (downloads / name).write_text("x")
+        self.run_script("remove", "arena")
+        self.run_script("remove", "launcher")
+        # what belongs to the runner stays: every program needs it
+        self.assertEqual(sorted(p.name for p in downloads.iterdir()), ["Proton.tar.gz", "umu-launcher.tar"])
+
+    def test_a_name_that_is_not_a_program_deletes_nothing(self):
+        self.everything_installed()
+        for name in ("everything", "prefix", "../x", "BFME2", "Launcher", ""):
+            with self.subTest(name):
+                done = self.run_script("remove", name) if name else self.run_script("remove")
+                self.assertEqual(done.returncode, 1)
+                self.assertTrue(self.status_lines(done)[-1].startswith("@bfme ERROR - Use: remove launcher|arena|aotr"))
+        self.assertTrue(all(self.program_folder(p).is_dir() for p in self.PROGRAMS))
+        self.assertTrue((self.prefix / "drive_c/BFME2").is_dir())
+
+    def test_a_setup_that_is_running_blocks_it(self):
+        self.everything_installed()
+        self.base.mkdir(parents=True, exist_ok=True)
+        with open(self.base / ".setup.lock", "w") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            done = self.run_script("remove", "launcher")
+        self.assertEqual(done.returncode, 1)
+        self.assertIn("Another setup is already running", done.stdout + done.stderr)
+        self.assertTrue(self.program_folder("launcher").is_dir())
+
+    def test_the_wine_session_ends_before_anything_is_deleted(self):
+        # A program that is still open would lose its files under it, and Wine would write its registry back afterwards.
+        self.everything_installed()
+        server = self.tmp / "xdg/umu/compatibilitytools/fake-proton/files/bin/wineserver"
+        server.parent.mkdir(parents=True)
+        server.write_text('#!/usr/bin/env bash\necho "$1 folder_still_there=$([ -d "$FAKE_TARGET" ] && echo yes || echo no)" >> "$WINESERVER_LOG"\n')
+        server.chmod(0o755)
+        self.env.update(FAKE_TARGET=str(self.program_folder("aotr")), WINESERVER_LOG=str(self.tmp / "wineserver.log"))
+        self.assertEqual(self.run_script("remove", "aotr").returncode, 0)
+        self.assertEqual((self.tmp / "wineserver.log").read_text().split("\n")[:-1],
+                         ["-k folder_still_there=yes", "-w folder_still_there=yes"])
+        self.assertFalse(self.program_folder("aotr").exists())
+
+    def test_it_is_in_the_help_and_the_text_output_has_no_status_lines(self):
+        self.assertIn("remove <program>", self.run_script("help", machine=False).stdout)
+        self.everything_installed()
+        plain = self.run_script("remove", "arena", machine=False)
+        self.assertIn("Removed BFME Online Arena.", plain.stdout)
+        self.assertNotIn("@bfme", plain.stdout)
+
+
 class Jobs(ScriptCase):
     def test_age_of_the_ring_asks_only_for_the_game_environment(self):
         done = self.run_script("aotr-install", str(self.tmp / "AotR_Standalone_9.3.0_Installer.zip"))
@@ -495,7 +740,7 @@ class Jobs(ScriptCase):
         self.assertEqual(done.returncode, 1)
         self.assertTrue(self.status_lines(done)[0].startswith("@bfme ERROR - Use: aotr-install <path"))
 
-    def test_the_launcher_job_installs_the_launcher_and_the_arena_reports_where_things_stand_and_can_run_again(self):
+    def test_the_launcher_job_installs_the_aio_launcher_and_the_arena_reports_where_things_stand_and_can_run_again(self):
         self.make_prefix()
         done = self.run_script("launcher-install")
         self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
@@ -512,8 +757,44 @@ class Jobs(ScriptCase):
                          ("installed", "installed", "missing", "yes"))
         self.assertEqual(reported, self.status())
         self.assertEqual(self.entries(), ["bfme-arena.desktop", "bfme-launcher.desktop"])
-        # A retry or resume does not install the Launcher twice.
+        # A retry or resume does not install the AIO Launcher twice.
         self.assertIn("@bfme STEP launcher skip", self.status_lines(self.run_script("launcher-install")))
+
+    def test_the_help_says_aio_launcher_where_it_means_that_program_and_not_the_other_launcher(self):
+        text = self.run_script("help", machine=False).stdout
+        self.assertIn("Everything for the AIO Launcher and the Arena", text)
+        self.assertIn("not from the AIO Launcher's Multiplayer tab", text)
+        self.assertIn("Start the Age of the Ring Launcher", text)       # the other launcher keeps the name it has
+
+    def test_starting_the_aio_launcher_from_a_terminal_says_which_launcher_it_is(self):
+        self.make_prefix()
+        self.install("launcher")
+        proc = self.run_script("launcher", machine=False)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("Starting the AIO Launcher. Log: ", proc.stdout)
+        self.assertNotIn("Starting launcher", proc.stdout)
+        # The key still names the log files: Troubleshoot and the diagnostics look for them by it.
+        self.assertTrue(list((self.base / "logs").glob("launcher-*.log")))
+
+    def test_what_the_terminal_says_while_it_installs_names_the_aio_launcher(self):
+        self.make_prefix()
+        proc = self.run_script("launcher-install", machine=False)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("Installing the AIO Launcher. ", proc.stdout)
+        self.assertIn("Do not switch patches in the AIO Launcher after a game is installed.", proc.stdout)
+
+    def test_the_other_programs_are_started_with_the_words_they_had(self):
+        self.make_prefix()
+        self.install("aotr")
+        proc = self.run_script("aotr", machine=False)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("Starting aotr. Log: ", proc.stdout)
+
+    def test_a_game_that_is_not_there_sends_the_player_to_the_aio_launcher_by_name(self):
+        self.make_prefix()
+        proc = self.run_script("game", "bfme2", machine=False)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("Install it in the AIO Launcher first.", proc.stdout + proc.stderr)
 
     def test_the_commands_are_in_the_help(self):
         text = self.run_script("help", machine=False).stdout
@@ -522,7 +803,7 @@ class Jobs(ScriptCase):
 
     @unittest.skipUnless(HAVE_SEVENZIP, "7-Zip is needed to read the Age of the Ring download")
     def test_age_of_the_ring_installs_into_a_bare_game_environment(self):
-        # Only the environment (`prepare`) is needed, not the Launcher or Arena.
+        # Only the environment (`prepare`) is needed, not the AIO Launcher or Arena.
         self.make_prefix()
         source = self.tmp / "zip-source"
         source.mkdir()

@@ -12,10 +12,10 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, GLib, Gtk  # noqa: E402
 
+from .catalog import AOTR_DOWNLOAD_GB as DOWNLOAD_GB
 from .widgets import pill
 
 MODDB_URL = "https://www.moddb.com/mods/the-horse-lords-a-total-modification-for-bfme/downloads/age-of-the-ring-version-90"
-DOWNLOAD_GB = 14
 SPACE_GB = 40
 INTRO = (
     "It comes with its own launcher and its own copy of the games, so the games you already have stay as they are. "

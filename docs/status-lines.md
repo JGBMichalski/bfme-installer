@@ -18,7 +18,7 @@
 | `@bfme DONE` | The job finished: `install`, `prepare`, `launcher-install` or `aotr-install`. |
 | `@bfme STATUS <key> <value>` | Printed by `status` and before every `DONE`. |
 
-`STATUS` keys: `runner`; `prefix` (`ready` or `missing`); `launcher`, `arena` and `aotr` (`installed` or `missing`; `aotr` is Age of the Ring); `bfme1`, `bfme2` and `rotwk` (`installed` when the game's program is present, else `missing`); `complete` (`yes` or `no`: the game environment is ready and holds at least one of `launcher`, `arena` and `aotr`).
+`STATUS` keys: `runner`; `prefix` (`ready` or `missing`); `launcher`, `arena` and `aotr` (`installed` or `missing`; `launcher` is the AIO Launcher and `aotr` is Age of the Ring); `bfme1`, `bfme2` and `rotwk` (`installed` when the game's program is present, else `missing`); `complete` (`yes` or `no`: the game environment is ready and holds at least one of `launcher`, `arena` and `aotr`).
 
 ## Jobs and steps
 
@@ -30,6 +30,7 @@ The wizard runs only the jobs the player chose, one after the other. Each job en
 | `launcher-install` | `launcher`, `arena`, `shortcuts` | The All-in-One Launcher and the Arena. Needs `prepare` first. |
 | `aotr-install <zip>` | `aotr-check`, `aotr-unpack`, `aotr-install`, `aotr-settings` | Age of the Ring. Needs only `prepare`. |
 | `install` | `prepare`, then `launcher-install` | The terminal setup. |
+| `remove <program>` | none | Takes `launcher`, `arena` or `aotr` out of the game environment: its folder, its shortcut, and what an interrupted install of it left. Keeps the games, the other programs and the settings a program keeps in the player's own folder. Ends the Wine session first and refuses while a setup runs. Prints `STATUS` lines, then `DONE`. |
 
 The wizard adds `aotr-download` before Age of the Ring's steps, where the player gets the file from ModDB. The script never prints it.
 

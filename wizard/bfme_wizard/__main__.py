@@ -38,9 +38,9 @@ def main() -> int:
     if offer and app_is_ready(script, offer):
         os.execv(script, [script, offer])   # no window needed
     if not has_display():
-        # No display: install the Launcher and the Arena in this terminal.
+        # No display: install the AIO Launcher and the Arena in this terminal.
         # Age of the Ring alone: `bfme-linux-setup prepare`, then `aotr-install <file>`.
-        print("No display found, so the setup wizard cannot open. Installing the Launcher and the Arena in this terminal instead.")
+        print("No display found, so the setup wizard cannot open. Installing the AIO Launcher and the Arena in this terminal instead.")
         sys.stdout.flush()
         os.execv(script, [script, "install"])
     from .ui import WizardApp  # late, so the terminal path needs no GTK

@@ -1,19 +1,19 @@
+import contextlib
+import io
 import os
-import stat
 import tempfile
 import time
 import unittest
 from pathlib import Path
 from unittest import mock
 
-from gi.repository import GLib
-
-from bfme_wizard.__main__ import parse_args
+from bfme_wizard.__main__ import main, parse_args
 from bfme_wizard.apps import AppLauncher
 from bfme_wizard.controller import Controller
 from bfme_wizard.diagnostics import any_log, build_report, data_dir, newest_log, tail
 from bfme_wizard.model import SetupModel, games_line
 from bfme_wizard.runner import ScriptRunner, app_is_ready, setup_is_complete
+from tests.helpers import buttons, descendants, gtk_or_skip, labels, make_script, wait_for
 
 
 def feed(model, *lines):
@@ -39,7 +39,7 @@ class ModelGames(unittest.TestCase):
         m.begin_job("environment")
         feed(m, "@bfme DONE")
         self.assertEqual(m.finish_install(0), "launcher")
-        self.assertFalse(m.just_finished)   # the launcher is still to come
+        self.assertFalse(m.just_finished)   # the AIO Launcher is still to come
         m.begin_job("launcher")
         feed(m, "@bfme DONE")
         m.finish_install(0)
@@ -79,12 +79,12 @@ class Line(unittest.TestCase):
     def test_wording(self):
         self.assertEqual(self.games({**self.LAUNCHER, "bfme2": "installed"}), "")
         self.assertEqual(self.games({**self.LAUNCHER, "bfme1": "installed", "bfme2": "installed", "rotwk": "installed"}), "")
-        self.assertEqual(self.games(self.LAUNCHER), "No games installed yet. Open the Launcher to install them.")
-        self.assertEqual(self.games(self.LAUNCHER, finished=True), "Setup is complete. Open the Launcher to install your games.")
+        self.assertEqual(self.games(self.LAUNCHER), "No games installed yet. Open the AIO Launcher to install them.")
+        self.assertEqual(self.games(self.LAUNCHER, finished=True), "Setup is complete. Open the AIO Launcher to install your games.")
         self.assertEqual(self.games({**self.LAUNCHER, "bfme2": "installed"}, finished=True), "")
 
-    def test_nothing_about_games_for_someone_who_did_not_install_the_launcher(self):
-        # Age of the Ring has its own copies of the games, and there is no Launcher to open to install the others.
+    def test_nothing_about_games_for_someone_who_did_not_install_the_aio_launcher(self):
+        # Age of the Ring has its own copies of the games, and there is no AIO Launcher to open to install the others.
         self.assertEqual(self.games({"aotr": "installed"}), "")
         self.assertEqual(self.games({"aotr": "installed"}, finished=True), "")
 
@@ -96,27 +96,6 @@ case "$1" in
   bad-exit) exit 3 ;;
 esac
 """
-
-
-def make_script(body):
-    d = tempfile.mkdtemp()
-    path = os.path.join(d, "fake.sh")
-    with open(path, "w") as f:
-        f.write(body)
-    os.chmod(path, os.stat(path).st_mode | stat.S_IXUSR)
-    return path
-
-
-def wait_for(loop_ms, condition):
-    loop = GLib.MainLoop()
-    def tick():
-        if condition():
-            loop.quit()
-            return False
-        return True
-    GLib.timeout_add(50, tick)
-    GLib.timeout_add(loop_ms, loop.quit)
-    loop.run()
 
 
 class Apps(unittest.TestCase):
@@ -171,7 +150,7 @@ class Diagnostics(unittest.TestCase):
         report = build_report("0.2.9", m, logs)
         for expected in ("Version: 0.2.9", "Runner: proton", "BFME 2 installed", "BFME unknown",
                          "[FAILED] parts missing", "fix: flatpak install X", "[ok] x86_64 processor",
-                         "launcher-20260102-000000.log", "line 99", "arena says hi", "--- no prefix creation log ---"):
+                         "--- latest AIO Launcher log (launcher-20260102-000000.log", "line 99", "arena says hi", "--- no prefix creation log ---"):
             self.assertIn(expected, report)
         self.assertNotIn("line 59", report)   # only the last 40 lines
         self.assertNotIn("old\n", report)     # only the newest log
@@ -179,7 +158,7 @@ class Diagnostics(unittest.TestCase):
     def test_a_report_before_any_check_or_log_still_works(self):
         report = build_report("dev", SetupModel(), Path(tempfile.mkdtemp()))
         self.assertIn("(not run yet)", report)
-        self.assertIn("--- no launcher log ---", report)
+        self.assertIn("--- no AIO Launcher log ---", report)
 
     def test_log_helpers(self):
         d = Path(tempfile.mkdtemp())
@@ -219,6 +198,17 @@ class MenuEntries(unittest.TestCase):
         for bad in ([], ["--open"], ["--open", "bfme2"], ["launcher"]):
             self.assertIsNone(parse_args(bad))
 
+    def test_without_a_display_the_terminal_message_names_the_aio_launcher(self):
+        out = io.StringIO()
+        # os.execv never returns, so its stand-in must not either: past it, main() would start the real application.
+        with mock.patch("bfme_wizard.__main__.find_script", return_value="/x/setup.sh"), \
+                mock.patch("bfme_wizard.__main__.has_display", return_value=False), \
+                mock.patch("bfme_wizard.__main__.os.execv", side_effect=SystemExit) as execv, \
+                mock.patch("sys.argv", ["bfme-installer"]), contextlib.redirect_stdout(out), self.assertRaises(SystemExit):
+            main()
+        self.assertIn("Installing the AIO Launcher and the Arena in this terminal instead.", out.getvalue())
+        execv.assert_called_once_with("/x/setup.sh", ["/x/setup.sh", "install"])
+
     def test_setup_is_complete(self):
         script = make_script(STATUS)
         os.environ["COMPLETE"], os.environ["STATUS_EXIT"] = "yes", "0"
@@ -235,7 +225,7 @@ class MenuEntries(unittest.TestCase):
             return app_is_ready(make_script(INSTALLED), app)
 
     def test_an_entry_starts_its_program_at_once_when_that_program_is_installed(self):
-        # Someone who chose only Age of the Ring has no Launcher or Arena: only its own entry can start at once.
+        # Someone who chose only Age of the Ring has no AIO Launcher or Arena: only its own entry can start at once.
         self.assertTrue(self.ready("aotr", INSTALLED="aotr"))
         self.assertFalse(self.ready("launcher", INSTALLED="aotr"))
         self.assertFalse(self.ready("arena", INSTALLED="aotr"))
@@ -339,88 +329,138 @@ class Flow(unittest.TestCase):
         self.assertFalse(self.c.reset(lambda ok: None))
         self.c.model.state = "done"
         self.c.apps.state["launcher"] = "running"
-        self.assertIn("still running", self.c.blocked_reason())
+        self.assertEqual(self.c.blocked_reason(), "The AIO Launcher, the Arena or Age of the Ring is still running.")
         self.c.apps.state["launcher"] = "idle"
         self.assertIsNone(self.c.blocked_reason())
 
 
-def gtk_or_skip(test):
-    """Import the widgets, or skip: the CI job installs only the GLib bindings and has no display."""
-    try:
-        import gi
-        gi.require_version("Gtk", "4.0")
-        gi.require_version("Adw", "1")
-        from gi.repository import Gtk
-    except (ValueError, ImportError):
-        test.skipTest("GTK is not installed")
-    if not Gtk.init_check():
-        test.skipTest("no display")
-    return Gtk
-
-
-def buttons(widget, Gtk):
-    """Every button under the widget, in order."""
-    found = []
-    def walk(w):
-        while w:
-            if isinstance(w, Gtk.Button):
-                found.append(w)
-            walk(w.get_first_child())
-            w = w.get_next_sibling()
-    walk(widget)
-    return found
+class Advice(unittest.TestCase):
+    def test_the_advice_about_graphics_drivers_names_the_aio_launcher(self):
+        gtk_or_skip(self)
+        from bfme_wizard.home import CANT_CHECK
+        advice = {title: text for title, text, _command in CANT_CHECK}
+        self.assertEqual(advice["Graphics drivers"], "The launchers/applications need working Vulkan drivers on your computer.")
 
 
 class HomeCards(unittest.TestCase):
-    """Each card opens its program when it is installed and offers to install it when it is not."""
+    """The home screen shows the programs that are installed, each with a button to open it. Installing and removing
+    programs is the Programs page's job, and the buttons for the other pages float in the corner of the window's page."""
 
-    def labels(self, installed):
+    ALL = {"launcher": "installed", "arena": "installed", "aotr": "installed"}
+
+    def page(self, installed):
         Gtk = gtk_or_skip(self)
         from bfme_wizard.home import HomePage
         c = Controller(ScriptRunner(make_script(FLOW)), lambda: None)
         c.model.installed = installed
-        page = HomePage(c, lambda: "1.0.0", lambda: None)
+        page = HomePage(c, lambda: "1.0.0")
         page.refresh()
-        return [(b.get_label(), b.has_css_class("suggested-action"), b.get_sensitive())
-                for b in buttons(page.content, Gtk) if b.get_label() in ("Open", "Install")]   # Launcher, Arena, Age of the Ring
+        return Gtk, c, page
 
-    def test_everything_installed_opens_everything(self):
-        every = {"launcher": "installed", "arena": "installed", "aotr": "installed"}
-        self.assertEqual(self.labels(every), [("Open", True, True)] * 3)
+    def titles(self, installed):
+        Gtk, _c, page = self.page(installed)
+        return labels(page.content, Gtk, "title-2")
 
-    def test_a_player_who_chose_only_age_of_the_ring_can_install_the_rest_from_here(self):
-        self.assertEqual(self.labels({"aotr": "installed"}),
-                         [("Install", True, True), ("Install", True, True), ("Open", True, True)])
+    def test_only_the_installed_programs_have_a_card(self):
+        self.assertEqual(self.titles(self.ALL), ["AIO Launcher", "Arena", "Age of the Ring"])
+        self.assertEqual(self.titles({"launcher": "installed", "arena": "installed"}), ["AIO Launcher", "Arena"])
+        self.assertEqual(self.titles({"aotr": "installed"}), ["Age of the Ring"])
+        self.assertEqual(self.titles({"arena": "installed"}), ["Arena"])
+        self.assertEqual(self.titles({"launcher": "installed", "aotr": "installed"}), ["AIO Launcher", "Age of the Ring"])
 
-    def test_a_player_who_chose_only_the_launcher_can_install_age_of_the_ring_from_here(self):
-        self.assertEqual(self.labels({"launcher": "installed", "arena": "installed"}),
-                         [("Open", True, True), ("Open", True, True), ("Install", True, True)])
+    def test_a_program_that_is_not_there_leaves_no_trace_of_itself(self):
+        Gtk, _c, page = self.page({"launcher": "installed"})
+        text = " ".join(labels(page.content, Gtk))
+        for word in ("Arena", "Age of the Ring", "Not installed", "Comes with"):
+            self.assertNotIn(word, text)
 
-    def test_install_waits_while_the_system_checks_run(self):
-        # The script is busy then and would ignore the click, so the button says so by being inactive.
+    def test_every_card_has_one_open_button_and_it_starts_its_own_program(self):
+        Gtk, c, page = self.page(self.ALL)
+        opened = []
+        c.open_app = opened.append
+        found = buttons(page.content, Gtk)
+        self.assertEqual([b.get_label() for b in found], ["Open"] * 3)
+        for button in found:
+            button.emit("clicked")
+        self.assertEqual(opened, ["launcher", "arena", "aotr"])
+
+    def test_nothing_to_install_or_to_navigate_is_left_on_the_page(self):
+        # Install belongs to the Programs page; Game folders and Troubleshoot are buttons in the corner of the window's page.
+        Gtk, _c, page = self.page(self.ALL)
+        self.assertEqual({b.get_label() for b in buttons(page.box, Gtk)}, {"Open"})
+
+    def test_a_running_program_shows_that_and_a_quick_exit_says_so_softly(self):
+        Gtk, c, page = self.page(self.ALL)
+        c.apps.state.update(launcher="running", arena="quick")
+        page.refresh()
+        self.assertEqual([b.get_label() for b in buttons(page.content, Gtk)], ["Open", "Open"])   # not the running one
+        text = labels(page.content, Gtk)
+        self.assertIn("Running", text)
+        self.assertTrue(any("Closed after a few seconds" in line for line in text))
+
+    def test_with_nothing_installed_it_points_at_the_button_that_installs(self):
+        # Not reachable through a real status (the setup is not complete then), but the page must not be a blank.
+        Gtk, _c, page = self.page({})
+        self.assertEqual(labels(page.content, Gtk, "title-2"), [])
+        self.assertTrue(any("download button" in line for line in labels(page.content, Gtk)))
+
+    def test_the_version_is_at_the_bottom(self):
+        Gtk, _c, page = self.page(self.ALL)
+        self.assertIn("Version 1.0.0", labels(page.box, Gtk, "caption"))
+
+
+class GameFoldersWidget(unittest.TestCase):
+    def page(self, home, opened):
         Gtk = gtk_or_skip(self)
-        from bfme_wizard.home import HomePage
-        c = Controller(ScriptRunner(make_script(FLOW)), lambda: None)
-        c.model.installed = {"launcher": "installed", "arena": "installed"}
-        page = HomePage(c, lambda: "1.0.0", lambda: None)
-        c.run_checks()
-        page.refresh()
-        install = [b for b in buttons(page.content, Gtk) if b.get_label() == "Install"]
-        self.assertEqual([b.get_sensitive() for b in install], [False])
-        wait_for(8000, lambda: not c.runner.busy)
+        from bfme_wizard.home import GameFoldersPage
+        with mock.patch.dict(os.environ, {"BFME_HOME": home, "BFME_RUNNER": "proton"}):
+            return Gtk, GameFoldersPage(opened.append)
 
-    def test_installing_a_missing_card_plans_only_that_program(self):
-        Gtk = gtk_or_skip(self)
-        from bfme_wizard.home import HomePage
-        c = Controller(ScriptRunner(make_script(FLOW)), lambda: None)
-        c.model.installed = {"aotr": "installed", "prefix": "ready"}
-        asked = []
-        c.install = asked.append
-        page = HomePage(c, lambda: "1.0.0", lambda: None)
-        page.refresh()
-        for b in [b for b in buttons(page.content, Gtk) if b.get_label() == "Install"]:
-            b.emit("clicked")
-        self.assertEqual(asked, [["launcher"], ["launcher"]])   # the Arena card installs it with the Launcher
+    def groups(self, Gtk, page):
+        from gi.repository import Adw
+        return [w for w in descendants(page.view) if isinstance(w, Adw.PreferencesGroup)]
+
+    def test_only_the_installed_games_have_a_group_in_their_order_with_age_of_the_ring_last(self):
+        with tempfile.TemporaryDirectory() as home:
+            drive = Path(home) / "prefix/drive_c"
+            for folder in ("RotWK", "BFME1", "AgeoftheRing"):
+                (drive / folder).mkdir(parents=True)
+            Gtk, page = self.page(home, [])
+            self.assertEqual([g.get_title() for g in self.groups(Gtk, page)], ["BFME", "Rise of the Witch-king", "Age of the Ring"])
+
+    def test_a_game_that_is_not_installed_leaves_no_trace_of_itself(self):
+        with tempfile.TemporaryDirectory() as home:
+            (Path(home) / "prefix/drive_c/BFME2").mkdir(parents=True)
+            Gtk, page = self.page(home, [])
+            text = " ".join(labels(page.view, Gtk))
+            for word in ("Not installed", "Rise of the Witch-king", "Age of the Ring"):
+                self.assertNotIn(word, text)
+            self.assertEqual([g.get_title() for g in self.groups(Gtk, page)], ["BFME 2"])
+
+    def test_with_no_game_installed_the_page_says_so_instead_of_being_empty(self):
+        with tempfile.TemporaryDirectory() as home:
+            Gtk, page = self.page(home, [])
+            self.assertEqual(self.groups(Gtk, page), [])
+            from gi.repository import Adw
+            status = [w for w in descendants(page.view) if isinstance(w, Adw.StatusPage)]
+            self.assertEqual(len(status), 1)
+            self.assertEqual(status[0].get_title(), "No games installed")
+
+    def test_its_rows_open_its_program_folder_and_its_lowercase_maps_folder(self):
+        with tempfile.TemporaryDirectory() as home:
+            drive = Path(home) / "prefix/drive_c"
+            (drive / "AgeoftheRing").mkdir(parents=True)
+            user = drive / "users/steamuser/AppData/Roaming/Age of the Ring"
+            (user / "maps").mkdir(parents=True)
+            opened = []
+            Gtk, page = self.page(home, opened)
+            from gi.repository import Adw
+            rows = [w for w in descendants(self.groups(Gtk, page)[0]) if isinstance(w, Adw.ActionRow)]
+            self.assertEqual([r.get_title() for r in rows], ["Game folder", "Maps and user data"])
+            for row in rows:
+                row.emit("activated")
+            self.assertEqual(opened, [drive / "AgeoftheRing", user / "maps"])
+            self.assertEqual([g.get_title() for g in self.groups(Gtk, page)], ["Age of the Ring"])   # the games are separate
 
 
 class StartPageWidget(unittest.TestCase):

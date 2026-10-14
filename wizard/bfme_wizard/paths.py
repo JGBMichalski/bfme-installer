@@ -18,6 +18,10 @@ GAME_DIRS = {
     "bfme2": ("BFME2", "My Battle for Middle-earth II Files"),
     "rotwk": ("RotWK", "My Rise of the Witch-king Files"),
 }
+# Age of the Ring is not a game of this list: it has its own copies of the games in C:\AgeoftheRing, and keeps its settings and
+# maps in AppData\Roaming\Age of the Ring (the registry's UserDataLeafName for its Rise of the Witch-king copy), not in a
+# "My ... Files" folder. Its maps folder is lowercase, as the Age of the Ring Launcher makes it.
+AOTR = ("aotr", "Age of the Ring", "AgeoftheRing", "Age of the Ring", "maps")
 
 
 @dataclass(frozen=True)
@@ -26,14 +30,15 @@ class GameFolders:
     name: str
     game: Path
     user_data: Path
+    maps_dir: str = "Maps"    # the folder for maps inside user_data; the games' is "Maps", Age of the Ring's is "maps"
 
     @property
     def installed(self) -> bool:
         return self.game.is_dir()
 
     def maps_target(self) -> Path:
-        """First existing of: Maps, user-data folder, game folder."""
-        for path in (self.user_data / "Maps", self.user_data, self.game):
+        """First existing of: the maps folder, the user-data folder, the game folder."""
+        for path in (self.user_data / self.maps_dir, self.user_data, self.game):
             if path.is_dir():
                 return path
         return self.game
@@ -55,5 +60,7 @@ def game_folders(environ: dict[str, str] | None = None) -> list[GameFolders]:
     prefix = prefix_dir(environ)
     roaming = prefix / "drive_c" / "users" / wine_user(environ) / "AppData" / "Roaming"
     names = dict(GAMES)
-    return [GameFolders(key, names[key], prefix / "drive_c" / folder, roaming / user_data)
-            for key, (folder, user_data) in GAME_DIRS.items()]
+    games = [GameFolders(key, names[key], prefix / "drive_c" / folder, roaming / user_data)
+             for key, (folder, user_data) in GAME_DIRS.items()]
+    key, name, folder, user_data, maps_dir = AOTR
+    return games + [GameFolders(key, name, prefix / "drive_c" / folder, roaming / user_data, maps_dir)]

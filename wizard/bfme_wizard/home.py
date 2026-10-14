@@ -1,4 +1,4 @@
-"""The home screen cards and the Troubleshoot page. They show the model and call back into the window."""
+"""The home screen cards, the Game folders page and the Troubleshoot page. They show the model and call back into the window."""
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -10,39 +10,34 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, GLib, Gtk  # noqa: E402
 
-from .controller import PROGRAM_OF, Controller
+from .catalog import CATALOG, Program
+from .controller import Controller
 from .model import games_line
 from .paths import game_folders
-from .widgets import clear, first_icon, pill
+from .widgets import clear, first_icon, pill, program_icon
 
-CARDS = [
-    ("launcher", "Launcher", "Install, patch and start your games", ("applications-games-symbolic", "input-gaming-symbolic")),
-    ("arena", "Arena", "Play online matches against other players", ("network-workgroup-symbolic", "system-users-symbolic")),
-    ("aotr", "Age of the Ring", "A large mod with its own launcher", ("media-optical-symbolic", "starred-symbolic")),
-]
-# Card text for a program that is not installed.
-NOT_INSTALLED = {
-    "arena": "Comes with the Launcher",
-    "aotr": "An optional mod with its own launcher",
-}
+# What the page says when there is no card to show. A complete setup always has one, so this is only a safety net.
+NOTHING_INSTALLED = "Nothing is installed. Use the download button at the top to install a program."
+CARD_ICON_SIZE = 64
+# The window floats its icon buttons in the top right corner of the page: 6 pixels from the top, and 34 high.
+CORNER_CLEARANCE = 46
 QUICK_EXIT_NOTE = "Closed after a few seconds. If it didn't open, see Troubleshoot."
 # The sandbox cannot see these. Advice only, never pass or fail.
 CANT_CHECK = [
     ("Firewall", "If you cannot host or join games, check that your firewall (ufw or firewalld) allows them.", "sudo ufw status"),
-    ("Graphics drivers", "The Launcher and the Arena need working Vulkan drivers on your computer.", "vulkaninfo --summary"),
+    ("Graphics drivers", "The launchers/applications need working Vulkan drivers on your computer.", "vulkaninfo --summary"),
 ]
 
 
 class HomePage:
-    """One card per program: Open when installed, Install when not."""
+    """One card for each program that is installed. Installing and removing programs is the Programs page's job."""
 
-    def __init__(self, controller: Controller, version: Callable[[], str], on_troubleshoot: Callable[[], None],
-                 on_game_folders: Callable[[], None] = lambda: None) -> None:
-        self.controller, self.version, self.on_troubleshoot = controller, version, on_troubleshoot
-        self.on_game_folders = on_game_folders
+    def __init__(self, controller: Controller, version: Callable[[], str]) -> None:
+        self.controller, self.version = controller, version
         self.box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         self.content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=18, vexpand=True, valign=Gtk.Align.CENTER,
-                               halign=Gtk.Align.CENTER, margin_start=24, margin_end=24)
+                               halign=Gtk.Align.CENTER, margin_start=24, margin_end=24,
+                               margin_top=CORNER_CLEARANCE, margin_bottom=CORNER_CLEARANCE)
         self.version_label = Gtk.Label(css_classes=["caption", "dim-label"], halign=Gtk.Align.CENTER,
                                        margin_top=6, margin_bottom=12)
         self.box.append(self.content)
@@ -55,38 +50,30 @@ class HomePage:
         if line:
             self.content.append(Gtk.Label(label=line, wrap=True, justify=Gtk.Justification.CENTER,
                                           css_classes=["heading"]))
-        cards = Gtk.Box(spacing=16, homogeneous=True)
-        for name, title, description, icons in CARDS:
-            cards.append(self._card(name, title, description, icons))
-        self.content.append(cards)
-        tools = Gtk.Box(spacing=12, halign=Gtk.Align.CENTER, margin_top=6)
-        tools.append(pill("Game folders", self.on_game_folders, suggested=False))
-        tools.append(pill("Troubleshoot", self.on_troubleshoot, suggested=False))
-        self.content.append(tools)
-
-    def _card(self, name: str, title: str, description: str, icons: tuple[str, ...]) -> Gtk.Widget:
-        state = self.controller.apps.state[name]
-        installed = self.controller.model.is_installed(name)
-        inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10, margin_top=18, margin_bottom=18, margin_start=18, margin_end=18)
-        image = Gtk.Image.new_from_icon_name(first_icon(*icons))
-        image.set_pixel_size(48)
-        inner.append(image)
-        inner.append(Gtk.Label(label=title, css_classes=["title-2"]))
+        installed = [info for info in CATALOG if self.controller.model.is_installed(info.key)]
         if not installed:
-            description = NOT_INSTALLED.get(name, description)
-        inner.append(Gtk.Label(label=description, wrap=True, justify=Gtk.Justification.CENTER, css_classes=["dim-label"], max_width_chars=20))
+            self.content.append(Gtk.Label(label=NOTHING_INSTALLED, wrap=True, justify=Gtk.Justification.CENTER,
+                                          css_classes=["dim-label"], max_width_chars=40))
+            return
+        cards = Gtk.Box(spacing=16, homogeneous=True, halign=Gtk.Align.CENTER)
+        for info in installed:
+            cards.append(self._card(info))
+        self.content.append(cards)
+
+    def _card(self, info: Program) -> Gtk.Widget:
+        name = info.key
+        state = self.controller.apps.state[name]
+        inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10, margin_top=18, margin_bottom=18, margin_start=18, margin_end=18)
+        inner.append(program_icon(info, CARD_ICON_SIZE))
+        inner.append(Gtk.Label(label=info.title, css_classes=["title-2"]))
+        inner.append(Gtk.Label(label=info.summary, wrap=True, justify=Gtk.Justification.CENTER, css_classes=["dim-label"], max_width_chars=20))
         if state == "running":
             running = Gtk.Box(spacing=8, halign=Gtk.Align.CENTER, margin_top=4, margin_bottom=4)
             running.append(Gtk.Spinner(spinning=True))
             running.append(Gtk.Label(label="Running"))
             inner.append(running)
-        elif installed:
-            inner.append(pill("Open", lambda n=name: self.controller.open_app(n)))
         else:
-            install = pill("Install", lambda n=name: self.controller.install([PROGRAM_OF[n]]))
-            # The script ignores clicks while system checks run.
-            install.set_sensitive(not self.controller.checking)
-            inner.append(install)
+            inner.append(pill("Open", lambda n=name: self.controller.open_app(n)))
         if state == "quick":
             inner.append(Gtk.Label(label=QUICK_EXIT_NOTE, wrap=True, justify=Gtk.Justification.CENTER,
                                    css_classes=["caption", "warning"], max_width_chars=26))
@@ -105,20 +92,26 @@ class GameFoldersPage:
             title="Game folders",
             description="Open a folder in your file manager to add maps or copy files.",
         )
-        for folders in game_folders():
+        any_installed = False
+        # A game that is not installed has no folders to open, so it has no group.
+        for folders in (f for f in game_folders() if f.installed):
             group = Adw.PreferencesGroup(title=GLib.markup_escape_text(folders.name))
-            if not folders.installed:
-                group.set_description("Not installed")
-            else:
-                for title, subtitle, target in (
-                    ("Game folder", "Installed files and patches", folders.game),
-                    ("Maps and user data", "Maps, replays and settings", folders.maps_target()),
-                ):
-                    row = Adw.ActionRow(title=title, subtitle=subtitle, activatable=True)
-                    row.add_suffix(Gtk.Image.new_from_icon_name("folder-open-symbolic"))
-                    row.connect("activated", lambda *_, t=target: open_folder(t))
-                    group.add(row)
+            for title, subtitle, target in (
+                ("Game folder", "Installed files and patches", folders.game),
+                ("Maps and user data", "Maps, replays and settings", folders.maps_target()),
+            ):
+                row = Adw.ActionRow(title=title, subtitle=subtitle, activatable=True)
+                row.add_suffix(Gtk.Image.new_from_icon_name("folder-open-symbolic"))
+                row.connect("activated", lambda *_, t=target: open_folder(t))
+                group.add(row)
             page.add(group)
+            any_installed = True
+        if not any_installed:
+            self.view.set_content(Adw.StatusPage(
+                title="No games installed", description="Install a game with the AIO Launcher, and its folders will be here.",
+                icon_name=first_icon("folder-symbolic", "folder-open-symbolic"),
+            ))
+            return
         self.view.set_content(page)
 
 

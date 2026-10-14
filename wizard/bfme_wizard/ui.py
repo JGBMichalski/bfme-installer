@@ -10,16 +10,40 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, Gdk, Gio, GLib, GObject, Gtk  # noqa: E402
 
 from .aotr import MODDB_URL, AotrDownloadPage
-from .controller import Controller
+from .catalog import program
+from .controller import PROGRAM_OF, Controller
 from .diagnostics import any_log, build_report, data_dir
 from .home import GameFoldersPage, HomePage, TroubleshootPage
 from .model import description_of, title_of
+from .programs import ProgramsPage
 from .start import StartPage
 from .updater import make_updater
-from .widgets import clear, first_icon, pill
+from .widgets import clear, first_icon, icon_button, pill
 
 # Flatpak builds under another ID run beside this one.
 APP_ID = os.environ.get("FLATPAK_ID") or "com.jgbmichalski.BfmeInstaller"
+
+# Icons of the corner buttons, best first: the host's icon theme and the Flatpak runtime's are not the same set, and a name
+# only the host has shows a broken image inside the Flatpak. The first of each is in the GNOME runtime.
+PROGRAMS_ICONS = (
+    "folder-download-symbolic",
+    "system-software-install-symbolic",
+    "document-save-symbolic"
+)
+
+FOLDERS_ICONS = (
+    "folder-symbolic",
+    "folder-open-symbolic",
+    "system-file-manager-symbolic"
+)
+
+# A lifebuoy: help when something goes wrong. Not a gear (that says Settings), not a warning sign (that says alarm).
+TROUBLESHOOT_ICONS = (
+    "help-browser-symbolic",
+    "applications-engineering-symbolic",
+    "dialog-question-symbolic",
+    "help-about-symbolic"
+)
 
 
 class WizardWindow(Adw.ApplicationWindow):
@@ -31,9 +55,8 @@ class WizardWindow(Adw.ApplicationWindow):
 
         self.toasts = Adw.ToastOverlay()
         toolbar = Adw.ToolbarView()
-        header = Adw.HeaderBar()
-        header.pack_end(self._build_menu())
-        toolbar.add_top_bar(header)
+        self.header = Adw.HeaderBar()
+        toolbar.add_top_bar(self.header)
         self.check_banner = Adw.Banner(title="Your system needs a change.", button_label="Troubleshoot")
         self.check_banner.connect("button-clicked", lambda *_: self.show_troubleshoot())
         toolbar.add_top_bar(self.check_banner)
@@ -42,35 +65,60 @@ class WizardWindow(Adw.ApplicationWindow):
         self.update_banner.connect("button-clicked", self._on_update_button)
         toolbar.add_top_bar(self.update_banner)
         self.stack = Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE)
-        toolbar.set_content(self.stack)
+        # The buttons that lead to the other pages float in the top right corner of the page, under the header bar. They are
+        # laid over the page, not above it, so the page keeps all its room. Troubleshoot is there on every page, as the menu it
+        # replaced was, and is the one in the corner. The other two belong to the home screen, so they only show while there is
+        # one. (6 pixels from the corner puts the lifebuoy right under the window's close button.)
+        self.corner = Gtk.Box(spacing=6, halign=Gtk.Align.END, valign=Gtk.Align.START, margin_top=6, margin_end=6)
+        self.programs_button = icon_button(PROGRAMS_ICONS, "Install or remove programs", self.show_programs)
+        self.folders_button = icon_button(FOLDERS_ICONS, "Game folders", self.show_game_folders)
+        self.troubleshoot_button = icon_button(TROUBLESHOOT_ICONS, "Troubleshoot", self.show_troubleshoot)
+        for button in (self.programs_button, self.folders_button, self.troubleshoot_button):
+            self.corner.append(button)
+        self.folders_button.set_visible(False)
+        self.programs_button.set_visible(False)
+        page = Gtk.Overlay(child=self.stack)
+        page.add_overlay(self.corner)
+        toolbar.set_content(page)
         self.nav = Adw.NavigationView()
-        self.nav.add(Adw.NavigationPage.new(toolbar, "BFME Installer"))
-        self.nav.connect("popped", lambda *_: setattr(self, "troubleshoot", None))
+        self.root_page = Adw.NavigationPage.new(toolbar, "BFME Installer")
+        self.nav.add(self.root_page)
+        self.nav.connect("popped", self._on_popped)
         self.troubleshoot: TroubleshootPage | None = None
+        self._troubleshoot_page: Adw.NavigationPage | None = None
+        self.programs: ProgramsPage | None = None
+        self._programs_page: Adw.NavigationPage | None = None
         self.toasts.set_child(self.nav)
         self.set_content(self.toasts)
 
         self._build_checking()
+        self._build_removing()
         self.start = StartPage(self.controller)
         self.stack.add_named(self.start.view, "start")
         self._build_run()
         self._build_problem()
         self.aotr = AotrDownloadPage(self.open_moddb, self.choose_aotr_zip, self.controller.back_home)
         self.stack.add_named(self.aotr.view, "aotr")
-        self.home = HomePage(self.controller, lambda: self.updater.local or "dev", self.show_troubleshoot,
-                             self.show_game_folders)
+        self.home = HomePage(self.controller, lambda: self.updater.local or "dev")
         self.stack.add_named(self.home.box, "home")
 
         self.connect("close-request", self._on_close_request)
         self.updater.check()
         GLib.timeout_add(120, self._pulse)  # keeps the bar moving when a step reports no percentage
 
-    def _build_checking(self) -> None:
-        page = Adw.StatusPage(title="Checking your setup...")
+    def _spinner_page(self, title: str, name: str) -> Adw.StatusPage:
+        page = Adw.StatusPage(title=title)
         spinner = Gtk.Spinner(spinning=True, halign=Gtk.Align.CENTER)
         spinner.set_size_request(32, 32)
         page.set_child(spinner)
-        self.stack.add_named(page, "checking")
+        self.stack.add_named(page, name)
+        return page
+
+    def _build_checking(self) -> None:
+        self._spinner_page("Checking your setup...", "checking")
+
+    def _build_removing(self) -> None:
+        self.removing_page = self._spinner_page("Removing...", "removing")
 
     def _build_run(self) -> None:
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12, valign=Gtk.Align.CENTER, halign=Gtk.Align.CENTER)
@@ -94,16 +142,6 @@ class WizardWindow(Adw.ApplicationWindow):
         self.problem.set_child(clamp)
         self.stack.add_named(self.problem, "problem")
 
-    def _build_menu(self) -> Gtk.MenuButton:
-        """Header menu. Troubleshoot works on every page."""
-        popover = Gtk.Popover()
-        item = Gtk.Button(label="Troubleshoot", css_classes=["flat"])
-        item.connect("clicked", lambda *_: (popover.popdown(), self.show_troubleshoot()))
-        popover.set_child(item)
-        button = Gtk.MenuButton(icon_name="open-menu-symbolic", tooltip_text="Menu")
-        button.set_popover(popover)
-        return button
-
     def _render_check_banner(self) -> None:
         m = self.model
         self.check_banner.set_revealed(m.state == "done" and bool(m.problems))
@@ -115,12 +153,31 @@ class WizardWindow(Adw.ApplicationWindow):
             self.controller, copy_text=self.copy, copy_diagnostics=self.copy_diagnostics,
             open_logs=self.open_logs, confirm_reset=self.confirm_reset,
         )
-        self.nav.push(Adw.NavigationPage.new(self.troubleshoot.view, "Troubleshoot"))
+        self._troubleshoot_page = Adw.NavigationPage.new(self.troubleshoot.view, "Troubleshoot")
+        self.nav.push(self._troubleshoot_page)
 
     def show_game_folders(self) -> None:
         if self.nav.get_visible_page().get_title() == "Game folders":
             return
         self.nav.push(Adw.NavigationPage.new(GameFoldersPage(self.open_folder).view, "Game folders"))
+
+    def show_programs(self) -> None:
+        if self.programs is not None:
+            return
+        self.programs = ProgramsPage(self.controller, install=self.install_program, remove=self.confirm_remove)
+        self._programs_page = Adw.NavigationPage.new(self.programs.view, "Programs")
+        self.nav.push(self._programs_page)
+
+    def _on_popped(self, _nav, page) -> None:
+        if page is self._troubleshoot_page:
+            self.troubleshoot = None
+        elif page is self._programs_page:
+            self.programs = None
+
+    def install_program(self, key: str) -> None:
+        """Install from the Programs page. The setup shows on the main page, so leave this one first."""
+        self.nav.pop_to_page(self.root_page)
+        self.controller.install([PROGRAM_OF[key]])
 
     def open_moddb(self) -> None:
         def opened(launcher: Gtk.UriLauncher, result: Gio.AsyncResult) -> None:
@@ -193,7 +250,7 @@ class WizardWindow(Adw.ApplicationWindow):
         dialog = Adw.AlertDialog(
             heading="Delete the game environment?",
             body="This deletes the game environment, including every game you installed and Age of the Ring. "
-                 "This cannot be undone.\n\nClose the Launcher, the Arena and Age of the Ring first.",
+                 "This cannot be undone.\n\nClose the AIO Launcher, the Arena and Age of the Ring first.",
         )
         dialog.add_response("cancel", "Cancel")
         dialog.add_response("reset", "Delete and set up again")
@@ -203,14 +260,42 @@ class WizardWindow(Adw.ApplicationWindow):
         dialog.connect("response", lambda _d, response: self._do_reset() if response == "reset" else None)
         dialog.present(self)
 
+    def confirm_remove(self, key: str) -> None:
+        info = program(key)
+        dialog = Adw.AlertDialog(
+            heading=f"Remove {info.name}?",
+            body=f"{info.removal}\n\nYou can install it again from the Programs page.\n\n"
+                 "Close the AIO Launcher, the Arena and Age of the Ring first.",
+        )
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("remove", "Remove")
+        dialog.set_response_appearance("remove", Adw.ResponseAppearance.DESTRUCTIVE)
+        dialog.set_default_response("cancel")
+        dialog.set_close_response("cancel")
+        dialog.connect("response", lambda _d, response: self._do_remove(key) if response == "remove" else None)
+        dialog.present(self)
+
+    def _do_remove(self, key: str) -> None:
+        name = program(key).name
+
+        def done(ok: bool) -> None:
+            if ok:
+                text = f"{name[:1].upper()}{name[1:]} was removed."
+            else:
+                error = self.model.error   # still there: the setup is looked at again right after this
+                text = f"Could not remove {name}: {error.message}" if error else f"Could not remove {name}."
+            self.toasts.add_toast(Adw.Toast.new(text))
+
+        if not self.controller.remove(key, done):
+            self.toasts.add_toast(Adw.Toast.new(self.controller.blocked_reason() or "Not now."))
+
     def _do_reset(self) -> None:
         def done(ok: bool) -> None:
             text = "The game environment was deleted." if ok else "The reset failed. Open the logs folder from Troubleshoot."
             self.toasts.add_toast(Adw.Toast.new(text))
 
         if self.controller.reset(done):
-            while self.nav.get_visible_page().get_title() != "BFME Installer":
-                self.nav.pop()
+            self.nav.pop_to_page(self.root_page)
         else:
             self.toasts.add_toast(Adw.Toast.new(self.controller.blocked_reason() or "Not now."))
 
@@ -239,14 +324,38 @@ class WizardWindow(Adw.ApplicationWindow):
         elif state == "failed":
             self.copy(self.updater.manual_command, "Command copied")
 
+    def _render_corner(self) -> None:
+        home = self.model.state == "done"
+        self.programs_button.set_visible(home)
+        self.folders_button.set_visible(home)
+
+    def _render_programs_page(self) -> None:
+        """The Programs page is for the home screen. After a removal the setup is looked at again, and the page stays through
+        that, as it was: for that moment the model knows nothing, and showing it would flash "Not installed" on every row.
+        It goes when there is no home screen to come back to (the last program was removed)."""
+        if self.programs is None:
+            return
+        state = self.model.state
+        if state in ("done", "removing"):
+            self.programs.refresh()
+        elif state != "checking":
+            self.nav.pop_to_page(self.root_page)
+            return
+        self._programs_page.set_can_pop(state == "done")
+
     def render(self) -> None:
         self._render_update_banner()
         self._render_check_banner()
+        self._render_corner()
         if self.troubleshoot is not None:
             self.troubleshoot.refresh()
+        self._render_programs_page()
         m = self.model
         if m.state == "checking":
             self.stack.set_visible_child_name("checking")
+        elif m.state == "removing":
+            self.removing_page.set_title(f"Removing {program(m.removing).name}...")
+            self.stack.set_visible_child_name("removing")
         elif m.state == "done":
             self.home.refresh()
             self.stack.set_visible_child_name("home")
@@ -352,14 +461,25 @@ class WizardWindow(Adw.ApplicationWindow):
         self.toasts.add_toast(Adw.Toast.new(toast))
 
     def _on_close_request(self, _window) -> bool:
+        if self.model.state == "removing":
+            return self._ask_before_closing(
+                "A program is still being removed",
+                "If you close the window now, the removal stops half way and some of its files stay behind. "
+                "Wait for it to finish.",
+                "Close anyway",
+            )
         if self.model.state != "running":
             return False
-        dialog = Adw.AlertDialog(
-            heading="Setup is still running",
-            body="If you close the window now, setup stops. Everything finished so far is kept, and you can resume later.",
+        return self._ask_before_closing(
+            "Setup is still running",
+            "If you close the window now, setup stops. Everything finished so far is kept, and you can resume later.",
+            "Stop and close",
         )
+
+    def _ask_before_closing(self, heading: str, body: str, stop_label: str) -> bool:
+        dialog = Adw.AlertDialog(heading=heading, body=body)
         dialog.add_response("wait", "Keep going")
-        dialog.add_response("stop", "Stop and close")
+        dialog.add_response("stop", stop_label)
         dialog.set_response_appearance("stop", Adw.ResponseAppearance.DESTRUCTIVE)
         dialog.set_default_response("wait")
         dialog.connect("response", self._on_close_response)

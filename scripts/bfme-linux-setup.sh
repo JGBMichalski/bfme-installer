@@ -2,7 +2,7 @@
 # BFME Foundation Project - Linux setup (runs the Windows apps under Proton).
 #
 # Sets up one shared Proton environment (a "prefix") and installs what you choose into it:
-#   - All-in-One Launcher, with the Online Arena (started on its own, not from the launcher's Multiplayer tab)
+#   - All-in-One Launcher, with the Online Arena (started on its own, not from the AIO Launcher's Multiplayer tab)
 #   - Age of the Ring (optional)
 #
 # It never uses sudo and never installs system packages. If something is
@@ -12,12 +12,14 @@
 #   doctor              Check system requirements for the chosen runner.
 #   prepare             Set up the game environment only (runner, prefix, settings). Installs no program.
 #   launcher-install    Install the All-in-One Launcher and the Arena, and their shortcuts.
-#   install             Everything for the Launcher and the Arena: prepare, then launcher-install.
+#   install             Everything for the AIO Launcher and the Arena: prepare, then launcher-install.
 #   launcher            Start the All-in-One Launcher (installs it first if needed).
 #   arena               Start the Online Arena (downloads or updates it first).
 #   game bfme1|bfme2|rotwk   Start a game without the Arena.
 #   aotr-install <zip>  Install Age of the Ring (needs prepare first) from the zip you downloaded from ModDB.
 #   aotr                Start the Age of the Ring Launcher.
+#   remove <program>    Remove one program (launcher, arena or aotr): its folder and its shortcut. Keeps the games, the
+#                       other programs and the settings a program keeps in your own folder.
 #   shortcuts           Bring the menu shortcuts in line with what is installed: add the missing ones, remove the others.
 #   status              Show what is installed and where.
 #   reset-prefix --yes  Delete the prefix. This deletes installed games.
@@ -576,7 +578,7 @@ apply_prefix_settings() {
     reg_add 'HKCU\Software\Wine\DllOverrides' "$dll" REG_SZ 'native,builtin'
   done
 
-  # Without this the launcher does not repaint a tab after you leave the Multiplayer tab.
+  # Without this the AIO Launcher does not repaint a tab after you leave the Multiplayer tab.
   reg_add 'HKCU\Software\Microsoft\Avalon.Graphics' DisableHWAcceleration REG_DWORD 1
 
   if [ "$RUNNER" = "proton" ]; then
@@ -667,14 +669,23 @@ stop_wine_session() {
     done
   fi
   if [ -z "$ws" ]; then
-    warn "Could not find the Wine server. Close the launcher window to let the setup carry on."
+    warn "Could not find the Wine server. Close the AIO Launcher window to let the setup carry on."
     return 1
   fi
   WINEPREFIX="$PREFIX" "$ws" -k >/dev/null 2>&1 || true
   WINEPREFIX="$PREFIX" timeout 20 "$ws" -w >/dev/null 2>&1 || true   # wait until it has saved and exited
 }
 
-# install_launcher leaves .bfme-launcher-installing behind until it finishes, so a half-copied file is not taken for a launcher.
+# Ends every program in the game environment (the Wine session), wherever the runner keeps its Wine server. A program that is
+# still open would lose its files under it, and Wine would write its registry back afterwards.
+end_wine_session() {
+  if [ "$RUNNER" = "proton" ] && [ "$PROTONPATH_VALUE" = "$DEFAULT_PROTONPATH" ] && [ -d "$BASE/proton/$DEFAULT_PROTONPATH" ]; then
+    PROTONPATH_VALUE="$BASE/proton/$DEFAULT_PROTONPATH"
+  fi
+  if [ -d "$PREFIX" ]; then stop_wine_session || true; fi
+}
+
+# install_launcher leaves .bfme-launcher-installing behind until it finishes, so a half-copied file is not taken for the AIO Launcher.
 launcher_installed() {
   [ -f "$LAUNCHER_EXE" ] && [ ! -e "$PREFIX/.bfme-launcher-installing" ]
 }
@@ -684,7 +695,7 @@ install_launcher() {
   launcher_installed && return
   local setup="$DOWNLOADS/AllInOneLauncherSetup.exe"
   [ -f "$setup" ] || download "$LAUNCHER_SETUP_URL" "$setup"
-  say "Installing the launcher. It may open for a moment; the setup closes it again."
+  say "Installing the AIO Launcher. It may open for a moment; the setup closes it again."
   # A leftover half-copied file would look finished to wait_for_stable_file.
   rm -f "$LAUNCHER_EXE"
   : >"$PREFIX/.bfme-launcher-installing"
@@ -692,18 +703,18 @@ install_launcher() {
   # 9>&- because a function run with & copies this shell and would hold the lock.
   run_in_runner create "$setup" >"$LOGS/launcher-setup.log" 2>&1 9>&- &
   local setup_pid=$! installed=0
-  # The setup starts the launcher, and Proton does not return until every program in the session ends.
+  # The setup starts the AIO Launcher, and Proton does not return until every program in the session ends.
   # Wait for the installed file to appear and stop growing, then end the session.
   wait_for_stable_file "$LAUNCHER_EXE" 180 && installed=1
   stop_wine_session || true
   wait "$setup_pid" 2>/dev/null || true
-  [ "$installed" = "1" ] || die "The launcher was not installed. See $LOGS/launcher-setup.log"
+  [ "$installed" = "1" ] || die "The AIO Launcher was not installed. See $LOGS/launcher-setup.log"
   rm -f "$PREFIX/.bfme-launcher-installing" "$setup"
 }
 
 cmd_launcher() {
   install_launcher
-  start_app "launcher" "$LAUNCHER_DIR" "$LAUNCHER_EXE"
+  start_app "launcher" "$LAUNCHER_DIR" "$LAUNCHER_EXE" "the AIO Launcher"
 }
 
 arena_installed() {
@@ -959,17 +970,19 @@ cmd_game() {
   # A game can only exist in a prefix that is already set up, so build nothing here.
   prefix_ready || die "Nothing is set up yet. Run: install"
   ensure_prefix   # applies newer prefix settings
-  [ -d "$PREFIX/drive_c/$dir" ] || die "$dir is not installed. Install it in the Launcher first."
+  [ -d "$PREFIX/drive_c/$dir" ] || die "$dir is not installed. Install it in the AIO Launcher first."
   start_app "$dir" "$PREFIX/drive_c/$dir" "$PREFIX/drive_c/$dir/$exe"
 }
 
+# `name` is the key: it names the log files. `label` is what the message calls the program, for a key that is not a name a person
+# would say ("launcher" could be Age of the Ring's launcher too).
 start_app() {
-  local name="$1" dir="$2" exe="$3"
+  local name="$1" dir="$2" exe="$3" label="${4:-$1}"
   release_setup_lock
   mkdir -p "$LOGS"
   local log
   log="$LOGS/$name-$(date +%Y%m%d-%H%M%S).log"
-  say "Starting $name. Log: $log"
+  say "Starting $label. Log: $log"
   cd "$dir"
   run_in_runner inprefix "$exe" >"$log" 2>&1 || true
   # shellcheck disable=SC2012
@@ -1007,14 +1020,27 @@ shortcut_comment() {
   esac
 }
 
+# A program's name in the Flatpak: the end of its shortcut's file name and of its icon's name, both <app id>.<this>.
+# The manifest installs the pictures under these names, and the tests check that the two agree.
+shortcut_suffix() {
+  case "$1" in
+    launcher) printf 'Launcher' ;;
+    arena)    printf 'Arena' ;;
+    aotr)     printf 'Aotr' ;;
+  esac
+}
+
 # The Flatpak's shortcuts keep the names of the entries the app used to export, so panel pins still work.
 shortcut_file() {
   if [ "$IN_FLATPAK" != "1" ]; then printf 'bfme-%s.desktop' "$1"; return 0; fi
-  case "$1" in
-    launcher) printf '%s.Launcher.desktop' "$FLATPAK_ID" ;;
-    arena)    printf '%s.Arena.desktop' "$FLATPAK_ID" ;;
-    aotr)     printf '%s.Aotr.desktop' "$FLATPAK_ID" ;;
-  esac
+  printf '%s.%s.desktop' "$FLATPAK_ID" "$(shortcut_suffix "$1")"
+}
+
+# A shortcut shows its program's own picture. In the Flatpak that is an icon the app exports as <app id>.<Name> (see the
+# manifest), which goes with the app. Outside it, the copy in <data dir>/icons, or a themed icon when there is none.
+shortcut_icon() {
+  if [ "$IN_FLATPAK" = "1" ]; then printf '%s.%s' "$FLATPAK_ID" "$(shortcut_suffix "$1")"; return 0; fi
+  if [ -f "$BASE/icons/$1.png" ]; then printf '%s' "$BASE/icons/$1.png"; else printf 'applications-games'; fi
 }
 
 # The wrapper Flatpak exports for this app. It makes the right TryExec: a desktop hides a shortcut whose TryExec is gone.
@@ -1047,6 +1073,24 @@ self_path() {
   (cd "$(dirname "$src")" && printf '%s/%s' "$(pwd)" "$(basename "$src")")
 }
 
+# Keeps a copy of the programs' pictures in <data dir>/icons for the shortcuts outside the Flatpak. In a checkout they sit in the
+# wizard's folder, beside the scripts folder. The copy is what lasts: like the script's own copy in <data dir>/bin it keeps the
+# shortcuts working if the checkout moves, and a run of that script copy, which has no checkout beside it, keeps what an earlier
+# run copied. A picture that cannot be copied costs its shortcut only the icon.
+copy_program_pictures() {
+  local from program
+  from="$(dirname "$(self_path)")/../wizard/bfme_wizard/icons"
+  [ -d "$from" ] || return 0
+  for program in "${SHORTCUT_PROGRAMS[@]}"; do
+    [ -f "$from/$program.png" ] || continue
+    if ! cmp -s "$from/$program.png" "$BASE/icons/$program.png" 2>/dev/null; then
+      if ! { mkdir -p "$BASE/icons" && cp -f "$from/$program.png" "$BASE/icons/$program.png"; } 2>/dev/null; then
+        warn "Could not copy the picture of $program to $BASE/icons. Its shortcut shows a themed icon instead."
+      fi
+    fi
+  done
+}
+
 shortcut_text() {
   local program="$1" name comment wrapper
   name="$(shortcut_name "$program")"
@@ -1058,7 +1102,7 @@ shortcut_text() {
     printf '%s\n' '[Desktop Entry]' 'Type=Application' "Name=$name" "Comment=$comment" \
       "Exec=flatpak run --command=bfme-installer $FLATPAK_ID --open $program"
     [ -z "$wrapper" ] || printf '%s\n' "TryExec=$wrapper"
-    printf '%s\n' "Icon=$FLATPAK_ID" 'Terminal=false' 'Categories=Game;' 'StartupNotify=true' "X-Flatpak=$FLATPAK_ID"
+    printf '%s\n' "Icon=$(shortcut_icon "$program")" 'Terminal=false' 'Categories=Game;' 'StartupNotify=true' "X-Flatpak=$FLATPAK_ID"
   else
     cat <<EOF
 [Desktop Entry]
@@ -1066,7 +1110,7 @@ Type=Application
 Name=$name
 Comment=$comment
 Exec=env BFME_HOME="$BASE" BFME_RUNNER="$RUNNER" "$BIN/bfme-linux-setup.sh" $program
-Icon=applications-games
+Icon=$(shortcut_icon "$program")
 Terminal=false
 Categories=Game;
 StartupNotify=true
@@ -1110,6 +1154,7 @@ cmd_shortcuts() {
       me="$(self_path)"
       if [ "$me" != "$BIN/bfme-linux-setup.sh" ]; then cp -f "$me" "$BIN/bfme-linux-setup.sh"; fi
       chmod +x "$BIN/bfme-linux-setup.sh"
+      copy_program_pictures
     fi
   fi
   for program in "${SHORTCUT_PROGRAMS[@]}"; do
@@ -1127,7 +1172,7 @@ cmd_shortcuts() {
 
 # Each job reports its steps as status lines and ends with DONE. Rerunning skips what is done.
 #   prepare           steps: doctor, runner, prefix            (the game environment)
-#   launcher-install  steps: launcher, arena, shortcuts        (the Launcher and the Arena)
+#   launcher-install  steps: launcher, arena, shortcuts        (the AIO Launcher and the Arena)
 #   aotr-install      steps: aotr-check, aotr-unpack, aotr-install, aotr-settings
 #   install           prepare, then launcher-install           (what the terminal setup does)
 
@@ -1177,7 +1222,7 @@ cmd_launcher_install() {
   machine DONE
   say ""
   say "Done. Start 'BFME All-in-One Launcher' to install the games, and 'BFME Online Arena' to play online."
-  say "Do not switch patches in the launcher after a game is installed. On Wine this once broke the BFME 2 files."
+  say "Do not switch patches in the AIO Launcher after a game is installed. On Wine this once broke the BFME 2 files."
 }
 
 cmd_install() {
@@ -1187,7 +1232,7 @@ cmd_install() {
   machine DONE
   say ""
   say "Done. Start 'BFME All-in-One Launcher' to install the games, and 'BFME Online Arena' to play online."
-  say "Do not switch patches in the launcher after a game is installed. On Wine this once broke the BFME 2 files."
+  say "Do not switch patches in the AIO Launcher after a game is installed. On Wine this once broke the BFME 2 files."
 }
 
 report_status() {
@@ -1215,7 +1260,7 @@ cmd_status() {
   say "Runner:     $RUNNER$([ "$RUNNER" = proton ] && printf ' (%s)' "$PROTONPATH_VALUE")"
   say "Data dir:   $BASE"
   say "Prefix:     $PREFIX $(prefix_ready && echo '(ready)' || echo '(not created)')"
-  say "Launcher:   $(launcher_installed && echo installed || echo 'not installed')"
+  say "AIO Launcher: $(launcher_installed && echo installed || echo 'not installed')"
   say "Arena:      $(arena_installed && echo installed || echo 'not installed')"
   say "Age of the Ring: $(aotr_installed && echo installed || echo 'not installed')"
   local g
@@ -1225,17 +1270,44 @@ cmd_status() {
   report_status
 }
 
+# Takes one program out of the game environment: its folder and its shortcut, and nothing else. The games the AIO Launcher
+# installed live beside the programs (C:\BFME2 and so on), so they stay, and so do the other programs. Age of the Ring keeps
+# its settings in the player's own folder (AppData), which is not part of the program either, so a reinstall finds them
+# again. What an interrupted install left behind (its marker and its leftover download) goes too.
+cmd_remove() {
+  local program="${1:-}" dir
+  case "$program" in
+    launcher) dir="$LAUNCHER_DIR" ;;
+    arena)    dir="$ARENA_DIR" ;;
+    aotr)     dir="$AOTR_DIR" ;;
+    *)        die "Use: remove launcher|arena|aotr" ;;
+  esac
+  # Whatever the settings say, never delete outside the game environment.
+  case "$dir" in
+    "$PREFIX"/drive_c/?*) ;;
+    *) die "Refusing to delete '$dir'." ;;
+  esac
+  acquire_setup_lock
+  end_wine_session
+  rm -rf -- "$dir"
+  case "$program" in
+    launcher) rm -f -- "$PREFIX/.bfme-launcher-installing" "$DOWNLOADS/AllInOneLauncherSetup.exe" "$DOWNLOADS/AllInOneLauncherSetup.exe.part" ;;
+    arena)    rm -f -- "$DOWNLOADS/OnlineArena.exe" "$DOWNLOADS/OnlineArena.exe.part" ;;
+    aotr)     rm -f -- "$PREFIX/.bfme-aotr-installing"; rm -rf -- "$AOTR_UNPACK" ;;
+  esac
+  cmd_shortcuts || true
+  say "Removed $(shortcut_name "$program")."
+  report_status
+  machine DONE
+}
+
 cmd_reset_prefix() {
   [ "${1:-}" = "--yes" ] || die "This deletes the prefix at $PREFIX, including any installed games. Run 'reset-prefix --yes' to confirm."
   case "$PREFIX" in
     ""|"/"|"$HOME") die "Refusing to delete '$PREFIX'." ;;
   esac
   acquire_setup_lock
-  # End the Wine session first: a running program would lose its files, and Wine would write its registry back afterwards.
-  if [ "$RUNNER" = "proton" ] && [ "$PROTONPATH_VALUE" = "$DEFAULT_PROTONPATH" ] && [ -d "$BASE/proton/$DEFAULT_PROTONPATH" ]; then
-    PROTONPATH_VALUE="$BASE/proton/$DEFAULT_PROTONPATH"
-  fi
-  if [ -d "$PREFIX" ]; then stop_wine_session || true; fi
+  end_wine_session
   rm -rf -- "$PREFIX"
   cmd_shortcuts || true
   say "Prefix deleted."
@@ -1257,6 +1329,7 @@ main() {
     game)              cmd_game "$@" ;;
     aotr-install)      cmd_aotr_install "$@" ;;
     aotr)              cmd_aotr ;;
+    remove)            cmd_remove "$@" ;;
     shortcuts)         cmd_shortcuts ;;
     status)            cmd_status ;;
     reset-prefix)      cmd_reset_prefix "$@" ;;

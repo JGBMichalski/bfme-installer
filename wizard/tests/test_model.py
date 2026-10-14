@@ -104,12 +104,17 @@ class Plan(unittest.TestCase):
         self.assertEqual(plan_for(["aotr"], environment_ready=True), ["aotr"])
         self.assertEqual(plan_for(["launcher", "aotr"], environment_ready=True), ["launcher", "aotr"])
 
-    def test_the_launcher_alone_has_the_six_steps_it_always_had(self):
+    def test_the_aio_launcher_alone_has_the_six_steps_it_always_had(self):
         m = planned("launcher")
         self.assertEqual(m.step_ids, ["doctor", "runner", "prefix", "launcher", "arena", "shortcuts"])
         self.assertEqual(len(m.step_defs), 6)
 
-    def test_age_of_the_ring_alone_does_not_download_the_launcher_or_the_arena(self):
+    def test_the_steps_name_the_aio_launcher_in_full_because_age_of_the_ring_has_a_launcher_too(self):
+        from bfme_wizard.model import description_of, title_of
+        self.assertEqual(title_of("launcher"), "Download the AIO Launcher")
+        self.assertEqual(description_of("shortcuts"), "Adding the AIO Launcher and the Arena to your application menu.")
+
+    def test_age_of_the_ring_alone_does_not_download_the_aio_launcher_or_the_arena(self):
         m = planned("aotr")
         self.assertEqual(m.step_ids, ["doctor", "runner", "prefix", "aotr-download", "aotr-check", "aotr-unpack",
                                       "aotr-install", "aotr-settings"])
@@ -149,7 +154,7 @@ class Install(unittest.TestCase):
         feed(m, "@bfme STEP runner done")
         self.assertIsNone(m.progress)
         feed(m, "@bfme STEP prefix start", "@bfme STEP prefix done", "@bfme DONE")
-        self.assertEqual(m.finish_install(0), "launcher")   # the environment is ready: the launcher job is next
+        self.assertEqual(m.finish_install(0), "launcher")   # the environment is ready: the `launcher` job is next
         self.assertEqual(m.state, "running")
         m.begin_job("launcher")
         feed(m, "@bfme STEP launcher skip", "@bfme STEP arena start", "@bfme STEP arena done",
@@ -239,6 +244,13 @@ class Jobs(unittest.TestCase):
         m.begin_job("aotr")   # the file was chosen
         self.assertEqual((m.state, m.steps["aotr-download"], m.steps["aotr-check"]), ("running", "done", "pending"))
 
+    def test_the_counter_never_runs_past_the_last_step(self):
+        # Between the last step finishing and the script exiting, every step is done: "Step 4 of 3" would show for a moment.
+        m = planned("launcher", environment_ready=True)
+        run_next(m)
+        feed(m, "@bfme STEP launcher done", "@bfme STEP arena done", "@bfme STEP shortcuts done")
+        self.assertEqual((m.state, m.done_count, len(m.step_defs), m.step_number), ("running", 3, 3, 3))
+
     def test_the_download_step_is_counted_in_the_numbering(self):
         m = planned("launcher", "aotr")
         m.begin_job("aotr")
@@ -280,7 +292,7 @@ class Jobs(unittest.TestCase):
         feed(m, "@bfme STEP launcher done", "@bfme CANCELLED")
         m.finish_install(130)
         self.assertEqual((m.state, m.first_unfinished_job()), ("cancelled", "launcher"))
-        run_next(m)   # the launcher job runs again from its own start; the environment keeps its results
+        run_next(m)   # the `launcher` job runs again from its own start; the environment keeps its results
         self.assertEqual((m.steps["doctor"], m.steps["launcher"], m.steps["arena"]), ("done", "pending", "pending"))
 
     def test_a_cancel_pressed_during_the_last_step_of_a_job_stops_before_the_next_job(self):
@@ -330,6 +342,44 @@ class Jobs(unittest.TestCase):
         m.finish_install(0)
         m.begin_job("launcher")
         self.assertEqual([r[0] for r in m.check_rows], ["cpu"])   # Troubleshoot still has them
+
+
+class Removal(unittest.TestCase):
+    def done_setup(self):
+        m = SetupModel()
+        feed(m, "@bfme STATUS prefix ready", "@bfme STATUS launcher installed", "@bfme STATUS arena installed",
+             "@bfme STATUS complete yes")
+        m.finish_status(0)
+        return m
+
+    def test_removing_is_a_state_of_its_own_and_remembers_the_program(self):
+        m = self.done_setup()
+        self.assertIsNone(m.removing)
+        m.begin_remove("arena")
+        self.assertEqual((m.state, m.removing), ("removing", "arena"))
+
+    def test_looking_at_the_setup_again_ends_it(self):
+        m = self.done_setup()
+        m.begin_remove("arena")
+        m.begin_check()
+        self.assertEqual((m.state, m.removing), ("checking", None))
+
+    def test_a_removal_starts_without_the_last_error(self):
+        m = self.done_setup()
+        feed(m, "@bfme ERROR - an old problem")
+        self.assertIsNotNone(m.error)
+        m.begin_remove("arena")
+        self.assertIsNone(m.error)
+
+    def test_it_does_not_disturb_the_plan_that_finished_before_it(self):
+        m = self.done_setup()
+        m.begin_plan(["aotr"])
+        m.begin_job("aotr")
+        feed(m, "@bfme DONE")
+        m.finish_install(0)
+        self.assertTrue(m.just_finished)
+        m.begin_remove("arena")
+        self.assertTrue(m.just_finished)   # the home screen's "Setup is complete" line is the plan's, not the removal's
 
 
 class Recheck(unittest.TestCase):

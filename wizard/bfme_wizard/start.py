@@ -10,7 +10,7 @@ from gi.repository import Adw, GLib, Gtk  # noqa: E402
 from .controller import Controller
 from .widgets import first_icon, pill
 
-# (program, title, description) in install order. The Arena comes with the Launcher.
+# (program, title, description) in install order. The Arena comes with the AIO Launcher.
 CHOICES = [
     ("launcher", "All-in-One Launcher",
      "Install, patch and play the BFME games. Includes the Online Arena for multiplayer."),

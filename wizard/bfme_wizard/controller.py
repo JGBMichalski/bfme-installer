@@ -4,7 +4,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable
 
 from .apps import AppLauncher
-from .model import SetupModel
+from .model import ALL_PROGRAMS, SetupModel
 from .runner import ScriptRunner
 
 # Script command per job. The aotr job also takes the file path.
@@ -117,11 +117,13 @@ class Controller:
         return self.runner.busy
 
     def blocked_reason(self) -> str | None:
-        """Why Reset cannot run now, or None. Shortcut-started programs are not tracked, so the Reset dialog asks to close them."""
+        """Why Reset or Remove cannot run now, or None. Shortcut-started programs are not tracked, so their dialogs ask to close them."""
         if self.model.state == "running":
             return "The setup is running."
+        if self.model.state == "removing":
+            return "A program is being removed."
         if self.apps.any_running:
-            return "The Launcher, the Arena or Age of the Ring is still running."
+            return "The AIO Launcher, the Arena or Age of the Ring is still running."
         if self.runner.busy:
             return "Something else is still running. Try again in a moment."
         return None
@@ -138,6 +140,20 @@ class Controller:
         self.model.begin_check()
         self._on_change()
         self.runner.run(["reset-prefix", "--yes"], self._line, finished)
+        return True
+
+    def remove(self, program: str, on_done: Callable[[bool], None]) -> bool:
+        """Remove a program (its files and its shortcut), then check the setup again. False if it cannot start now."""
+        if program not in ALL_PROGRAMS or self.blocked_reason() is not None:
+            return False
+
+        def finished(code: int) -> None:
+            on_done(code == 0)
+            self.start()   # the home screen without it, or the start page when it was the last one
+
+        self.model.begin_remove(program)
+        self._on_change()
+        self.runner.run(["remove", program], self._line, finished)
         return True
 
     def _run_job(self, name: str | None) -> None:
