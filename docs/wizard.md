@@ -66,7 +66,7 @@ Reachable with the lifebuoy button in the top right corner of every page, even w
 
 - **System checks:** failures and warnings first, passing checks folded into one row. The firewall check is left out because the sandbox cannot see it.
 - **Can't be checked from here:** the firewall and graphics drivers, with advice and a command to copy.
-- **Copy diagnostics:** version, runner, setup state, check results, and the end of the latest logs. It can contain your home folder and user name.
+- **Copy diagnostics:** version, runner, your system (distribution, desktop, X11 or Wayland session, graphics card, NVIDIA driver), setup state, check results, and the end of the latest logs. It can contain your home folder and user name.
 - **Open logs folder**
 - **Reset game environment:** deletes the game environment and every installed game after a confirmation, removes every shortcut, then shows the start page. Disabled while the setup or a program is running.
 

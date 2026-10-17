@@ -185,7 +185,7 @@ class TroubleshootPage:
     def _tools_group(self) -> Adw.PreferencesGroup:
         group = Adw.PreferencesGroup(title="Tools")
         for title, subtitle, action in (
-            ("Copy diagnostics", "Version, system checks and the end of the latest logs. Check it before you share it.", "copy_diagnostics"),
+            ("Copy diagnostics", "Version, your computer's desktop and graphics card, system checks and the end of the latest logs. Check it before you share it.", "copy_diagnostics"),
             ("Open logs folder", "Opens the folder in your file manager.", "open_logs"),
         ):
             row = Adw.ActionRow(title=title, subtitle=subtitle, subtitle_lines=2, activatable=True)

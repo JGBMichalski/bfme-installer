@@ -10,7 +10,7 @@ from unittest import mock
 from bfme_wizard.__main__ import main, parse_args
 from bfme_wizard.apps import AppLauncher
 from bfme_wizard.controller import Controller
-from bfme_wizard.diagnostics import any_log, build_report, data_dir, newest_log, tail
+from bfme_wizard.diagnostics import any_log, build_report, data_dir, newest_log, system_lines, tail
 from bfme_wizard.model import SetupModel, games_line
 from bfme_wizard.runner import ScriptRunner, app_is_ready, setup_is_complete
 from tests.helpers import buttons, descendants, gtk_or_skip, labels, make_script, wait_for
@@ -159,6 +159,21 @@ class Diagnostics(unittest.TestCase):
         report = build_report("dev", SetupModel(), Path(tempfile.mkdtemp()))
         self.assertIn("(not run yet)", report)
         self.assertIn("--- no AIO Launcher log ---", report)
+
+    def test_the_report_says_what_computer_it_came_from(self):
+        report = build_report("dev", SetupModel(), Path(tempfile.mkdtemp()), system=["Desktop: KDE, wayland session", "Graphics card: NVIDIA X"])
+        self.assertIn("Desktop: KDE, wayland session\nGraphics card: NVIDIA X\n", report)
+
+    def test_system_lines_name_the_session_and_the_desktop(self):
+        lines = system_lines({"XDG_SESSION_TYPE": "wayland", "XDG_CURRENT_DESKTOP": "KDE"})
+        self.assertIn("Desktop: KDE, wayland session", lines)
+        self.assertTrue(any(line.startswith("Graphics card: ") for line in lines))
+        self.assertTrue(any(line.startswith("NVIDIA driver: ") for line in lines))
+
+    def test_system_lines_guess_the_session_without_a_session_type(self):
+        self.assertIn("Desktop: unknown, x11 session", system_lines({"DISPLAY": ":0"}))
+        self.assertIn("Desktop: unknown, wayland session", system_lines({"WAYLAND_DISPLAY": "wayland-0"}))
+        self.assertIn("Desktop: unknown, unknown session", system_lines({}))
 
     def test_log_helpers(self):
         d = Path(tempfile.mkdtemp())
