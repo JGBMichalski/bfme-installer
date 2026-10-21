@@ -127,7 +127,7 @@ jobs:
           sed -i "s|@BFME_DATE@|$(date -u +%F)|" "$FLATPAK_DIR/com.jgbmichalski.BfmeInstaller.metainfo.xml"
           echo "Version: $version"
 
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: bundle
           path: dist
@@ -185,7 +185,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: repo
           path: site/repo
