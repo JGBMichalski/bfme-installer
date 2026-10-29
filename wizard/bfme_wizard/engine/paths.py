@@ -85,7 +85,7 @@ class Paths:
         return self.drive_c / "users/steamuser/AppData/Roaming"   # Proton always names the user steamuser
 
     @property
-    def launcher_exe(self) -> Path:
+    def aio_launcher_exe(self) -> Path:
         return self.roaming / "BFME All In One Launcher/AllInOneLauncher.exe"
 
     @property

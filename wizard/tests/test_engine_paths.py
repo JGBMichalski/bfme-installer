@@ -28,7 +28,7 @@ def test_proton_layout():
     assert p.prefix == Path("/b/prefix")
     assert p.aotr_unpack == Path("/b/downloads/aotr")
     roaming = "/b/prefix/drive_c/users/steamuser/AppData/Roaming"
-    assert p.launcher_exe == Path(f"{roaming}/BFME All In One Launcher/AllInOneLauncher.exe")
+    assert p.aio_launcher_exe == Path(f"{roaming}/BFME All In One Launcher/AllInOneLauncher.exe")
     assert p.arena_exe == Path(f"{roaming}/BFME Competetive Arena/BfmeFoundationProject_OnlineArena.exe")
     assert p.aotr_exe == Path("/b/prefix/drive_c/AgeoftheRing/AotR_Launcher.exe")
     assert p.tool_exe("workshop") == Path("/b/prefix/drive_c/BFME Tools/Workshop Studio/WorkshopStudio.exe")
@@ -56,7 +56,7 @@ def test_age_of_the_ring_keeps_everything_apart_from_the_games():
     assert aotr.key == "aotr"
     assert aotr.game == Path("/b/prefix/drive_c/AgeoftheRing")
     assert aotr.user_data == Path("/b/prefix/drive_c/users/steamuser/AppData/Roaming/Age of the Ring")
-    assert aotr.maps_dir == "maps"                       # lowercase: the folder the launcher made
+    assert aotr.maps_dir == "maps"                       # lowercase: the folder the Age of the Ring Launcher made
     assert {g.maps_dir for g in folders[:3]} == {"Maps"}
 
 
@@ -100,10 +100,22 @@ def script_status(base):
     return dict(line.split(" ", 3)[2:] for line in out.splitlines() if line.startswith("@bfme STATUS "))
 
 
-@pytest.mark.parametrize("key", ["launcher", "arena", "aotr", "workshop", "mission-control"])
-def test_the_script_finds_each_program_where_the_engine_puts_it(tmp_path, key):
+@pytest.mark.parametrize("program", ["aio-launcher", "arena", "aotr", "workshop", "mission-control"])
+def test_the_script_finds_each_program_where_the_engine_puts_it(tmp_path, program):
     p = paths({"BFME_HOME": str(tmp_path)})
-    exe = {"launcher": p.launcher_exe, "arena": p.arena_exe, "aotr": p.aotr_exe}.get(key) or p.tool_exe(key)
+
+    if program == "aio-launcher":
+        exe = p.aio_launcher_exe
+    elif program == "arena":
+        exe = p.arena_exe
+    elif program == "aotr":
+        exe = p.aotr_exe
+    else:
+        exe = p.tool_exe(program)
+
+    # The setup script calls the AIO Launcher "launcher".
+    key = "launcher" if program == "aio-launcher" else program
+
     assert script_status(tmp_path)[key] == "missing"
     exe.parent.mkdir(parents=True)
     exe.write_text("x")
