@@ -13,7 +13,7 @@ from gi.repository import Adw, GLib, Gtk  # noqa: E402
 from .catalog import CATALOG, Program
 from .controller import Controller
 from .model import games_line
-from .paths import game_folders
+from .engine.paths import paths
 from .widgets import clear, first_icon, pill, program_icon
 
 # What the page says when there is no card to show. A complete setup always has one, so this is only a safety net.
@@ -103,7 +103,7 @@ class GameFoldersPage:
         )
         any_installed = False
         # A game that is not installed has no folders to open, so it has no group.
-        for folders in (f for f in game_folders() if f.installed):
+        for folders in (f for f in paths().game_folders() if f.installed):
             group = Adw.PreferencesGroup(title=GLib.markup_escape_text(folders.name))
             for title, subtitle, target in (
                 ("Game folder", "Installed files and patches", folders.game),

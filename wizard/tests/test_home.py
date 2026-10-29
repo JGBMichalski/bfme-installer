@@ -10,7 +10,7 @@ import pytest
 from bfme_wizard.__main__ import main, parse_args
 from bfme_wizard.apps import AppLauncher
 from bfme_wizard.controller import Controller
-from bfme_wizard.diagnostics import any_log, build_report, data_dir, newest_log, system_lines, tail
+from bfme_wizard.diagnostics import any_log, build_report, newest_log, system_lines, tail
 from bfme_wizard.model import SetupModel, games_line
 from bfme_wizard.runner import ScriptRunner, app_is_ready, setup_is_complete
 from tests.helpers import buttons, descendants, labels, make_script, wait_for
@@ -161,11 +161,6 @@ def test_a_tool_is_started_with_the_tool_command(monkeypatch, tmp_path):
 
 
 # Diagnostics
-
-def test_data_dir_follows_the_script():
-    assert data_dir({"BFME_HOME": "/x/y"}) == Path("/x/y")
-    assert data_dir({"XDG_DATA_HOME": "/d"}) == Path("/d/bfme-installer")
-
 
 def test_report_has_the_version_checks_fixes_and_log_tails(tmp_path):
     logs = tmp_path

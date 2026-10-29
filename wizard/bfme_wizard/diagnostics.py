@@ -17,15 +17,6 @@ from .model import GAMES, SetupModel
 LOG_LINES = 40
 
 
-def data_dir(environ: dict[str, str] | None = None) -> Path:
-    """The data folder the script uses: BFME_HOME, else XDG_DATA_HOME/bfme-installer."""
-    env = os.environ if environ is None else environ
-    if env.get("BFME_HOME"):
-        return Path(env["BFME_HOME"])
-    base = Path(env["XDG_DATA_HOME"]) if env.get("XDG_DATA_HOME") else Path.home() / ".local" / "share"
-    return base / "bfme-installer"
-
-
 def newest_log(log_dir: Path, prefix: str) -> Path | None:
     """The most recent '<prefix>-<time>.log', or the plain '<prefix>.log'."""
     candidates = sorted(log_dir.glob(f"{prefix}-*.log"), key=lambda p: p.stat().st_mtime) or sorted(log_dir.glob(f"{prefix}.log"))

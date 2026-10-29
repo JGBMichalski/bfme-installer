@@ -12,7 +12,8 @@ from gi.repository import Adw, Gdk, Gio, GLib, GObject, Gtk  # noqa: E402
 from .aotr import MODDB_URL, AotrDownloadPage
 from .catalog import program
 from .controller import PROGRAM_OF, Controller
-from .diagnostics import any_log, build_report, data_dir
+from .diagnostics import any_log, build_report
+from .engine.paths import data_dir
 from .home import GameFoldersPage, HomePage, TroubleshootPage
 from .model import description_of, title_of
 from .programs import ProgramsPage
