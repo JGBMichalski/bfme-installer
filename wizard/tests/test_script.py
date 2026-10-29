@@ -67,6 +67,7 @@ class ScriptCase(unittest.TestCase):
         bin_dir.mkdir()
         executable(bin_dir / "curl", FAKE_CURL)
         executable(bin_dir / "umu-run", FAKE_UMU)
+        executable(bin_dir / "bwrap", "#!/bin/sh\nexit 0\n")   # the system check needs one; CI has none
         self.probe = bin_dir / "vulkan-probe"
         self.set_probe("vulkan Vulkan 1.4 on Test GPU")
         self.base = self.tmp / "data"
