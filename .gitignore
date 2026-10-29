@@ -2,6 +2,7 @@
 *.dxvk-cache
 
 __pycache__/
+.pytest_cache/
 .flatpak-builder/
 
 # Signing keys: only the public key (flatpak/signing-key.gpg) belongs in the repository
