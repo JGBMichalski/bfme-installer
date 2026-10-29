@@ -18,7 +18,7 @@
 | `@bfme DONE` | The job finished: `install`, `prepare`, `launcher-install` or `aotr-install`. |
 | `@bfme STATUS <key> <value>` | Printed by `status` and before every `DONE`. |
 
-`STATUS` keys: `runner`; `prefix` (`ready` or `missing`); `launcher`, `arena` and `aotr` (`installed` or `missing`; `launcher` is the AIO Launcher and `aotr` is Age of the Ring); `bfme1`, `bfme2` and `rotwk` (`installed` when the game's program is present, else `missing`); `complete` (`yes` or `no`: the game environment is ready and holds at least one of `launcher`, `arena` and `aotr`).
+`STATUS` keys: `runner`; `graphics` (`vulkan` or `opengl`); `prefix` (`ready` or `missing`); `launcher`, `arena` and `aotr` (`installed` or `missing`; `launcher` is the AIO Launcher and `aotr` is Age of the Ring); `workshop` and `mission-control` (`installed` or `missing`; the tools, which do not count towards `complete`); `bfme1`, `bfme2` and `rotwk` (`installed` when the game's program is present, else `missing`); `complete` (`yes` or `no`: the game environment is ready and holds at least one of `launcher`, `arena` and `aotr`).
 
 ## Jobs and steps
 
@@ -29,8 +29,11 @@ The wizard runs only the jobs the player chose, one after the other. Each job en
 | `prepare` | `doctor`, `runner`, `prefix` | Game environment only. |
 | `launcher-install` | `launcher`, `arena`, `shortcuts` | The All-in-One Launcher and the Arena. Needs `prepare` first. |
 | `aotr-install <zip>` | `aotr-check`, `aotr-unpack`, `aotr-install`, `aotr-settings` | Age of the Ring. Needs only `prepare`. |
+| `tool-install <tool>` | `workshop` or `mission-control` | Workshop Studio or Mission Control, downloaded as they are. Needs only `prepare`. |
+| `tool <tool>` | none | Starts an installed tool. |
 | `install` | `prepare`, then `launcher-install` | The terminal setup. |
-| `remove <program>` | none | Takes `launcher`, `arena` or `aotr` out of the game environment: its folder, its shortcut, and what an interrupted install of it left. Keeps the games, the other programs and the settings a program keeps in the player's own folder. Ends the Wine session first and refuses while a setup runs. Prints `STATUS` lines, then `DONE`. |
+| `graphics vulkan\|opengl` | none | Saves the graphics backend in `config.env`. `graphics` alone prints the current one. Switching applies the prefix settings again, so it takes effect the next time a program opens. |
+| `remove <program>` | none | Takes `launcher`, `arena`, `aotr`, `workshop` or `mission-control` out of the game environment: its folder, its shortcut, and what an interrupted install of it left. Keeps the games, the other programs and the settings a program keeps in the player's own folder. Ends the Wine session first and refuses while a setup runs. Prints `STATUS` lines, then `DONE`. |
 
 The wizard adds `aotr-download` before Age of the Ring's steps, where the player gets the file from ModDB. The script never prints it.
 
@@ -54,7 +57,7 @@ The wizard adds `aotr-download` before Age of the Ring's steps, where the player
 
 ## Check ids
 
-`cpu`, `cmd-curl`, `cmd-tar`, `cmd-python3`, `cmd-bwrap`, `cmd-wine`, `cmd-cabextract`, `bwrap`, `wine-version`, `i386-arch`, `vulkan64`, `vulkan32`, `disk`, `firewall`, `flatpak` and `flatpak-32bit`. The Flatpak build prints only those that apply.
+`cpu`, `cmd-curl`, `cmd-tar`, `cmd-python3`, `cmd-bwrap`, `cmd-wine`, `cmd-cabextract`, `bwrap`, `wine-version`, `i386-arch`, `vulkan64`, `vulkan32`, `opengl64`, `opengl32`, `disk`, `firewall`, `flatpak` and `flatpak-32bit`. `doctor` prints the Vulkan ones or the OpenGL ones, depending on `BFME_GRAPHICS`. The Flatpak build prints only those that apply.
 
 ## Running and stopping
 

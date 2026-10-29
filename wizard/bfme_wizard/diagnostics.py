@@ -100,7 +100,9 @@ def system_lines(environ: dict[str, str] | None = None) -> list[str]:
 
 
 def build_report(version: str, model: SetupModel, log_dir: Path, system: list[str] | None = None) -> str:
-    out = ["BFME Installer diagnostics", f"Version: {version}", f"Runner: {model.installed.get('runner', 'unknown')}"]
+    graphics = model.graphics_label if "graphics" in model.installed else "unknown"
+    out = ["BFME Installer diagnostics", f"Version: {version}", f"Runner: {model.installed.get('runner', 'unknown')}",
+           f"Graphics: {graphics}"]
     out += system_lines() if system is None else system
     out.append("Setup: " + ", ".join(f"{k} {model.installed.get(k, 'unknown')}" for k in ("prefix", "launcher", "arena")))
     out.append("Games: " + ", ".join(f"{name} {model.installed.get(key, 'unknown')}" for key, name in GAMES))

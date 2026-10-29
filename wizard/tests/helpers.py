@@ -1,7 +1,4 @@
-"""Utilities the tests share: a fake script to run, a way to wait for the main loop, and a way to skip what needs a display.
-
-The CI job installs only the GLib bindings and has no display, so every test that builds a widget starts with gtk_or_skip.
-"""
+"""Utilities the tests share: a fake script to run and a way to wait for the main loop. The `gtk` fixture is in conftest.py."""
 import os
 import re
 import stat
@@ -42,20 +39,6 @@ def wait_for(loop_ms, condition):
     GLib.timeout_add(50, tick)
     GLib.timeout_add(loop_ms, loop.quit)
     loop.run()
-
-
-def gtk_or_skip(test):
-    """Import the widgets, or skip the test. Returns the Gtk module."""
-    try:
-        import gi
-        gi.require_version("Gtk", "4.0")
-        gi.require_version("Adw", "1")
-        from gi.repository import Gtk
-    except (ValueError, ImportError):
-        test.skipTest("GTK is not installed")
-    if not Gtk.init_check():
-        test.skipTest("no display")
-    return Gtk
 
 
 def descendants(widget):

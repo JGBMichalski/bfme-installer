@@ -70,7 +70,8 @@ The app asks for one permission beyond its own data: access to `~/.local/share/a
 
 - A 64-bit (x86_64) Linux distribution with [Flatpak](https://flatpak.org/setup/). The installer prints the command for
   your distribution if Flatpak is missing.
-- Working Vulkan drivers, 64-bit and 32-bit. The wizard checks this and shows the fix when something is missing.
+- Working Vulkan drivers, 64-bit and 32-bit. The wizard checks this and shows the fix when something is missing. On an older
+  graphics card that handles OpenGL better, switch the graphics backend to OpenGL in Troubleshoot.
 - Enough free disk space for Proton and the games. The wizard checks this too.
 - A copy of the games. The AIO Launcher installs and patches them.
 
@@ -122,10 +123,14 @@ is not listed.
 Open **Troubleshoot** with the lifebuoy button in the top right corner, which is there on every page. It can:
 
 - re-run the system checks and show a fix command you can copy;
+- switch the graphics backend between Vulkan (the default) and OpenGL, which older graphics cards may handle better;
 - copy a diagnostics report for a bug report (check it first, because it can contain your home folder name);
 - open the logs folder;
 - **reset** the game environment. This deletes the environment *and every installed game*, then starts the setup again.
   Downloads and Proton are kept.
+
+The graphics switch takes effect the next time you open a program, and nothing is reinstalled. If the games are slow or will
+not start on a card without working Vulkan, try OpenGL; if OpenGL is worse, switch back.
 
 ## Without Flatpak
 
@@ -147,7 +152,7 @@ Only want Age of the Ring? Skip `install` and prepare the game environment on it
 ```
 
 Other commands: `launcher-install` (the AIO Launcher and the Arena, after `prepare`), `launcher`, `arena`, `aotr`,
-`game bfme1|bfme2|rotwk`, `shortcuts`, `status`, `reset-prefix --yes`, `version`, `help`.
+`game bfme1|bfme2|rotwk`, `graphics opengl|vulkan`, `shortcuts`, `status`, `reset-prefix --yes`, `version`, `help`.
 Configuration variables (such as `BFME_HOME` and `BFME_RUNNER=wine`) are in [How it works](docs/how-it-works.md).
 
 ## Planned

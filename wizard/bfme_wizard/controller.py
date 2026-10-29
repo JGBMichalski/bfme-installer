@@ -4,7 +4,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable
 
 from .apps import AppLauncher
-from .model import ALL_PROGRAMS, SetupModel
+from .model import ALL_PROGRAMS, TOOLS, SetupModel
 from .runner import ScriptRunner
 
 # Script command per job. The aotr job also takes the file path.
@@ -18,7 +18,8 @@ JOB_COMMANDS = {
 PROGRAM_OF = {
     "launcher": "launcher",
     "arena": "launcher",
-    "aotr": "aotr"
+    "aotr": "aotr",
+    **{tool: tool for tool in TOOLS},
 }
 
 
@@ -123,7 +124,7 @@ class Controller:
         if self.model.state == "removing":
             return "A program is being removed."
         if self.apps.any_running:
-            return "The AIO Launcher, the Arena or Age of the Ring is still running."
+            return "A program is still running."
         if self.runner.busy:
             return "Something else is still running. Try again in a moment."
         return None
@@ -142,9 +143,22 @@ class Controller:
         self.runner.run(["reset-prefix", "--yes"], self._line, finished)
         return True
 
+    def set_graphics(self, backend: str, on_done: Callable[[bool], None] | None = None) -> bool:
+        """Switch between the Vulkan and OpenGL backends, then look at the setup again. False if it cannot start now."""
+        if backend not in ("vulkan", "opengl") or self.runner.busy or self.blocked_reason() is not None:
+            return False
+
+        def finished(code: int) -> None:
+            if on_done is not None:
+                on_done(code == 0)
+            self.start()   # the saved backend, and the checks that may depend on it
+
+        self.runner.run(["graphics", backend], self._line, finished)
+        return True
+
     def remove(self, program: str, on_done: Callable[[bool], None]) -> bool:
         """Remove a program (its files and its shortcut), then check the setup again. False if it cannot start now."""
-        if program not in ALL_PROGRAMS or self.blocked_reason() is not None:
+        if program not in (*ALL_PROGRAMS, *TOOLS) or self.blocked_reason() is not None:
             return False
 
         def finished(code: int) -> None:
@@ -167,7 +181,7 @@ class Controller:
             return
         self.model.begin_job(name)
         self._on_change()
-        args = [JOB_COMMANDS[name]]
+        args = ["tool-install", name] if name in TOOLS else [JOB_COMMANDS[name]]
         if name == "aotr":
             args.append(self._aotr_zip)
         self.runner.run(args, self._line, self._job_done)

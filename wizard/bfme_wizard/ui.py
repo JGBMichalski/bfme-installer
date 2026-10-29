@@ -151,7 +151,7 @@ class WizardWindow(Adw.ApplicationWindow):
             return
         self.troubleshoot = TroubleshootPage(
             self.controller, copy_text=self.copy, copy_diagnostics=self.copy_diagnostics,
-            open_logs=self.open_logs, confirm_reset=self.confirm_reset,
+            open_logs=self.open_logs, confirm_reset=self.confirm_reset, change_graphics=self.change_graphics,
         )
         self._troubleshoot_page = Adw.NavigationPage.new(self.troubleshoot.view, "Troubleshoot")
         self.nav.push(self._troubleshoot_page)
@@ -164,7 +164,8 @@ class WizardWindow(Adw.ApplicationWindow):
     def show_programs(self) -> None:
         if self.programs is not None:
             return
-        self.programs = ProgramsPage(self.controller, install=self.install_program, remove=self.confirm_remove)
+        self.programs = ProgramsPage(self.controller, install=self.install_program, remove=self.confirm_remove,
+                                    open_app=self.controller.open_app)
         self._programs_page = Adw.NavigationPage.new(self.programs.view, "Programs")
         self.nav.push(self._programs_page)
 
@@ -297,6 +298,18 @@ class WizardWindow(Adw.ApplicationWindow):
         if self.controller.reset(done):
             self.nav.pop_to_page(self.root_page)
         else:
+            self.toasts.add_toast(Adw.Toast.new(self.controller.blocked_reason() or "Not now."))
+
+    def change_graphics(self, backend: str) -> None:
+        """Switch the graphics backend. The page shows the new one once the script has saved it."""
+        def done(ok: bool) -> None:
+            name = "OpenGL" if backend == "opengl" else "Vulkan"
+            text = f"Now using {name}. It takes effect the next time you open a program."
+            if not ok:
+                text = f"Could not switch to {name}. Open the logs folder from Troubleshoot."
+            self.toasts.add_toast(Adw.Toast.new(text))
+
+        if not self.controller.set_graphics(backend, done):
             self.toasts.add_toast(Adw.Toast.new(self.controller.blocked_reason() or "Not now."))
 
     def _render_update_banner(self) -> None:

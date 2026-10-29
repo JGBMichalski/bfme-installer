@@ -1,6 +1,6 @@
 # Flatpak
 
-`flatpak/` packages the script and the [wizard](wizard.md) as `com.jgbmichalski.BfmeInstaller`. It adds one menu entry, **BFME Installer**, which opens the wizard. Inside the sandbox the script uses Proton only, with graphics and 32-bit libraries from the runtime.
+`flatpak/` packages the script and the [wizard](wizard.md) as `com.jgbmichalski.BfmeInstaller`. It adds one menu entry, **BFME Installer**, which opens the wizard. Inside the sandbox the script uses Proton only, with graphics and 32-bit libraries from the runtime. The OpenGL backend works there too: Proton runs WineD3D, and the GL libraries come from the same runtime and 32-bit GL extensions.
 
 The app runs on the GNOME runtime (`org.gnome.Platform` 49) for GTK4, libadwaita and PyGObject. It is based on freedesktop 25.08, which fixes the 32-bit extension versions below. Run the script directly with `flatpak run --command=bfme-linux-setup com.jgbmichalski.BfmeInstaller <command>`.
 

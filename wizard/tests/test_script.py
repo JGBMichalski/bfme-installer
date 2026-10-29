@@ -144,7 +144,8 @@ class Status(ScriptCase):
 
     def test_nothing_set_up_is_not_complete(self):
         self.assertEqual(self.status(), {
-            "runner": "proton", "prefix": "missing", "launcher": "missing", "arena": "missing", "aotr": "missing",
+            "runner": "proton", "graphics": "vulkan", "prefix": "missing", "launcher": "missing", "arena": "missing", "aotr": "missing",
+            "workshop": "missing", "mission-control": "missing",
             "bfme1": "missing", "bfme2": "missing", "rotwk": "missing", "complete": "no",
         })
 
@@ -721,6 +722,56 @@ class Remove(ScriptCase):
         self.assertNotIn("@bfme", plain.stdout)
 
 
+class Graphics(ScriptCase):
+    """`graphics` saves the renderer in config.env, so the shortcuts and the next setup run use it too."""
+
+    def test_the_default_is_vulkan(self):
+        self.assertEqual(self.status()["graphics"], "vulkan")
+
+    def test_switching_to_opengl_is_saved_and_reported(self):
+        done = self.run_script("graphics", "opengl")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual(self.status()["graphics"], "opengl")
+        self.assertIn("BFME_GRAPHICS=opengl", (self.base / "config.env").read_text())
+        self.assertIn("@bfme DONE", self.status_lines(done))
+
+    def test_switching_back_and_forth_keeps_one_line_and_the_other_settings(self):
+        (self.base).mkdir(parents=True)
+        (self.base / "config.env").write_text("BFME_NVIDIA=1\n# keep me\nBFME_GRAPHICS=vulkan\n")
+        for value in ("opengl", "vulkan", "opengl"):
+            self.assertEqual(self.run_script("graphics", value).returncode, 0)
+        text = (self.base / "config.env").read_text()
+        self.assertEqual(text.count("BFME_GRAPHICS="), 1)
+        self.assertIn("BFME_NVIDIA=1", text)
+        self.assertIn("# keep me", text)
+        self.assertIn("BFME_GRAPHICS=opengl", text)
+
+    def test_with_a_ready_environment_the_settings_are_applied_again(self):
+        self.make_prefix()
+        done = self.run_script("graphics", "opengl")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertTrue((self.prefix / ".bfme-settings-v4").is_file())
+        self.assertTrue((self.base / "logs/prefix-settings.log").is_file())
+
+    def test_an_unknown_value_is_refused_and_changes_nothing(self):
+        done = self.run_script("graphics", "direct3d")
+        self.assertEqual(done.returncode, 1)
+        self.assertIn("Use: graphics vulkan|opengl", self.status_lines(done)[0])
+        self.assertFalse((self.base / "config.env").exists())
+
+    def test_asking_without_a_value_shows_the_backend_and_how_to_change_it(self):
+        done = self.run_script("graphics", machine=False)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("Graphics: Vulkan (DXVK)", done.stdout)
+        self.assertIn("graphics vulkan|opengl", done.stdout)
+
+    def test_the_text_output_and_help_name_it(self):
+        self.make_prefix()
+        plain = self.run_script("status", machine=False)
+        self.assertIn("Graphics:   Vulkan (DXVK)", plain.stdout)
+        self.assertIn("graphics [vulkan|opengl]", self.run_script("help", machine=False).stdout)
+
+
 class Jobs(ScriptCase):
     def test_age_of_the_ring_asks_only_for_the_game_environment(self):
         done = self.run_script("aotr-install", str(self.tmp / "AotR_Standalone_9.3.0_Installer.zip"))
@@ -823,6 +874,60 @@ class Jobs(ScriptCase):
         self.assertEqual((status["aotr"], status["launcher"], status["arena"], status["complete"]),
                          ("installed", "missing", "missing", "yes"))
         self.assertEqual(self.entries(), ["bfme-aotr.desktop"])
+
+
+class Tools(ScriptCase):
+    FILES = {
+        "workshop": "drive_c/BFME Tools/Workshop Studio/WorkshopStudio.exe",
+        "mission-control": "drive_c/BFME Tools/Mission Control/MissionControl.exe",
+    }
+    STEPS = {
+        "workshop": ["workshop"], "mission-control": ["mission-control"],
+    }
+
+    def test_each_tool_installs_reports_its_steps_and_counts_as_installed(self):
+        for tool, steps in self.STEPS.items():
+            with self.subTest(tool):
+                self.make_prefix()
+                done = self.run_script("tool-install", tool)
+                self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+                lines = self.status_lines(done)
+                self.assertEqual([l for l in lines if l.startswith("@bfme STEP ") and l.endswith(" done")],
+                                 [f"@bfme STEP {s} done" for s in steps])
+                self.assertEqual(lines[-1], "@bfme DONE")
+                self.assertTrue((self.prefix / self.FILES[tool]).is_file())
+                self.assertEqual(self.status()[tool], "installed")
+
+    def test_a_tool_alone_does_not_make_the_setup_complete(self):
+        self.make_prefix()
+        self.run_script("tool-install", "workshop")
+        self.assertEqual(self.status()["complete"], "no")
+
+    def test_it_asks_for_the_game_environment_and_a_known_tool(self):
+        done = self.run_script("tool-install", "workshop")
+        self.assertEqual(done.returncode, 1)
+        self.assertEqual(self.status_lines(done), ["@bfme ERROR - Set up the game environment first. Run: prepare"])
+        self.make_prefix()
+        done = self.run_script("tool-install", "bogus")
+        self.assertEqual(done.returncode, 1)
+        self.assertIn("Use: tool-install", self.status_lines(done)[0])
+
+    def test_a_tool_that_is_not_installed_does_not_start(self):
+        self.make_prefix()
+        done = self.run_script("tool", "workshop")
+        self.assertEqual(done.returncode, 1)
+        self.assertIn("is not installed", done.stderr)
+
+    def test_remove_takes_only_that_tool(self):
+        self.make_prefix()
+        self.install("launcher")
+        for tool in self.FILES:
+            self.assertEqual(self.run_script("tool-install", tool).returncode, 0)
+        done = self.run_script("remove", "workshop")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        status = self.status()
+        self.assertEqual((status["workshop"], status["mission-control"], status["launcher"]),
+                         ("missing", "installed", "installed"))
 
 
 if __name__ == "__main__":

@@ -18,8 +18,11 @@
 #   game bfme1|bfme2|rotwk   Start a game without the Arena.
 #   aotr-install <zip>  Install Age of the Ring (needs prepare first) from the zip you downloaded from ModDB.
 #   aotr                Start the Age of the Ring Launcher.
-#   remove <program>    Remove one program (launcher, arena or aotr): its folder and its shortcut. Keeps the games, the
-#                       other programs and the settings a program keeps in your own folder.
+#   tool-install <tool> Install a tool (workshop or mission-control). Needs prepare first.
+#   tool <tool>         Start a tool.
+#   remove <program>    Remove one program (launcher, arena, aotr, workshop or mission-control): its folder and
+#                       its shortcut. Keeps the games, the other programs and the settings a program keeps in your own folder.
+#   graphics [vulkan|opengl]  Show the graphics backend, or switch it. OpenGL suits older graphics cards.
 #   shortcuts           Bring the menu shortcuts in line with what is installed: add the missing ones, remove the others.
 #   status              Show what is installed and where.
 #   reset-prefix --yes  Delete the prefix. This deletes installed games.
@@ -38,6 +41,7 @@
 #   BFME_PROTONPATH    Proton to use (default pinned UMU-Proton; UMU-Latest, GE-Proton or a path also work)
 #   BFME_ARENA_BRANCH  Arena update branch (default main)
 #   BFME_NVIDIA        auto (default), 1 or 0. Use the NVIDIA card on a two-card computer.
+#   BFME_GRAPHICS      vulkan (default, DXVK) or opengl (WineD3D). OpenGL suits older graphics cards.
 #   BFME_EXTRA_ENV     Extra environment, e.g. "DXVK_HUD=fps"
 #   BFME_UMU_RUN       Path to an existing umu-run (default: download one)
 #   BFME_HOME          Data dir (default ~/.local/share/bfme-installer)
@@ -59,6 +63,8 @@ readonly UMU_VERSION="1.4.4"
 readonly UMU_URL="https://github.com/Open-Wine-Components/umu-launcher/releases/download/${UMU_VERSION}/umu-launcher-${UMU_VERSION}-zipapp.tar"
 readonly UMU_SHA256="eb590691841f7fad3fc3ad8fd5db4ccb87849fe7948e62b28ece7a4ee48cc851"
 readonly LAUNCHER_SETUP_URL="https://arena-files.bfmeladder.com/downloads/AllInOneLauncherSetup.exe"
+readonly WORKSHOP_URL="https://bfmeladder.com/download-go?app=workshop"
+readonly MISSION_CONTROL_URL="https://bfmeladder.com/download-go?app=mission-control"
 readonly ARENA_FILES_HOST="https://arena-files.bfmeladder.com"
 readonly ARENA_SERVER_HOST="https://bfmeladder.com"
 readonly WINETRICKS_VERSION="20260125"
@@ -88,7 +94,13 @@ fi
 PROTONPATH_VALUE="${BFME_PROTONPATH:-$DEFAULT_PROTONPATH}"
 ARENA_BRANCH="${BFME_ARENA_BRANCH:-main}"
 NVIDIA_MODE="${BFME_NVIDIA:-auto}"
+GRAPHICS="${BFME_GRAPHICS:-vulkan}"
 UMU_RUN="${BFME_UMU_RUN:-}"
+
+case "$GRAPHICS" in
+  vulkan|opengl) ;;
+  *) printf 'ERROR: BFME_GRAPHICS must be vulkan or opengl, not "%s".\n' "$GRAPHICS" >&2; exit 1 ;;
+esac
 
 case "$RUNNER" in
   proton) WINE_USER="steamuser"; PREFIX="$BASE/prefix" ;;   # Proton always names the user steamuser
@@ -104,6 +116,7 @@ ARENA_EXE="$ARENA_DIR/BfmeFoundationProject_OnlineArena.exe"
 AOTR_DIR="$PREFIX/drive_c/AgeoftheRing"
 AOTR_EXE="$AOTR_DIR/AotR_Launcher.exe"
 AOTR_UNPACK="$DOWNLOADS/aotr"
+TOOLS_DIR="$PREFIX/drive_c/BFME Tools"
 # Inside the Flatpak XDG_DATA_HOME is the app's own folder, but the menu is the host's.
 # The manifest makes that one folder writable (--filesystem=xdg-data/applications:create).
 if [ "$IN_FLATPAK" = "1" ]; then
@@ -205,10 +218,29 @@ existing_parent() {
   printf '%s' "$p"
 }
 
+graphics_label() {
+  if [ "$GRAPHICS" = "opengl" ]; then printf 'OpenGL (WineD3D)'; else printf 'Vulkan (DXVK)'; fi
+}
+
+# Stores one plain shell variable in config.env, keeping every other line. The shortcuts read the file, so a later start uses
+# the same choice.
+set_config_var() {
+  local key="$1" value="$2" file="$BASE/config.env" tmp
+  mkdir -p "$BASE"
+  tmp="$file.new.$$"
+  if [ -f "$file" ]; then
+    grep -v -E "^[[:space:]]*(export[[:space:]]+)?${key}=" "$file" >"$tmp" || true
+  else
+    : >"$tmp"
+  fi
+  printf '%s=%s\n' "$key" "$value" >>"$tmp"
+  mv -f "$tmp" "$file"
+}
+
 cmd_doctor() {
   DOCTOR_FAILS=0
   DOCTOR_WARNS=0
-  say "BFME Linux setup $SCRIPT_VERSION - system check (runner: $RUNNER)"
+  say "BFME Linux setup $SCRIPT_VERSION - system check (runner: $RUNNER, graphics: $(graphics_label))"
   say ""
 
   if [ "$(uname -m)" = "x86_64" ]; then
@@ -262,20 +294,38 @@ cmd_doctor() {
   # Inside a Flatpak ldconfig sees the runtime, not the host, so the check would be wrong.
   if [ "$IN_FLATPAK" = "0" ] && command -v ldconfig >/dev/null 2>&1; then
     # Capture first: "grep -q" closing the pipe early would make ldconfig fail under pipefail.
-    local libs vulkan
+    local libs vulkan gl=""
     libs="$(ldconfig -p 2>/dev/null || true)"
-    vulkan="$(printf '%s\n' "$libs" | grep 'libvulkan\.so\.1 ' || true)"
-    if printf '%s\n' "$vulkan" | grep -q 'x86-64'; then
-      pass vulkan64 "64-bit Vulkan loader found"
+    if [ "$GRAPHICS" = "opengl" ]; then
+      gl="$(printf '%s\n' "$libs" | grep 'libGL\.so\.1 ' || true)"
+      if printf '%s\n' "$gl" | grep -q 'x86-64'; then
+        pass opengl64 "64-bit OpenGL library found"
+      else
+        fail opengl64 "64-bit OpenGL library (libGL.so.1) not found"
+        install_hint opengl64 "the OpenGL library" "libgl1 mesa-utils" "mesa-libGL" "mesa"
+      fi
+      if printf '%s\n' "$gl" | grep -v 'x86-64' | grep -q 'libGL'; then
+        pass opengl32 "32-bit OpenGL library found"
+      else
+        notice opengl32 "32-bit OpenGL library not found (the games are 32-bit)"
+        install_hint opengl32 "32-bit graphics libraries" "libgl1:i386 libglx-mesa0:i386" "mesa-libGL.i686" "lib32-mesa"
+      fi
     else
-      fail vulkan64 "64-bit Vulkan loader (libvulkan.so.1) not found"
-      install_hint vulkan64 "the Vulkan loader" "libvulkan1 mesa-vulkan-drivers" "vulkan-loader mesa-vulkan-drivers" "vulkan-icd-loader"
-    fi
-    if printf '%s\n' "$vulkan" | grep -v 'x86-64' | grep -q 'libvulkan'; then
-      pass vulkan32 "32-bit Vulkan loader found"
-    else
-      notice vulkan32 "32-bit Vulkan loader not found (the games are 32-bit)"
-      install_hint vulkan32 "32-bit graphics libraries" "libvulkan1:i386 mesa-vulkan-drivers:i386" "vulkan-loader.i686 mesa-vulkan-drivers.i686" "lib32-vulkan-icd-loader lib32-vulkan-mesa-layers"
+      vulkan="$(printf '%s\n' "$libs" | grep 'libvulkan\.so\.1 ' || true)"
+      if printf '%s\n' "$vulkan" | grep -q 'x86-64'; then
+        pass vulkan64 "64-bit Vulkan loader found"
+      else
+        fail vulkan64 "64-bit Vulkan loader (libvulkan.so.1) not found"
+        say "         If your graphics card only supports OpenGL, run: bfme-linux-setup.sh graphics opengl"
+        install_hint vulkan64 "the Vulkan loader" "libvulkan1 mesa-vulkan-drivers" "vulkan-loader mesa-vulkan-drivers" "vulkan-icd-loader"
+      fi
+      if printf '%s\n' "$vulkan" | grep -v 'x86-64' | grep -q 'libvulkan'; then
+        pass vulkan32 "32-bit Vulkan loader found"
+      else
+        notice vulkan32 "32-bit Vulkan loader not found (the games are 32-bit)"
+        say "         If your graphics card only supports OpenGL, run: bfme-linux-setup.sh graphics opengl"
+        install_hint vulkan32 "32-bit graphics libraries" "libvulkan1:i386 mesa-vulkan-drivers:i386" "vulkan-loader.i686 mesa-vulkan-drivers.i686" "lib32-vulkan-icd-loader lib32-vulkan-mesa-layers"
+      fi
     fi
   fi
 
@@ -486,8 +536,18 @@ run_in_runner() {
       export PROTONPATH="$PROTONPATH_VALUE" GAMEID=0
       # runinprefix stops umu from waiting for another Wine session. Do not use it on the first start.
       if [ "$mode" = "inprefix" ]; then export PROTON_VERB=runinprefix; fi
+      if [ "$GRAPHICS" = "opengl" ]; then
+        # Proton copies Wine's builtin Direct3D DLLs into the prefix instead of DXVK's. The old GL renderer is what older
+        # cards (Intel HD 4600, say) handle better than Vulkan.
+        export PROTON_USE_WINED3D=1
+      fi
     else
       export WINEARCH=win64 DXVK_CONFIG_FILE="$BASE/dxvk.conf"
+    fi
+    if [ "$GRAPHICS" = "opengl" ]; then
+      export WINE_D3D_CONFIG="${WINE_D3D_CONFIG:-renderer=gl}"
+      # The registry says the same, but an override in the environment also covers a prefix made before this choice.
+      export WINEDLLOVERRIDES="d3d8,d3d9,d3d10core,d3d11,dxgi=b${WINEDLLOVERRIDES:+,$WINEDLLOVERRIDES}"
     fi
     if [ -n "${BFME_EXTRA_ENV:-}" ]; then
       # shellcheck disable=SC2163
@@ -564,11 +624,12 @@ create_prefix() {
 }
 
 # SETTINGS_VERSION: raise it to roll out a new setting.
-SETTINGS_VERSION=3
+SETTINGS_VERSION=4
 apply_prefix_settings() {
-  local marker="$PREFIX/.bfme-settings-v$SETTINGS_VERSION"
-  [ -f "$marker" ] && return
+  local force="${1:-0}" marker="$PREFIX/.bfme-settings-v$SETTINGS_VERSION"
+  [ "$force" = "1" ] || { [ -f "$marker" ] && return; }
   say "Applying prefix settings."
+  mkdir -p "$LOGS"
   : >"$LOGS/prefix-settings.log"
   local dll
 
@@ -581,21 +642,31 @@ apply_prefix_settings() {
   # Without this the AIO Launcher does not repaint a tab after you leave the Multiplayer tab.
   reg_add 'HKCU\Software\Microsoft\Avalon.Graphics' DisableHWAcceleration REG_DWORD 1
 
-  if [ "$RUNNER" = "proton" ]; then
-    for dll in d3d8 d3d9 d3d11 dxgi; do
-      reg_add 'HKCU\Software\Wine\DllOverrides' "$dll" REG_SZ 'native,builtin'
+  if [ "$GRAPHICS" = "opengl" ]; then
+    # WineD3D's builtin DLLs, not DXVK's native ones. Proton copies them into the prefix and uses WINE_D3D_CONFIG=renderer=gl;
+    # Wine's DXVK from winetricks stays installed but is not loaded, so switching back needs no download.
+    for dll in d3d8 d3d9 d3d10core d3d11 dxgi; do
+      reg_add 'HKCU\Software\Wine\DllOverrides' "$dll" REG_SZ 'builtin'
     done
   else
-    # The game closes at map load without this file.
-    cat >"$BASE/dxvk.conf" <<'EOF'
+    for dll in d3d8 d3d9 d3d10core d3d11 dxgi; do
+      reg_add 'HKCU\Software\Wine\DllOverrides' "$dll" REG_SZ 'native,builtin'
+    done
+    if [ "$RUNNER" = "wine" ]; then
+      # The game closes at map load without this file.
+      cat >"$BASE/dxvk.conf" <<'EOF'
 d3d9.countLosableResources = False
 d3d9.floatEmulation = strict
 d3d9.maxFrameLatency = 1
 d3d9.presentInterval = 0
 EOF
+    fi
+  fi
+  if [ "$RUNNER" = "wine" ]; then
     reg_add 'HKCU\Control Panel\Desktop' LogPixels REG_DWORD 96
   fi
 
+  rm -f "$PREFIX"/.bfme-settings-v* 2>/dev/null || true
   : >"$marker"
 }
 
@@ -959,6 +1030,76 @@ cmd_aotr() {
   start_app "aotr" "$AOTR_DIR" "$AOTR_EXE"
 }
 
+# Tools: Workshop Studio and Mission Control are single programs, so they are downloaded to a folder of their own.
+readonly TOOLS=(workshop mission-control)
+
+tool_label() {
+  case "$1" in
+    workshop)        printf 'Workshop Studio' ;;
+    mission-control) printf 'Mission Control' ;;
+  esac
+}
+
+tool_dir() {
+  case "$1" in
+    workshop)        printf '%s/Workshop Studio' "$TOOLS_DIR" ;;
+    mission-control) printf '%s/Mission Control' "$TOOLS_DIR" ;;
+  esac
+}
+
+tool_exe() {
+  case "$1" in
+    workshop)        printf '%s/WorkshopStudio.exe' "$(tool_dir "$1")" ;;
+    mission-control) printf '%s/MissionControl.exe' "$(tool_dir "$1")" ;;
+  esac
+}
+
+tool_installed() {
+  [ -f "$(tool_exe "$1")" ]
+}
+
+check_tool() {
+  case "$1" in
+    workshop|mission-control) ;;
+    *) die "Use: $2 workshop|mission-control" ;;
+  esac
+}
+
+# The file is downloaded beside its final place and moved when whole, so an interrupted download is not taken for the tool.
+install_portable_tool() {
+  local key="$1" url="$2" exe
+  exe="$(tool_exe "$key")"
+  mkdir -p "$(dirname "$exe")"
+  step_start "$key"
+  download "$url" "$exe"
+  chmod +x "$exe"
+  step_done "$key"
+}
+
+cmd_tool_install() {
+  local key="${1:-}"
+  check_tool "$key" tool-install
+  prefix_ready || die "Set up the game environment first. Run: prepare"
+  acquire_setup_lock
+  mkdir -p "$LOGS" "$DOWNLOADS"
+  case "$key" in
+    workshop)        install_portable_tool "$key" "$WORKSHOP_URL" ;;
+    mission-control) install_portable_tool "$key" "$MISSION_CONTROL_URL" ;;
+  esac
+  report_status
+  machine DONE
+  say ""
+  say "$(tool_label "$key") is installed."
+}
+
+cmd_tool() {
+  local key="${1:-}"
+  check_tool "$key" tool
+  tool_installed "$key" || die "$(tool_label "$key") is not installed. Run: tool-install $key"
+  ensure_prefix
+  start_app "$key" "$(tool_dir "$key")" "$(tool_exe "$key")" "$(tool_label "$key")"
+}
+
 cmd_game() {
   local dir exe
   case "${1:-}" in
@@ -1238,17 +1379,21 @@ cmd_install() {
 report_status() {
   [ "$MACHINE" = "1" ] || return 0
   # Complete means the game environment is ready and at least one program is installed.
-  local p="missing" l="missing" a="missing" o="missing" done_all="no"
+  local p="missing" l="missing" a="missing" o="missing" done_all="no" t
   prefix_ready && p="ready"
   launcher_installed && l="installed"
   arena_installed && a="installed"
   aotr_installed && o="installed"
   if [ "$p" = "ready" ] && { [ "$l" = "installed" ] || [ "$a" = "installed" ] || [ "$o" = "installed" ]; }; then done_all="yes"; fi
   machine STATUS runner "$RUNNER"
+  machine STATUS graphics "$GRAPHICS"
   machine STATUS prefix "$p"
   machine STATUS launcher "$l"
   machine STATUS arena "$a"
   machine STATUS aotr "$o"
+  for t in "${TOOLS[@]}"; do
+    if tool_installed "$t"; then machine STATUS "$t" installed; else machine STATUS "$t" missing; fi
+  done
   local game
   for game in bfme1:BFME1/lotrbfme.exe bfme2:BFME2/lotrbfme2.exe rotwk:RotWK/lotrbfme2ep1.exe; do
     if [ -f "$PREFIX/drive_c/${game#*:}" ]; then machine STATUS "${game%%:*}" installed; else machine STATUS "${game%%:*}" missing; fi
@@ -1256,13 +1401,45 @@ report_status() {
   machine STATUS complete "$done_all"
 }
 
+# Switching to OpenGL rewrites the DLL overrides in the prefix, so it applies at once; a missing prefix picks the setting up
+# when it is created. The choice lives in config.env, which the menu shortcuts read on every start.
+cmd_graphics() {
+  local wanted="${1:-}" changed=0
+  case "$wanted" in
+    "") say "Graphics: $(graphics_label)"; say "Switch with: $(basename "$0") graphics vulkan|opengl"; return 0 ;;
+    vulkan|opengl) ;;
+    *) die "Use: graphics vulkan|opengl" ;;
+  esac
+  if [ "$wanted" = "$GRAPHICS" ]; then
+    say "Already using $(graphics_label)."
+  else
+    GRAPHICS="$wanted"
+    changed=1
+    set_config_var BFME_GRAPHICS "$GRAPHICS"
+    say "Graphics: $(graphics_label). Saved for this game environment."
+  fi
+  if prefix_ready; then
+    apply_prefix_settings 1
+    if [ "$changed" = "1" ]; then say "The change applies the next time you open a program."; else say "The settings were applied again."; fi
+  else
+    say "The game environment will be created with it."
+  fi
+  machine STATUS graphics "$GRAPHICS"
+  machine DONE
+}
+
 cmd_status() {
   say "Runner:     $RUNNER$([ "$RUNNER" = proton ] && printf ' (%s)' "$PROTONPATH_VALUE")"
+  say "Graphics:   $(graphics_label)"
   say "Data dir:   $BASE"
   say "Prefix:     $PREFIX $(prefix_ready && echo '(ready)' || echo '(not created)')"
   say "AIO Launcher: $(launcher_installed && echo installed || echo 'not installed')"
   say "Arena:      $(arena_installed && echo installed || echo 'not installed')"
   say "Age of the Ring: $(aotr_installed && echo installed || echo 'not installed')"
+  local t
+  for t in "${TOOLS[@]}"; do
+    say "$(printf '%-15s' "$(tool_label "$t"):") $(tool_installed "$t" && echo installed || echo 'not installed')"
+  done
   local g
   for g in BFME1 BFME2 RotWK; do
     say "$(printf '%-11s' "$g:") $([ -d "$PREFIX/drive_c/$g" ] && echo 'folder present' || echo 'not installed')"
@@ -1280,7 +1457,8 @@ cmd_remove() {
     launcher) dir="$LAUNCHER_DIR" ;;
     arena)    dir="$ARENA_DIR" ;;
     aotr)     dir="$AOTR_DIR" ;;
-    *)        die "Use: remove launcher|arena|aotr" ;;
+    workshop|mission-control) dir="$(tool_dir "$program")" ;;
+    *)        die "Use: remove launcher|arena|aotr|workshop|mission-control" ;;
   esac
   # Whatever the settings say, never delete outside the game environment.
   case "$dir" in
@@ -1296,7 +1474,10 @@ cmd_remove() {
     aotr)     rm -f -- "$PREFIX/.bfme-aotr-installing"; rm -rf -- "$AOTR_UNPACK" ;;
   esac
   cmd_shortcuts || true
-  say "Removed $(shortcut_name "$program")."
+  case "$program" in
+    workshop|mission-control) say "Removed $(tool_label "$program")." ;;
+    *) say "Removed $(shortcut_name "$program")." ;;
+  esac
   report_status
   machine DONE
 }
@@ -1329,7 +1510,10 @@ main() {
     game)              cmd_game "$@" ;;
     aotr-install)      cmd_aotr_install "$@" ;;
     aotr)              cmd_aotr ;;
+    tool-install)      cmd_tool_install "$@" ;;
+    tool)              cmd_tool "$@" ;;
     remove)            cmd_remove "$@" ;;
+    graphics)          cmd_graphics "$@" ;;
     shortcuts)         cmd_shortcuts ;;
     status)            cmd_status ;;
     reset-prefix)      cmd_reset_prefix "$@" ;;

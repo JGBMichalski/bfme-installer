@@ -12,7 +12,7 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, GLib, Gtk  # noqa: E402
 
-from .catalog import CATALOG, INSTALLED_TOGETHER, Program, program
+from .catalog import CATALOG, INSTALLED_TOGETHER, TOOLS, Program, program
 from .controller import Controller
 from .widgets import program_icon
 
@@ -29,9 +29,11 @@ def _join(names: list[str]) -> str:
 
 
 class ProgramsPage:
-    def __init__(self, controller: Controller, *, install: Callable[[str], None], remove: Callable[[str], None]) -> None:
+    def __init__(self, controller: Controller, *, install: Callable[[str], None], remove: Callable[[str], None],
+                 open_app: Callable[[str], None]) -> None:
         self.controller = controller
-        self._install, self._remove = install, remove
+        self._install, self._remove, self._open = install, remove, open_app
+        self._items = (*CATALOG, *TOOLS)
         self.view = Adw.ToolbarView()
         self.view.add_top_bar(Adw.HeaderBar())
         self._key: tuple | None = None
@@ -39,25 +41,31 @@ class ProgramsPage:
         self.refresh()
 
     def rows(self) -> list[Adw.ActionRow]:
-        """The rows as they are now, one per program."""
-        return list(self._rows)
+        """The rows of the programs as they are now, one each."""
+        return list(self._rows[:len(CATALOG)])
+
+    def tool_rows(self) -> list[Adw.ActionRow]:
+        """The rows of the tools as they are now, one each."""
+        return list(self._rows[len(CATALOG):])
 
     def refresh(self) -> None:
         """Rebuild the rows when what they show has changed, and not on every line of output: a button pressed or a dialog
         opened from a row must not be pulled away from under the player."""
         c, m = self.controller, self.controller.model
-        key = (tuple(m.is_installed(p.key) for p in CATALOG), tuple(c.apps.state[p.key] for p in CATALOG),
+        key = (tuple(m.is_installed(p.key) for p in self._items), tuple(c.apps.state[p.key] for p in self._items),
                m.state, m.removing, c.checking)
         if key == self._key:
             return
         self._key = key
-        running = [p for p in CATALOG if c.apps.state[p.key] == "running"]
-        group = Adw.PreferencesGroup()
-        self._rows = [self._row(info, running) for info in CATALOG]
-        for row in self._rows:
-            group.add(row)
+        running = [p for p in self._items if c.apps.state[p.key] == "running"]
+        self._rows = [self._row(info, running) for info in self._items]
+        programs = Adw.PreferencesGroup()
+        tools = Adw.PreferencesGroup(title="Tools")
+        for info, row in zip(self._items, self._rows):
+            (tools if info in TOOLS else programs).add(row)
         page = Adw.PreferencesPage(description=DESCRIPTION)
-        page.add(group)
+        page.add(programs)
+        page.add(tools)
         self.view.set_content(page)
 
     def _row(self, info: Program, running: list[Program]) -> Adw.ActionRow:
@@ -70,6 +78,11 @@ class ProgramsPage:
             return row
         if m.is_installed(info.key):
             row.set_subtitle(GLib.markup_escape_text(self._installed_text(info, running)))
+            if info in TOOLS:
+                opener = Gtk.Button(label="Open", valign=Gtk.Align.CENTER, css_classes=["suggested-action"])
+                opener.set_sensitive(c.apps.state[info.key] != "running")
+                opener.connect("clicked", lambda *_: self._open(info.key))
+                row.add_suffix(opener)
             button = Gtk.Button(label="Remove", valign=Gtk.Align.CENTER, css_classes=["destructive-action"])
             # Removing ends the whole Wine session, so it also has to wait for a program that is not the one being removed.
             button.set_sensitive(c.blocked_reason() is None)

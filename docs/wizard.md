@@ -48,6 +48,8 @@ The lifebuoy is Troubleshoot's icon because it says "help when something goes wr
 
 One row for each program, **AIO Launcher**, **Arena** and **Age of the Ring**, each with its picture. A row says whether the program is installed. It has **Install** when it is not and **Remove** when it is.
 
+Under a **Tools** heading come **Workshop Studio** and **Mission Control** (downloaded from [bfmeladder.com/download](https://bfmeladder.com/download)). An installed tool has **Open** as well as **Remove**. Install runs `bfme-linux-setup tool-install <tool>` as a job on the main page. Open runs `bfme-linux-setup tool <tool>`. The tools have no home screen card and no menu shortcut.
+
 - **Install** goes back to the main page and runs the setup for that program. **Install** on the AIO Launcher or the Arena installs both, because the Arena only plays what the AIO Launcher installs, and the row says so. On Age of the Ring it ends at the download step.
 - **Remove** asks first. The dialog says what is deleted and what is not touched, and defaults to **Cancel**. Confirming runs `bfme-linux-setup remove <program>`, which ends the Wine session, deletes the program's folder and its shortcut, and leaves the games, the other programs and the settings Age of the Ring keeps in the player's own folder. The window shows "Removing..." and cannot be closed or left meanwhile, then looks at the setup again and says "The AIO Launcher was removed." If it was the last program, the start page comes back with the game environment still ready.
 - **Remove** is inactive while any program is running, because ending the Wine session closes them all, and the rows name what to close. Install is not affected.
@@ -65,8 +67,9 @@ The AIO Launcher, the Arena and Age of the Ring each have a picture: a PNG in `b
 Reachable with the lifebuoy button in the top right corner of every page, even while the setup runs.
 
 - **System checks:** failures and warnings first, passing checks folded into one row. The firewall check is left out because the sandbox cannot see it.
-- **Can't be checked from here:** the firewall and graphics drivers, with advice and a command to copy.
-- **Copy diagnostics:** version, runner, your system (distribution, desktop, X11 or Wayland session, graphics card, NVIDIA driver), setup state, check results, and the end of the latest logs. It can contain your home folder and user name.
+- **Graphics:** shows the backend and switches between **Vulkan** (the default) and **OpenGL**, which older graphics cards may handle better. The switch is inactive while the setup or a program runs, because it rewrites settings in the game environment. It takes effect the next time a program opens.
+- **Can't be checked from here:** the firewall and graphics drivers, with advice and a command to copy. The graphics advice and command follow the chosen backend (`vulkaninfo --summary` or `glxinfo -B`).
+- **Copy diagnostics:** version, runner, graphics backend, your system (distribution, desktop, X11 or Wayland session, graphics card, NVIDIA driver), setup state, check results, and the end of the latest logs. It can contain your home folder and user name.
 - **Open logs folder**
 - **Reset game environment:** deletes the game environment and every installed game after a confirmation, removes every shortcut, then shows the start page. Disabled while the setup or a program is running.
 
@@ -120,7 +123,7 @@ The 32-bit extensions are shared with the release app, so only a first-ever inst
 ```
 cd wizard
 BFME_SETUP_SCRIPT=../scripts/bfme-linux-setup.sh python3 -m bfme_wizard    # needs PyGObject, GTK 4, libadwaita
-python3 -m unittest discover -s tests -t .                                  # needs PyGObject
+python3 -m pytest                                                           # needs PyGObject
 ```
 
 The script is found through `BFME_SETUP_SCRIPT`, then the `bfme-linux-setup` command, then `../scripts/`.

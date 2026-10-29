@@ -1,8 +1,7 @@
 import os
 import stat
-import tempfile
-import unittest
 
+import pytest
 from gi.repository import GLib
 
 from bfme_wizard.updater import (
@@ -10,38 +9,38 @@ from bfme_wizard.updater import (
 )
 
 
-class Versions(unittest.TestCase):
-    def test_parse(self):
-        self.assertEqual(parse_version("v0.2.3"), (0, 2, 3))
-        self.assertEqual(parse_version("10.0.12"), (10, 0, 12))
-        for bad in ("dev", "", None, "1.2", "1.2.3-rc1", "v1.2.3.4"):
-            self.assertIsNone(parse_version(bad))
+def test_parse():
+    assert parse_version("v0.2.3") == (0, 2, 3)
+    assert parse_version("10.0.12") == (10, 0, 12)
+    for bad in ("dev", "", None, "1.2", "1.2.3-rc1", "v1.2.3.4"):
+        assert parse_version(bad) is None, bad
 
-    def test_newer_compares_numbers_not_text(self):
-        self.assertTrue(is_newer("0.2.10", "0.2.9"))
-        self.assertTrue(is_newer("v1.0.0", "0.9.9"))
-        self.assertFalse(is_newer("0.2.2", "0.2.2"))
-        self.assertFalse(is_newer("0.2.1", "0.2.2"))
 
-    def test_nothing_is_newer_for_a_development_build_or_a_bad_answer(self):
-        self.assertFalse(is_newer("0.2.3", "dev"))
-        self.assertFalse(is_newer(None, "0.2.2"))
-        self.assertFalse(is_newer("garbage", "0.2.2"))
+def test_newer_compares_numbers_not_text():
+    assert is_newer("0.2.10", "0.2.9")
+    assert is_newer("v1.0.0", "0.9.9")
+    assert not is_newer("0.2.2", "0.2.2")
+    assert not is_newer("0.2.1", "0.2.2")
 
-    def test_redirect(self):
-        self.assertEqual(version_from_redirect("https://github.com/o/r/releases/tag/v0.2.3\n"), "0.2.3")
-        self.assertIsNone(version_from_redirect(""))
-        self.assertIsNone(version_from_redirect("https://github.com/o/r/releases"))
 
-    def test_installed_version_from_the_metainfo(self):
-        d = tempfile.mkdtemp()
-        with open(os.path.join(d, "x.Y.metainfo.xml"), "w") as f:
-            f.write('<releases>\n  <release version="0.2.2" date="2026-10-06"/>\n</releases>')
-        self.assertEqual(installed_version("x.Y", d), "0.2.2")
-        self.assertIsNone(installed_version("missing.App", d))
-        with open(os.path.join(d, "dev.App.metainfo.xml"), "w") as f:
-            f.write('<release version="dev" date="2026-10-06"/>')
-        self.assertIsNone(installed_version("dev.App", d))
+def test_nothing_is_newer_for_a_development_build_or_a_bad_answer():
+    assert not is_newer("0.2.3", "dev")
+    assert not is_newer(None, "0.2.2")
+    assert not is_newer("garbage", "0.2.2")
+
+
+def test_redirect():
+    assert version_from_redirect("https://github.com/o/r/releases/tag/v0.2.3\n") == "0.2.3"
+    assert version_from_redirect("") is None
+    assert version_from_redirect("https://github.com/o/r/releases") is None
+
+
+def test_installed_version_from_the_metainfo(tmp_path):
+    (tmp_path / "x.Y.metainfo.xml").write_text('<releases>\n  <release version="0.2.2" date="2026-10-06"/>\n</releases>')
+    assert installed_version("x.Y", str(tmp_path)) == "0.2.2"
+    assert installed_version("missing.App", str(tmp_path)) is None
+    (tmp_path / "dev.App.metainfo.xml").write_text('<release version="dev" date="2026-10-06"/>')
+    assert installed_version("dev.App", str(tmp_path)) is None
 
 
 FAKE_CURL = """#!/usr/bin/env bash
@@ -54,44 +53,44 @@ esac
 """
 
 
-class Check(unittest.TestCase):
-    def setUp(self):
-        d = tempfile.mkdtemp()
-        path = os.path.join(d, "curl")
-        with open(path, "w") as f:
-            f.write(FAKE_CURL)
-        os.chmod(path, os.stat(path).st_mode | stat.S_IXUSR)
-        self._path = os.environ["PATH"]
-        os.environ["PATH"] = d + os.pathsep + self._path
+@pytest.fixture
+def run_check(tmp_path, monkeypatch):
+    """Runs a check against a fake curl on the PATH that answers as `mode` says."""
+    curl = tmp_path / "curl"
+    curl.write_text(FAKE_CURL)
+    curl.chmod(curl.stat().st_mode | stat.S_IXUSR)
+    monkeypatch.setenv("PATH", f"{tmp_path}:{os.environ['PATH']}")
 
-    def tearDown(self):
-        os.environ["PATH"] = self._path
-
-    def run_check(self, mode, app_id="com.example.App", local="0.2.2"):
-        os.environ["FAKE_CURL_MODE"] = mode
+    def run(mode, app_id="com.example.App", local="0.2.2"):
+        monkeypatch.setenv("FAKE_CURL_MODE", mode)
         loop, states = GLib.MainLoop(), []
         updater = Updater(app_id, lambda: (states.append(updater.state), loop.quit()), local=local)
         updater.check()
         GLib.timeout_add(1500, loop.quit)
         loop.run()
         return updater, states
+    return run
 
-    def test_a_newer_release_makes_an_update_available(self):
-        u, states = self.run_check("new")
-        self.assertEqual((u.state, u.remote, states), ("available", "0.3.0", ["available"]))
 
-    def test_the_same_release_changes_nothing(self):
-        u, states = self.run_check("same")
-        self.assertEqual((u.state, states), ("idle", []))
+def test_a_newer_release_makes_an_update_available(run_check):
+    u, states = run_check("new")
+    assert (u.state, u.remote, states) == ("available", "0.3.0", ["available"])
 
-    def test_no_answer_and_curl_errors_change_nothing(self):
-        for mode in ("none", "fail"):
-            self.assertEqual(self.run_check(mode)[0].state, "idle")
 
-    def test_a_development_build_or_a_non_flatpak_run_never_checks(self):
-        self.assertEqual(self.run_check("new", local=None)[0].state, "idle")
-        u = Updater(None, lambda: None, local="0.2.2")
-        self.assertFalse(u.enabled)
+def test_the_same_release_changes_nothing(run_check):
+    u, states = run_check("same")
+    assert (u.state, states) == ("idle", [])
+
+
+@pytest.mark.parametrize("mode", ("none", "fail"))
+def test_no_answer_and_curl_errors_change_nothing(run_check, mode):
+    assert run_check(mode)[0].state == "idle"
+
+
+def test_a_development_build_or_a_non_flatpak_run_never_checks(run_check):
+    assert run_check("new", local=None)[0].state == "idle"
+    u = Updater(None, lambda: None, local="0.2.2")
+    assert not u.enabled
 
 
 class FakeBus:
@@ -127,54 +126,55 @@ class FakeBus:
         self.callback(None, None, None, None, "Progress", GLib.Variant("(a{sv})", ({k: GLib.Variant("u" if isinstance(v, int) else "s", v) for k, v in info.items()},)))
 
 
-class Install(unittest.TestCase):
-    def make(self, bus):
-        states = []
-        u = Updater("com.example.App", lambda: states.append(u.state), local="0.2.2", bus_factory=lambda: bus)
-        u.state, u.remote = "available", "0.3.0"
-        return u, states
-
-    def test_a_successful_update(self):
-        bus = FakeBus(); u, states = self.make(bus)
-        u.install()
-        bus.emit(op=0, n_ops=1, progress=40, status=0)
-        self.assertEqual((u.state, u.progress), ("updating", 40))
-        bus.emit(op=0, n_ops=1, progress=100, status=2)
-        self.assertEqual(u.state, "done")
-        self.assertEqual(bus.calls, ["CreateUpdateMonitor", "Update", "Close"])
-        self.assertTrue(bus.unsubscribed)
-
-    def test_the_repository_does_not_have_the_release_yet(self):
-        bus = FakeBus(); u, _ = self.make(bus)
-        u.install(); bus.emit(status=1)
-        self.assertEqual(u.state, "empty")
-        u.install()  # "try again" is allowed
-        self.assertEqual(u.state, "updating")
-
-    def test_a_failed_update_keeps_the_portals_message(self):
-        bus = FakeBus(); u, _ = self.make(bus)
-        u.install(); bus.emit(status=3, error_message="Disk is full")
-        self.assertEqual((u.state, u.error), ("failed", "Disk is full"))
-
-    def test_new_permissions_mean_the_portal_refuses(self):
-        bus = FakeBus(fail_update="org.freedesktop.DBus.Error.NotSupported: new permissions"); u, _ = self.make(bus)
-        u.install()
-        self.assertEqual(u.state, "failed")
-        self.assertIn("NotSupported", u.error)
-        self.assertEqual(u.manual_command, "flatpak update --user com.example.App")
-
-    def test_no_portal_fails_cleanly(self):
-        bus = FakeBus(fail_create="no such service"); u, _ = self.make(bus)
-        u.install()
-        self.assertEqual((u.state, u.error), ("failed", "no such service"))
-
-    def test_install_does_nothing_unless_an_update_is_available(self):
-        bus = FakeBus(); u, _ = self.make(bus); u.state = "idle"
-        u.install()
-        self.assertEqual((u.state, bus.calls), ("idle", []))
-        u.state = "updating"; u.install()
-        self.assertEqual(bus.calls, [])
+def make(bus):
+    states = []
+    u = Updater("com.example.App", lambda: states.append(u.state), local="0.2.2", bus_factory=lambda: bus)
+    u.state, u.remote = "available", "0.3.0"
+    return u, states
 
 
-if __name__ == "__main__":
-    unittest.main()
+def test_a_successful_update():
+    bus = FakeBus(); u, states = make(bus)
+    u.install()
+    bus.emit(op=0, n_ops=1, progress=40, status=0)
+    assert (u.state, u.progress) == ("updating", 40)
+    bus.emit(op=0, n_ops=1, progress=100, status=2)
+    assert u.state == "done"
+    assert bus.calls == ["CreateUpdateMonitor", "Update", "Close"]
+    assert bus.unsubscribed
+
+
+def test_the_repository_does_not_have_the_release_yet():
+    bus = FakeBus(); u, _ = make(bus)
+    u.install(); bus.emit(status=1)
+    assert u.state == "empty"
+    u.install()  # "try again" is allowed
+    assert u.state == "updating"
+
+
+def test_a_failed_update_keeps_the_portals_message():
+    bus = FakeBus(); u, _ = make(bus)
+    u.install(); bus.emit(status=3, error_message="Disk is full")
+    assert (u.state, u.error) == ("failed", "Disk is full")
+
+
+def test_new_permissions_mean_the_portal_refuses():
+    bus = FakeBus(fail_update="org.freedesktop.DBus.Error.NotSupported: new permissions"); u, _ = make(bus)
+    u.install()
+    assert u.state == "failed"
+    assert "NotSupported" in u.error
+    assert u.manual_command == "flatpak update --user com.example.App"
+
+
+def test_no_portal_fails_cleanly():
+    bus = FakeBus(fail_create="no such service"); u, _ = make(bus)
+    u.install()
+    assert (u.state, u.error) == ("failed", "no such service")
+
+
+def test_install_does_nothing_unless_an_update_is_available():
+    bus = FakeBus(); u, _ = make(bus); u.state = "idle"
+    u.install()
+    assert (u.state, bus.calls) == ("idle", [])
+    u.state = "updating"; u.install()
+    assert bus.calls == []

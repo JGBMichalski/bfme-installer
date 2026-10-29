@@ -4,6 +4,19 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0]
+
+### Added
+
+- A **Graphics** switch in Troubleshoot, and `graphics vulkan|opengl` in the setup script, for older graphics cards that work better without Vulkan. OpenGL uses WineD3D and needs no extra download; switching back to Vulkan installs nothing either.
+- A **Tools** heading on the Programs page. It installs, opens and removes Workshop Studio and Mission Control from bfmeladder.com.
+- The Arena's log now holds Wine's errors, its unimplemented calls and the DLLs the Arena and the games load, so a game that fails to start from the Arena can be traced. Set `WINEDEBUG` or `BFME_EXTRA_ENV` to change it.
+- **Copy diagnostics** adds the Arena's newest error file, and for each installed game whether the Arena's `dinput8.dll` is in its folder and the end of `arenaapilog.txt`, plus the Wine errors in the Arena's log. The Arena's login files are never read.
+
+### Changed
+
+- Ported over the Python test suite to pytest to better support future python migration.
+
 ## [2.0.2]
 
 ### Added

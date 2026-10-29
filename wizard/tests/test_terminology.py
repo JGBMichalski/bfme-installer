@@ -9,7 +9,8 @@ an icon's name, `AllInOneLauncher.exe`, `umu-launcher`. It also leaves the notes
 said then.
 """
 import re
-import unittest
+
+import pytest
 
 from tests.helpers import ROOT
 
@@ -66,58 +67,64 @@ def words_of(path):
     return [(number, line) for number, line in lines if not line.startswith("_Avoid_:")]
 
 
-class OneName(unittest.TestCase):
-    def test_nothing_a_person_reads_calls_the_aio_launcher_by_a_bare_name(self):
-        found = []
-        for pattern in READ:
-            for path in sorted(ROOT.glob(pattern)):
-                relative = path.relative_to(ROOT).as_posix()
-                for number, line in words_of(path):
-                    if bare_mention(without_allowed(relative, line)):
-                        found.append(f"{relative}:{number}: {line.strip()[:120]}")
-        self.assertEqual(found, [], "Say 'AIO Launcher', in full: Age of the Ring has a launcher of its own (see CONTEXT.md).")
-
-    def test_age_of_the_rings_own_launcher_is_never_renamed_into_the_aio_launcher(self):
-        found = []
-        for pattern in READ:
-            for path in sorted(ROOT.glob(pattern)):
-                relative = path.relative_to(ROOT).as_posix()
-                for number, line in words_of(path):
-                    if OTHER_LAUNCHER_RENAMED.search(line):
-                        found.append(f"{relative}:{number}: {line.strip()[:120]}")
-        self.assertEqual(found, [], "Age of the Ring has a launcher of its own, and it is not the AIO Launcher.")
-
-    def test_the_other_launcher_check_tells_the_two_apart(self):
-        for line in ("It has its own AIO Launcher.", "Start the Age of the Ring AIO Launcher.", "Age of the Ring's AIO Launcher updates it."):
-            with self.subTest(line):
-                self.assertTrue(OTHER_LAUNCHER_RENAMED.search(line))
-        for line in ("It has its own launcher.", "The Age of the Ring Launcher updates the mod itself.", "not part of the AIO Launcher.",
-                     "Close the AIO Launcher and Age of the Ring first.", "the AIO Launcher, the Arena or Age of the Ring"):
-            with self.subTest(line):
-                self.assertFalse(OTHER_LAUNCHER_RENAMED.search(line))
-
-    def test_the_check_tells_a_bare_name_from_a_full_one(self):
-        for line in ("Open the Launcher to install your games.", "the launcher's Multiplayer tab", "The launcher was not installed.",
-                     "Remove the Launcher?", "One row each: **Launcher**, **Arena**", "| Launcher | Check your system |",
-                     "Launcher and Arena side by side", "Install it in the Launcher.", "(the Launcher and the Arena)"):
-            with self.subTest(line):
-                self.assertTrue(bare_mention(line))
-        for line in ("Open the AIO Launcher to install your games.", "Install it in the AIO Launcher.", "BFME All-in-One Launcher",
-                     "The Age of the Ring Launcher updates the mod itself.", "It has its own launcher and its own games.",
-                     "a launcher of its own", "AotR_Launcher.exe", "AllInOneLauncher.exe", "BFME All In One Launcher",
-                     "`<app id>.Launcher`", "umu-launcher", "launcher-install", "--open launcher", "the launchers and games",
-                     "Gtk.UriLauncher", "AppLauncher", "AIO Launcher: not installed"):
-            with self.subTest(line):
-                self.assertFalse(bare_mention(line))
-
-    def test_an_allowed_phrase_is_allowed_only_where_it_is_listed_and_only_that_phrase(self):
-        phrase = 'Never shortened to "the Launcher"'
-        self.assertFalse(bare_mention(without_allowed("CONTEXT.md", phrase)))
-        self.assertTrue(bare_mention(without_allowed("README.md", phrase)))                          # another file: not allowed
-        self.assertTrue(bare_mention(without_allowed("CONTEXT.md", phrase + ", but open the Launcher")))   # a second mention: found
-        self.assertFalse(bare_mention(without_allowed("scripts/bfme-linux-setup.sh", "    launcher) printf 'Launcher' ;;")))
-        self.assertTrue(bare_mention(without_allowed("scripts/bfme-linux-setup.sh", "say 'Open the Launcher'")))
+def test_nothing_a_person_reads_calls_the_aio_launcher_by_a_bare_name():
+    found = []
+    for pattern in READ:
+        for path in sorted(ROOT.glob(pattern)):
+            relative = path.relative_to(ROOT).as_posix()
+            for number, line in words_of(path):
+                if bare_mention(without_allowed(relative, line)):
+                    found.append(f"{relative}:{number}: {line.strip()[:120]}")
+    assert found == [], "Say 'AIO Launcher', in full: Age of the Ring has a launcher of its own (see CONTEXT.md)."
 
 
-if __name__ == "__main__":
-    unittest.main()
+def test_age_of_the_rings_own_launcher_is_never_renamed_into_the_aio_launcher():
+    found = []
+    for pattern in READ:
+        for path in sorted(ROOT.glob(pattern)):
+            relative = path.relative_to(ROOT).as_posix()
+            for number, line in words_of(path):
+                if OTHER_LAUNCHER_RENAMED.search(line):
+                    found.append(f"{relative}:{number}: {line.strip()[:120]}")
+    assert found == [], "Age of the Ring has a launcher of its own, and it is not the AIO Launcher."
+
+
+@pytest.mark.parametrize("line", ("It has its own AIO Launcher.", "Start the Age of the Ring AIO Launcher.",
+                                  "Age of the Ring's AIO Launcher updates it."))
+def test_the_other_launcher_check_finds_a_renamed_one(line):
+    assert OTHER_LAUNCHER_RENAMED.search(line)
+
+
+@pytest.mark.parametrize("line", ("It has its own launcher.", "The Age of the Ring Launcher updates the mod itself.",
+                                  "not part of the AIO Launcher.", "Close the AIO Launcher and Age of the Ring first.",
+                                  "the AIO Launcher, the Arena or Age of the Ring"))
+def test_the_other_launcher_check_leaves_the_aio_launcher_alone(line):
+    assert not OTHER_LAUNCHER_RENAMED.search(line)
+
+
+@pytest.mark.parametrize("line", ("Open the Launcher to install your games.", "the launcher's Multiplayer tab",
+                                  "The launcher was not installed.", "Remove the Launcher?",
+                                  "One row each: **Launcher**, **Arena**", "| Launcher | Check your system |",
+                                  "Launcher and Arena side by side", "Install it in the Launcher.",
+                                  "(the Launcher and the Arena)"))
+def test_the_check_finds_a_bare_name(line):
+    assert bare_mention(line)
+
+
+@pytest.mark.parametrize("line", ("Open the AIO Launcher to install your games.", "Install it in the AIO Launcher.",
+                                  "BFME All-in-One Launcher", "The Age of the Ring Launcher updates the mod itself.",
+                                  "It has its own launcher and its own games.", "a launcher of its own", "AotR_Launcher.exe",
+                                  "AllInOneLauncher.exe", "BFME All In One Launcher", "`<app id>.Launcher`", "umu-launcher",
+                                  "launcher-install", "--open launcher", "the launchers and games", "Gtk.UriLauncher",
+                                  "AppLauncher", "AIO Launcher: not installed"))
+def test_the_check_leaves_a_full_name_alone(line):
+    assert not bare_mention(line)
+
+
+def test_an_allowed_phrase_is_allowed_only_where_it_is_listed_and_only_that_phrase():
+    phrase = 'Never shortened to "the Launcher"'
+    assert not bare_mention(without_allowed("CONTEXT.md", phrase))
+    assert bare_mention(without_allowed("README.md", phrase))                          # another file: not allowed
+    assert bare_mention(without_allowed("CONTEXT.md", phrase + ", but open the Launcher"))   # a second mention: found
+    assert not bare_mention(without_allowed("scripts/bfme-linux-setup.sh", "    launcher) printf 'Launcher' ;;"))
+    assert bare_mention(without_allowed("scripts/bfme-linux-setup.sh", "say 'Open the Launcher'"))

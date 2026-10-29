@@ -15,6 +15,7 @@ from gi.repository import Gio, GLib  # noqa: E402
 
 QUICK_EXIT_SECONDS = 15
 APPS = ("launcher", "arena", "aotr")
+TOOL_APPS = ("workshop", "mission-control")
 
 
 class AppLauncher:
@@ -26,18 +27,19 @@ class AppLauncher:
         self.on_change = on_change
         self.quick_seconds = quick_seconds
         self._clock = clock
-        self.state = {name: "idle" for name in APPS}
+        self.state = {name: "idle" for name in (*APPS, *TOOL_APPS)}
 
     @property
     def any_running(self) -> bool:
         return any(v == "running" for v in self.state.values())
 
     def start(self, name: str) -> None:
-        if name not in APPS or self.state[name] == "running":
+        if name not in self.state or self.state[name] == "running":
             return
+        command = [self.script, "tool", name] if name in TOOL_APPS else [self.script, name]
         try:
             proc = Gio.Subprocess.new(
-                [self.script, name], Gio.SubprocessFlags.STDOUT_SILENCE | Gio.SubprocessFlags.STDERR_SILENCE,
+                command, Gio.SubprocessFlags.STDOUT_SILENCE | Gio.SubprocessFlags.STDERR_SILENCE,
             )
         except GLib.Error:
             self.state[name] = "quick"

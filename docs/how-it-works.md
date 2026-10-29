@@ -12,8 +12,8 @@
 - Prefix settings, applied once per version:
   - `mfc71`, `msvcp71`, `msvcr71`, `dinput8` = `native,builtin`, which stops the multiplayer "Out of Sync" error between Linux and Windows players.
   - `DisableHWAcceleration = 1`, so the AIO Launcher repaints tabs.
-  - Proton: `d3d8`, `d3d9`, `d3d11`, `dxgi` = `native,builtin` (DXVK).
-  - Wine: `corefonts`, `win10`, `dxvk`, `d3dx9`, `LogPixels = 96`, and a `dxvk.conf` (the game closes at map load without it).
+  - Vulkan (the default): Proton `d3d8`, `d3d9`, `d3d10core`, `d3d11`, `dxgi` = `native,builtin` (DXVK); Wine `corefonts`, `win10`, `dxvk`, `d3dx9`, `LogPixels = 96`, and a `dxvk.conf` (the game closes at map load without it).
+  - OpenGL (`BFME_GRAPHICS=opengl`): `d3d8`, `d3d9`, `d3d10core`, `d3d11`, `dxgi` = `builtin` (WineD3D), plus `PROTON_USE_WINED3D=1` under Proton and `WINE_D3D_CONFIG=renderer=gl`. Wine still has the DXVK files from winetricks, but does not load them, so switching back needs no download.
 
 ## Configuration
 
@@ -26,12 +26,15 @@ Set these in `<data dir>/config.env` or the environment.
 | `BFME_PROTONPATH` | Proton to use (default: a pinned UMU-Proton) |
 | `BFME_ARENA_BRANCH` | Arena release branch |
 | `BFME_NVIDIA` | `auto`, `1` or `0` |
+| `BFME_GRAPHICS` | `vulkan` (default, DXVK) or `opengl` (WineD3D) |
 | `BFME_EXTRA_ENV` | Extra environment for the game |
 | `BFME_UMU_RUN` | Path to `umu-run` |
 
 ## Notes
 
 - Use one runner and one Wine version per prefix.
+- `graphics opengl` (or the switch in Troubleshoot) changes the renderer without a reinstall. `graphics` alone prints the
+  current one. The choice is saved in `config.env`, so the menu shortcuts use it too.
 - Don't switch patches in the AIO Launcher once a game is installed. It once broke BFME 2 on Wine.
 - x86_64 only.
 - `doctor` reports a firewall (`ufw`, `firewalld`). The script never changes it.

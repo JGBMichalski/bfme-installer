@@ -29,6 +29,8 @@ from . import protocol as p
 PROGRAMS = ("launcher", "aotr")
 # Everything that can be opened, and removed again.
 ALL_PROGRAMS = ("launcher", "arena", "aotr")
+# Extra programs of the Tools page. Each installs as a job of its own, from the home screen.
+TOOLS = ("workshop", "mission-control")
 
 JOB_STEPS: dict[str, list[tuple[str, str, str]]] = {
     "environment": [
@@ -47,6 +49,12 @@ JOB_STEPS: dict[str, list[tuple[str, str, str]]] = {
         ("aotr-unpack", "Unpack the download", "Extracting the installer files. This takes a few minutes."),
         ("aotr-install", "Install Age of the Ring", "Copying the game and the mod. This can take an hour."),
         ("aotr-settings", "Finish up", "Removing the temporary files."),
+    ],
+    "workshop": [
+        ("workshop", "Download Workshop Studio", "Fetching Workshop Studio from the BFME Arena site."),
+    ],
+    "mission-control": [
+        ("mission-control", "Download Mission Control", "Fetching Mission Control from the BFME Arena site."),
     ],
 }
 # Steps the player does. The script never reports them.
@@ -68,7 +76,7 @@ def description_of(step_id: str) -> str:
 def _in_order(programs: Iterable[str]) -> tuple[str, ...]:
     """Known programs only, in install order."""
     wanted = set(programs)
-    return tuple(program for program in PROGRAMS if program in wanted)
+    return tuple(program for program in (*PROGRAMS, *TOOLS) if program in wanted)
 
 
 def plan_for(programs: Iterable[str], environment_ready: bool) -> list[str]:
@@ -279,6 +287,15 @@ class SetupModel:
     def environment_ready(self) -> bool:
         """Known only after a status check."""
         return self.installed.get("prefix") == "ready"
+
+    @property
+    def graphics(self) -> str:
+        """The graphics backend the script uses: `vulkan` (DXVK) or `opengl` (WineD3D). Known only after a status check."""
+        return self.installed.get("graphics", "vulkan")
+
+    @property
+    def graphics_label(self) -> str:
+        return "OpenGL (WineD3D)" if self.graphics == "opengl" else "Vulkan (DXVK)"
 
     @property
     def has_home_screen(self) -> bool:

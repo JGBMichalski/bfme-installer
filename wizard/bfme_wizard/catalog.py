@@ -52,9 +52,25 @@ CATALOG: tuple[Program, ...] = (
     ),
 )
 
+# Extra programs, listed on the Tools page. They are not part of the setup, so the home screen has no card for them.
+TOOLS: tuple[Program, ...] = (
+    Program(
+        "workshop", "Workshop Studio", "Workshop Studio",
+        "Create workshop packages and publish them to the BFME Workshop",
+        "Its folder is deleted. The AIO Launcher, the Arena, Age of the Ring and the games are not touched.",
+        "About 300 MB to download.",
+    ),
+    Program(
+        "mission-control", "Mission Control", "Mission Control",
+        "For Arena operators, patch developers, event organizers and moderators",
+        "Its folder is deleted. The AIO Launcher, the Arena, Age of the Ring and the games are not touched.",
+        "About 300 MB to download.",
+    ),
+)
+
 # Installing one of these installs the other when it is missing: the Arena only plays what the AIO Launcher installs.
 INSTALLED_TOGETHER = {"launcher": "arena", "arena": "launcher"}
 
 
 def program(key: str) -> Program:
-    return next(p for p in CATALOG if p.key == key)
+    return next(p for p in (*CATALOG, *TOOLS) if p.key == key)

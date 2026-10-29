@@ -22,11 +22,20 @@ CARD_ICON_SIZE = 64
 # The window floats its icon buttons in the top right corner of the page: 6 pixels from the top, and 34 high.
 CORNER_CLEARANCE = 46
 QUICK_EXIT_NOTE = "Closed after a few seconds. If it didn't open, see Troubleshoot."
-# The sandbox cannot see these. Advice only, never pass or fail.
-CANT_CHECK = [
-    ("Firewall", "If you cannot host or join games, check that your firewall (ufw or firewalld) allows them.", "sudo ufw status"),
-    ("Graphics drivers", "The launchers/applications need working Vulkan drivers on your computer.", "vulkaninfo --summary"),
-]
+
+
+# The sandbox cannot see these. Advice only, never pass or fail. The drivers named depend on the chosen backend.
+def cant_check(graphics: str) -> list[tuple[str, str, str]]:
+    if graphics == "opengl":
+        drivers = ("Graphics drivers", "The launchers/applications need working OpenGL drivers on your computer. If a game is slow "
+                   "or does not start, switch back to Vulkan on this page.", "glxinfo -B")
+    else:
+        drivers = ("Graphics drivers", "The launchers/applications need working Vulkan drivers on your computer. On an older "
+                   "graphics card, switch to OpenGL on this page.", "vulkaninfo --summary")
+    return [
+        ("Firewall", "If you cannot host or join games, check that your firewall (ufw or firewalld) allows them.", "sudo ufw status"),
+        drivers,
+    ]
 
 
 class HomePage:
@@ -119,9 +128,11 @@ class TroubleshootPage:
     """Rebuilt only when its content changes, so expanded rows stay open."""
 
     def __init__(self, controller: Controller, *, copy_text: Callable[[str, str], None], copy_diagnostics: Callable[[], None],
-                 open_logs: Callable[[], None], confirm_reset: Callable[[], None]) -> None:
+                 open_logs: Callable[[], None], confirm_reset: Callable[[], None],
+                 change_graphics: Callable[[str], None]) -> None:
         self.controller = controller
-        self._cb = dict(copy_text=copy_text, copy_diagnostics=copy_diagnostics, open_logs=open_logs, confirm_reset=confirm_reset)
+        self._cb = dict(copy_text=copy_text, copy_diagnostics=copy_diagnostics, open_logs=open_logs, confirm_reset=confirm_reset,
+                        change_graphics=change_graphics)
         self.view = Adw.ToolbarView()
         self.view.add_top_bar(Adw.HeaderBar())
         self._key = None
@@ -129,12 +140,14 @@ class TroubleshootPage:
 
     def refresh(self) -> None:
         c = self.controller
-        key = (tuple(c.model.check_rows), c.checking, c.model.state, tuple(c.apps.state.values()), c.blocked_reason())
+        key = (tuple(c.model.check_rows), c.checking, c.model.state, tuple(c.apps.state.values()), c.blocked_reason(),
+               c.model.graphics)
         if key == self._key:
             return
         self._key = key
         page = Adw.PreferencesPage()
         page.add(self._checks_group())
+        page.add(self._graphics_group())
         page.add(self._cant_check_group())
         page.add(self._tools_group())
         self.view.set_content(page)
@@ -169,12 +182,30 @@ class TroubleshootPage:
         group.add(again)
         return group
 
+    def _graphics_group(self) -> Adw.PreferencesGroup:
+        group = Adw.PreferencesGroup(
+            title="Graphics",
+            description="Vulkan is the default. OpenGL can work better on older graphics cards. It takes effect the next time "
+                        "you open a program.",
+        )
+        opengl = self.controller.model.graphics == "opengl"
+        row = Adw.ActionRow(
+            title="Backend",
+            subtitle="OpenGL (WineD3D)" if opengl else "Vulkan (DXVK)",
+        )
+        button = Gtk.Button(label="Use Vulkan" if opengl else "Use OpenGL", valign=Gtk.Align.CENTER, css_classes=["flat"])
+        button.set_sensitive(self.controller.blocked_reason() is None)
+        button.connect("clicked", lambda *_: self._cb["change_graphics"]("vulkan" if opengl else "opengl"))
+        row.add_suffix(button)
+        group.add(row)
+        return group
+
     def _cant_check_group(self) -> Adw.PreferencesGroup:
         group = Adw.PreferencesGroup(
             title="Can't be checked from here",
             description="This app runs in a sandbox and cannot see these. A green list above does not cover them.",
         )
-        for title, advice, command in CANT_CHECK:
+        for title, advice, command in cant_check(self.controller.model.graphics):
             row = Adw.ActionRow(title=title, subtitle=GLib.markup_escape_text(advice), subtitle_lines=3)
             button = Gtk.Button(label="Copy command", valign=Gtk.Align.CENTER, css_classes=["flat"])
             button.connect("clicked", lambda _b, cmd=command: self._cb["copy_text"](cmd, "Command copied"))
