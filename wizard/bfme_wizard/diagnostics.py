@@ -11,6 +11,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from . import vulkan
 from .model import GAMES, SetupModel
 
 LOG_LINES = 40
@@ -96,6 +97,7 @@ def system_lines(environ: dict[str, str] | None = None) -> list[str]:
     gpus = _gpus()
     lines += [f"Graphics card: {gpu}" for gpu in gpus] or ["Graphics card: unknown"]
     lines.append(f"NVIDIA driver: {_nvidia_driver() or 'none'}")
+    lines.append(f"Vulkan: {vulkan.summary()}")
     return lines
 
 

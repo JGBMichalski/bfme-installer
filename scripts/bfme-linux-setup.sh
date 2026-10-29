@@ -95,6 +95,7 @@ PROTONPATH_VALUE="${BFME_PROTONPATH:-$DEFAULT_PROTONPATH}"
 ARENA_BRANCH="${BFME_ARENA_BRANCH:-main}"
 NVIDIA_MODE="${BFME_NVIDIA:-auto}"
 GRAPHICS="${BFME_GRAPHICS:-vulkan}"
+GRAPHICS_CHOSEN="${BFME_GRAPHICS:+1}"   # empty until the player or an earlier setup picked a backend
 UMU_RUN="${BFME_UMU_RUN:-}"
 
 case "$GRAPHICS" in
@@ -222,6 +223,52 @@ graphics_label() {
   if [ "$GRAPHICS" = "opengl" ]; then printf 'OpenGL (WineD3D)'; else printf 'Vulkan (DXVK)'; fi
 }
 
+# Which backend suits this computer: sets PROBE_BACKEND (vulkan, opengl or unknown) and PROBE_MESSAGE. Runs once per script.
+# The probe is wizard/bfme_wizard/vulkan.py; BFME_VULKAN_PROBE replaces it in the tests.
+PROBE_BACKEND=""
+PROBE_MESSAGE=""
+probe_graphics() {
+  [ -z "$PROBE_BACKEND" ] || return 0
+  local out
+  if [ -n "${BFME_VULKAN_PROBE:-}" ]; then
+    out="$("$BFME_VULKAN_PROBE" 2>/dev/null 9>&-)" || out=""
+  else
+    out="$(PYTHONPATH="/app/lib/bfme-wizard:$(dirname "$0")/../wizard${PYTHONPATH:+:$PYTHONPATH}" \
+      timeout 20 python3 -m bfme_wizard.vulkan 2>/dev/null 9>&-)" || out=""
+  fi
+  case "$out" in
+    "vulkan "*|"opengl "*|"unknown "*) PROBE_BACKEND="${out%% *}"; PROBE_MESSAGE="${out#* }" ;;
+    *) PROBE_BACKEND="unknown"; PROBE_MESSAGE="could not check Vulkan" ;;
+  esac
+}
+
+# The first setup picks the backend for the player, unless they already chose one. The result is saved, so it runs once.
+detect_graphics() {
+  [ -z "$GRAPHICS_CHOSEN" ] || return 0
+  probe_graphics
+  [ "$PROBE_BACKEND" != "unknown" ] || return 0
+  GRAPHICS="$PROBE_BACKEND"
+  GRAPHICS_CHOSEN=1
+  set_config_var BFME_GRAPHICS "$GRAPHICS"
+  say "Graphics: $(graphics_label) ($PROBE_MESSAGE)."
+}
+
+# One system check line: what the computer supports, and whether the chosen backend matches it.
+check_graphics() {
+  probe_graphics
+  case "$PROBE_BACKEND" in
+    unknown) notice graphics "Graphics: $PROBE_MESSAGE. Using $(graphics_label)." ;;
+    "$GRAPHICS") pass graphics "Graphics: $PROBE_MESSAGE. Using $(graphics_label)." ;;
+    opengl)
+      if [ -z "$GRAPHICS_CHOSEN" ]; then
+        pass graphics "Graphics: $PROBE_MESSAGE. The setup will use OpenGL (WineD3D)."
+      else
+        notice graphics "Graphics: $PROBE_MESSAGE. OpenGL is recommended: switch it under Troubleshoot, Graphics."
+      fi ;;
+    vulkan) pass graphics "Graphics: $PROBE_MESSAGE. Using $(graphics_label), as you chose." ;;
+  esac
+}
+
 # Stores one plain shell variable in config.env, keeping every other line. The shortcuts read the file, so a later start uses
 # the same choice.
 set_config_var() {
@@ -328,6 +375,8 @@ cmd_doctor() {
       fi
     fi
   fi
+
+  check_graphics
 
   local free_kb
   free_kb="$(df -Pk "$(existing_parent "$BASE")" 2>/dev/null | awk 'NR==2 {print $4}')"
@@ -1327,6 +1376,7 @@ prepare_environment() {
   ensure_runner
   step_done runner
   step_start prefix
+  prefix_ready || detect_graphics
   prepare_prefix
   step_done prefix
 }
@@ -1412,6 +1462,7 @@ cmd_graphics() {
   esac
   if [ "$wanted" = "$GRAPHICS" ]; then
     say "Already using $(graphics_label)."
+    [ -n "$GRAPHICS_CHOSEN" ] || set_config_var BFME_GRAPHICS "$GRAPHICS"   # an explicit choice beats detection
   else
     GRAPHICS="$wanted"
     changed=1

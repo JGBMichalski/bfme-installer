@@ -67,6 +67,8 @@ class ScriptCase(unittest.TestCase):
         bin_dir.mkdir()
         executable(bin_dir / "curl", FAKE_CURL)
         executable(bin_dir / "umu-run", FAKE_UMU)
+        self.probe = bin_dir / "vulkan-probe"
+        self.set_probe("vulkan Vulkan 1.4 on Test GPU")
         self.base = self.tmp / "data"
         self.apps = self.tmp / "xdg" / "applications"
         self.prefix = self.base / "prefix"
@@ -76,7 +78,12 @@ class ScriptCase(unittest.TestCase):
             BFME_HOME=str(self.base), XDG_DATA_HOME=str(self.tmp / "xdg"), BFME_UMU_RUN=str(bin_dir / "umu-run"),
             BFME_PROTONPATH="fake-proton",   # anything but the pinned build: the real one would be downloaded
             PATH=f"{bin_dir}:{os.environ['PATH']}",
+            BFME_VULKAN_PROBE=str(self.probe),   # the real one asks this computer's graphics driver
         )
+
+    def set_probe(self, output):
+        """What the Vulkan probe prints."""
+        executable(self.probe, f"#!/bin/sh\necho '{output}'\n")
 
     def run_script(self, *args, machine=True, script=None):
         command = [str(script or SCRIPT), *(["--machine"] if machine else []), *args]
@@ -770,6 +777,55 @@ class Graphics(ScriptCase):
         plain = self.run_script("status", machine=False)
         self.assertIn("Graphics:   Vulkan (DXVK)", plain.stdout)
         self.assertIn("graphics [vulkan|opengl]", self.run_script("help", machine=False).stdout)
+
+
+class GraphicsDetection(ScriptCase):
+    """The first setup picks OpenGL when the computer has no graphics card with Vulkan 1.3, unless the player chose."""
+
+    def config(self):
+        path = self.base / "config.env"
+        return path.read_text() if path.exists() else ""
+
+    def check(self, done):
+        return next(line for line in self.status_lines(done) if line.startswith("@bfme CHECK graphics "))
+
+    def test_the_first_setup_saves_what_the_computer_suits(self):
+        for output, backend in (("opengl no graphics card with Vulkan was found", "opengl"),
+                                ("vulkan Vulkan 1.4 on Test GPU", "vulkan")):
+            with self.subTest(backend):
+                shutil.rmtree(self.base, ignore_errors=True)
+                self.set_probe(output)
+                done = self.run_script("prepare")
+                self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+                self.assertIn(f"BFME_GRAPHICS={backend}", self.config())
+                self.assertEqual(self.status()["graphics"], backend)
+
+    def test_the_players_choice_is_kept_and_the_check_recommends_opengl(self):
+        self.run_script("graphics", "vulkan")
+        self.set_probe("opengl Vulkan 1.2 on Old GPU, but Vulkan 1.3 or newer is needed")
+        done = self.run_script("prepare")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual(self.status()["graphics"], "vulkan")
+        self.assertIn("@bfme CHECK graphics warn Graphics: Vulkan 1.2 on Old GPU", self.check(done))
+        self.assertIn("OpenGL is recommended", self.check(done))
+
+    def test_an_existing_game_environment_is_left_as_it_is(self):
+        self.make_prefix()
+        self.set_probe("opengl no graphics card with Vulkan was found")
+        self.assertEqual(self.run_script("prepare").returncode, 0)
+        self.assertNotIn("BFME_GRAPHICS", self.config())
+        self.assertEqual(self.status()["graphics"], "vulkan")
+
+    def test_a_probe_that_fails_changes_nothing(self):
+        self.set_probe("")
+        done = self.run_script("prepare")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertNotIn("BFME_GRAPHICS", self.config())
+        self.assertEqual(self.check(done), "@bfme CHECK graphics warn Graphics: could not check Vulkan. Using Vulkan (DXVK).")
+
+    def test_the_system_check_names_the_card(self):
+        done = self.run_script("doctor")
+        self.assertEqual(self.check(done), "@bfme CHECK graphics ok Graphics: Vulkan 1.4 on Test GPU. Using Vulkan (DXVK).")
 
 
 class Jobs(ScriptCase):

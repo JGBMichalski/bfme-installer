@@ -208,6 +208,7 @@ def test_system_lines_name_the_session_and_the_desktop():
     assert "Desktop: KDE, wayland session" in lines
     assert any(line.startswith("Graphics card: ") for line in lines)
     assert any(line.startswith("NVIDIA driver: ") for line in lines)
+    assert any(line.startswith("Vulkan: ") for line in lines)
 
 
 def test_system_lines_guess_the_session_without_a_session_type():

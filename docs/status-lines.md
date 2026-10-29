@@ -57,7 +57,7 @@ The wizard adds `aotr-download` before Age of the Ring's steps, where the player
 
 ## Check ids
 
-`cpu`, `cmd-curl`, `cmd-tar`, `cmd-python3`, `cmd-bwrap`, `cmd-wine`, `cmd-cabextract`, `bwrap`, `wine-version`, `i386-arch`, `vulkan64`, `vulkan32`, `opengl64`, `opengl32`, `disk`, `firewall`, `flatpak` and `flatpak-32bit`. `doctor` prints the Vulkan ones or the OpenGL ones, depending on `BFME_GRAPHICS`. The Flatpak build prints only those that apply.
+`cpu`, `cmd-curl`, `cmd-tar`, `cmd-python3`, `cmd-bwrap`, `cmd-wine`, `cmd-cabextract`, `bwrap`, `wine-version`, `i386-arch`, `vulkan64`, `vulkan32`, `opengl64`, `opengl32`, `graphics`, `disk`, `firewall`, `flatpak` and `flatpak-32bit`. `doctor` prints the Vulkan ones or the OpenGL ones, depending on `BFME_GRAPHICS`. The Flatpak build prints only those that apply.
 
 ## Running and stopping
 

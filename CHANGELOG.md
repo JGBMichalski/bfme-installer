@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - A **Tools** heading on the Programs page. It installs, opens and removes Workshop Studio and Mission Control from bfmeladder.com.
 - The Arena's log now holds Wine's errors, its unimplemented calls and the DLLs the Arena and the games load, so a game that fails to start from the Arena can be traced. Set `WINEDEBUG` or `BFME_EXTRA_ENV` to change it.
 - **Copy diagnostics** adds the Arena's newest error file, and for each installed game whether the Arena's `dinput8.dll` is in its folder and the end of `arenaapilog.txt`, plus the Wine errors in the Arena's log. The Arena's login files are never read.
+- The first setup picks OpenGL when no graphics card supports Vulkan 1.3. The system check and **Copy diagnostics** show the card found.
 
 ### Changed
 

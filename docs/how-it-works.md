@@ -26,13 +26,15 @@ Set these in `<data dir>/config.env` or the environment.
 | `BFME_PROTONPATH` | Proton to use (default: a pinned UMU-Proton) |
 | `BFME_ARENA_BRANCH` | Arena release branch |
 | `BFME_NVIDIA` | `auto`, `1` or `0` |
-| `BFME_GRAPHICS` | `vulkan` (default, DXVK) or `opengl` (WineD3D) |
+| `BFME_GRAPHICS` | `vulkan` (DXVK) or `opengl` (WineD3D). Detected on first setup |
 | `BFME_EXTRA_ENV` | Extra environment for the game |
 | `BFME_UMU_RUN` | Path to `umu-run` |
 
 ## Notes
 
 - Use one runner and one Wine version per prefix.
+- The first setup picks OpenGL if no graphics card supports Vulkan 1.3 (DXVK's minimum), and saves it. A choice you made is
+  never changed. The system check shows the card it found.
 - `graphics opengl` (or the switch in Troubleshoot) changes the renderer without a reinstall. `graphics` alone prints the
   current one. The choice is saved in `config.env`, so the menu shortcuts use it too.
 - Don't switch patches in the AIO Launcher once a game is installed. It once broke BFME 2 on Wine.
