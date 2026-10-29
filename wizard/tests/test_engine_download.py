@@ -6,14 +6,14 @@ import pytest
 
 from bfme_wizard.engine import download as download_module
 from bfme_wizard.engine.download import download, verify_sha256
-from bfme_wizard.engine.errors import Cancelled, SetupError
+from bfme_wizard.engine.errors import JobCancelled, SetupError
 
 DATA = bytes(range(256)) * 4096   # 1 MiB: several chunks
 
 
 @pytest.fixture(autouse=True)
 def no_retry_delay(monkeypatch):
-    monkeypatch.setattr(download_module, "RETRY_DELAY", 0)
+    monkeypatch.setattr(download_module, "RETRY_DELAY_SEC", 0)
 
 
 def test_the_file_arrives_whole_with_progress_up_to_100(file_server, tmp_path):
@@ -107,7 +107,7 @@ def test_cancel_stops_it_and_leaves_no_file(file_server, tmp_path):
     cancel = threading.Event()
     cancel.set()
 
-    with pytest.raises(Cancelled):
+    with pytest.raises(JobCancelled):
         download(file_server.url("/f.bin"), tmp_path / "f.bin", cancel=cancel)
 
     assert not (tmp_path / "f.bin").exists()

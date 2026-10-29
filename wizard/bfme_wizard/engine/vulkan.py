@@ -1,7 +1,8 @@
-"""Which graphics backend suits this computer, from the Vulkan devices the driver reports. No GTK.
+"""Which graphics backend suits this computer, from the Vulkan devices the driver reports.
 
 Proton's DXVK needs Vulkan 1.3. Without a real graphics card that has it, OpenGL (WineD3D) is the better choice.
-Run as `python3 -m bfme_wizard.vulkan` it prints one line, `<vulkan|opengl|unknown> <message>`, for the setup script.
+Run as `python3 -m bfme_wizard.engine.vulkan` it prints one line, `<vulkan|opengl|unknown> <message>`. The setup runs it as
+a child process (see graphics.probe), because a broken graphics driver can hang or crash the process that loads it.
 """
 from __future__ import annotations
 
@@ -35,16 +36,20 @@ def devices() -> list[Device] | None:
         vk = ctypes.CDLL("libvulkan.so.1")
     except OSError:
         return None
+
     info = _InstanceCreateInfo(sType=1)  # VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO
     instance = ctypes.c_void_p()
+
     if vk.vkCreateInstance(ctypes.byref(info), None, ctypes.byref(instance)) != 0:
         return []
+
     try:
         count = ctypes.c_uint32()
         vk.vkEnumeratePhysicalDevices(instance, ctypes.byref(count), None)
         handles = (ctypes.c_void_p * count.value)()
         vk.vkEnumeratePhysicalDevices(instance, ctypes.byref(count), handles)
         found = []
+
         for handle in handles:
             # VkPhysicalDeviceProperties starts with apiVersion, driverVersion, vendorID, deviceID, deviceType and a
             # 256-byte name. The whole struct is about 824 bytes.
@@ -52,33 +57,42 @@ def devices() -> list[Device] | None:
             vk.vkGetPhysicalDeviceProperties(ctypes.c_void_p(handle), props)
             api, _driver, _vendor, _device, kind = struct.unpack_from("5I", props.raw)
             name = props.raw[20:276].split(b"\0", 1)[0].decode(errors="replace")
-            found.append(Device(name, kind, (api >> 22, (api >> 12) & 0x3FF)))
+            major = api >> 22
+            minor = (api >> 12) & 0x3FF
+            found.append(Device(name=name, kind=kind, version=(major, minor)))
+
         return found
     finally:
         vk.vkDestroyInstance(instance, None)
+
+
+def _rank(device: Device) -> tuple[tuple[int, int], int]:
+    """Newest Vulkan first; on a tie a dedicated card beats a built-in one."""
+    return device.version, TYPE_RANK.get(device.kind, 0)
 
 
 def choose(found: list[Device] | None) -> tuple[str, str]:
     """("vulkan" or "opengl", why)."""
     if found is None:
         return "opengl", "Vulkan is not available"
-    real = [d for d in found if d.kind != CPU]
+
+    # A software renderer such as llvmpipe is far too slow for the games.
+    real = []
+
+    for device in found:
+        if device.kind != CPU:
+            real.append(device)
+
     if not real:
         return "opengl", "no graphics card with Vulkan was found"
-    best = max(real, key=lambda d: (d.version, TYPE_RANK.get(d.kind, 0)))
+
+    best = max(real, key=_rank)
     version = f"{best.version[0]}.{best.version[1]}"
+
     if best.version < MIN_VERSION:
         return "opengl", f"Vulkan {version} on {best.name}, but Vulkan 1.3 or newer is needed"
+
     return "vulkan", f"Vulkan {version} on {best.name}"
-
-
-def summary() -> str:
-    """One line for the diagnostics."""
-    try:
-        backend, why = choose(devices())
-    except Exception as error:  # a broken driver must not stop the report
-        return f"could not check ({error})"
-    return f"{why} (suits {'Vulkan' if backend == 'vulkan' else 'OpenGL'})"
 
 
 def main() -> int:
@@ -86,6 +100,7 @@ def main() -> int:
         backend, why = choose(devices())
     except Exception as error:
         backend, why = "unknown", f"could not check Vulkan ({error})"
+
     print(backend, why)
     return 0
 

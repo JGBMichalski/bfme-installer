@@ -5,5 +5,5 @@ class SetupError(Exception):
     """A step failed. The message says what went wrong and, where it can, what to do."""
 
 
-class Cancelled(Exception):
+class JobCancelled(Exception):
     """The player stopped the job."""

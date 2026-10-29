@@ -9,7 +9,7 @@ import urllib.request
 from collections.abc import Callable
 from pathlib import Path
 
-from .errors import Cancelled, SetupError
+from .errors import JobCancelled, SetupError
 
 RETRIES = 3
 RETRY_DELAY_SEC = 2
@@ -72,7 +72,7 @@ def _fetch(url: str, part: Path, on_progress: Progress | None, cancel: threading
 
             while True:
                 if cancel is not None and cancel.is_set():
-                    raise Cancelled()
+                    raise JobCancelled()
 
                 chunk = response.read(CHUNK)
 

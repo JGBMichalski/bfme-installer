@@ -50,7 +50,7 @@ def paths(tmp_path):
 
 @pytest.fixture(autouse=True)
 def no_retry_delay(monkeypatch):
-    monkeypatch.setattr(download_module, "RETRY_DELAY", 0)
+    monkeypatch.setattr(download_module, "RETRY_DELAY_SEC", 0)
 
 
 # Getting Proton

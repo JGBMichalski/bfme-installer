@@ -1,6 +1,9 @@
+import subprocess
+
 import pytest
 
-from bfme_wizard.vulkan import Device, choose
+from bfme_wizard.engine import graphics
+from bfme_wizard.engine.vulkan import Device, choose
 
 DISCRETE, INTEGRATED, CPU = 2, 1, 4
 
@@ -33,3 +36,34 @@ def test_the_best_card_is_named_and_a_dedicated_one_wins_a_tie():
 def test_one_new_enough_card_is_enough():
     found = [Device("Old GPU", DISCRETE, (1, 2)), Device("Intel(R) UHD Graphics", INTEGRATED, (1, 3))]
     assert choose(found) == ("vulkan", "Vulkan 1.3 on Intel(R) UHD Graphics")
+
+
+# The probe, run as the setup runs it
+
+def test_the_probe_runs_as_a_child_process_and_answers():
+    backend, why = graphics.probe()
+
+    assert backend in ("vulkan", "opengl", "unknown")
+    assert why
+
+
+@pytest.mark.parametrize("output,expected", [
+    ("vulkan Vulkan 1.4 on Test GPU\n", ("vulkan", "Vulkan 1.4 on Test GPU")),
+    ("opengl no graphics card with Vulkan was found\n", ("opengl", "no graphics card with Vulkan was found")),
+    ("unknown could not check Vulkan (boom)\n", ("unknown", "could not check Vulkan (boom)")),
+    ("", ("unknown", "could not check Vulkan")),
+    ("Segmentation fault\n", ("unknown", "could not check Vulkan")),
+])
+def test_the_probes_answer_is_read(monkeypatch, output, expected):
+    monkeypatch.setattr(graphics.subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(a, 0, stdout=output))
+
+    assert graphics.probe() == expected
+
+
+def test_a_hung_probe_is_unknown(monkeypatch):
+    def hang(*args, **kwargs):
+        raise subprocess.TimeoutExpired(args, graphics.PROBE_TIMEOUT_SEC)
+
+    monkeypatch.setattr(graphics.subprocess, "run", hang)
+
+    assert graphics.probe() == ("unknown", "could not check Vulkan")

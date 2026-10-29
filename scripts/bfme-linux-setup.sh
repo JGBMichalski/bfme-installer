@@ -224,7 +224,7 @@ graphics_label() {
 }
 
 # Which backend suits this computer: sets PROBE_BACKEND (vulkan, opengl or unknown) and PROBE_MESSAGE. Runs once per script.
-# The probe is wizard/bfme_wizard/vulkan.py; BFME_VULKAN_PROBE replaces it in the tests.
+# The probe is wizard/bfme_wizard/engine/vulkan.py; BFME_VULKAN_PROBE replaces it in the tests.
 PROBE_BACKEND=""
 PROBE_MESSAGE=""
 probe_graphics() {
@@ -234,7 +234,7 @@ probe_graphics() {
     out="$("$BFME_VULKAN_PROBE" 2>/dev/null 9>&-)" || out=""
   else
     out="$(PYTHONPATH="/app/lib/bfme-wizard:$(dirname "$0")/../wizard${PYTHONPATH:+:$PYTHONPATH}" \
-      timeout 20 python3 -m bfme_wizard.vulkan 2>/dev/null 9>&-)" || out=""
+      timeout 20 python3 -m bfme_wizard.engine.vulkan 2>/dev/null 9>&-)" || out=""
   fi
   case "$out" in
     "vulkan "*|"opengl "*|"unknown "*) PROBE_BACKEND="${out%% *}"; PROBE_MESSAGE="${out#* }" ;;

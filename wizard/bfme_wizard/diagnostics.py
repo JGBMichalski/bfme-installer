@@ -11,7 +11,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from . import vulkan
+from .engine import graphics
 from .model import GAMES, SetupModel
 
 LOG_LINES = 40
@@ -88,8 +88,17 @@ def system_lines(environ: dict[str, str] | None = None) -> list[str]:
     gpus = _gpus()
     lines += [f"Graphics card: {gpu}" for gpu in gpus] or ["Graphics card: unknown"]
     lines.append(f"NVIDIA driver: {_nvidia_driver() or 'none'}")
-    lines.append(f"Vulkan: {vulkan.summary()}")
+    lines.append(f"Vulkan: {_vulkan()}")
     return lines
+
+
+def _vulkan() -> str:
+    backend, why = graphics.probe()
+
+    if backend == "unknown":
+        return why
+
+    return f"{why} (suits {'Vulkan' if backend == 'vulkan' else 'OpenGL'})"
 
 
 def build_report(version: str, model: SetupModel, log_dir: Path, system: list[str] | None = None) -> str:

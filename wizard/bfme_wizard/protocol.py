@@ -4,63 +4,9 @@ No GTK. Status lines start with "@bfme "; anything else is plain log text.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from .engine.events import Cancelled, Check, Done, Error, Event, Fix, Progress, Status, Step, Warn  # noqa: F401
 
 PREFIX = "@bfme "
-
-
-@dataclass(frozen=True)
-class Step:
-    id: str
-    status: str  # start | done | skip
-
-
-@dataclass(frozen=True)
-class Progress:
-    percent: int
-
-
-@dataclass(frozen=True)
-class Check:
-    id: str
-    level: str  # ok | warn | fail
-    message: str
-
-
-@dataclass(frozen=True)
-class Fix:
-    check_id: str
-    command: str
-
-
-@dataclass(frozen=True)
-class Warn:
-    message: str
-
-
-@dataclass(frozen=True)
-class Error:
-    step: str | None
-    message: str
-
-
-@dataclass(frozen=True)
-class Cancelled:
-    pass
-
-
-@dataclass(frozen=True)
-class Done:
-    pass
-
-
-@dataclass(frozen=True)
-class Status:
-    key: str
-    value: str
-
-
-Event = Step | Progress | Check | Fix | Warn | Error | Cancelled | Done | Status
 
 
 def parse_line(line: str) -> Event | None:
