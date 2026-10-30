@@ -161,6 +161,7 @@ def reset_prefix(paths: Paths, config: Config, emit: Emit) -> None:
     if paths.prefix in (Path("/"), Path.home()):
         raise SetupError(f"Refusing to delete '{paths.prefix}'.")
 
-    proton.end_wine_session(paths, config)
+    if not proton.end_wine_session(paths, config):
+        emit(Warn(proton.NO_WINE_SERVER))
     shutil.rmtree(paths.prefix, ignore_errors=True)
     emit(Log("Prefix deleted."))

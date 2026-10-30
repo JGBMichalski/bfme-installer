@@ -19,6 +19,8 @@ PROTON_URL = (f"https://github.com/Open-Wine-Components/umu-proton/releases/down
 PROTON_SHA256 = "62e99e029a18fa313e6fa63d42390918101730a940e3491c54d9d58cab887c69"
 D3D_DLLS = "d3d8,d3d9,d3d10core,d3d11,dxgi"
 
+NO_WINE_SERVER = "Could not find the Wine server. Close the AIO Launcher window to let the setup carry on."
+
 
 def proton_dir(paths: Paths) -> Path:
     """Where our own copy of the pinned Proton goes."""
@@ -203,8 +205,10 @@ def stop_wine_session(paths: Paths, proton: str, environ: dict[str, str] | None 
     return True
 
 
-def end_wine_session(paths: Paths, config: Config, environ: dict[str, str] | None = None) -> None:
+def end_wine_session(paths: Paths, config: Config, environ: dict[str, str] | None = None) -> bool:
     """End every program in the game environment. A program still open would lose its files under it, and Wine would
-    write its registry back afterwards."""
-    if paths.prefix.is_dir():
-        stop_wine_session(paths, protonpath(paths, config), environ)
+    write its registry back afterwards. False when there is a game environment but no Wine server to end it with."""
+    if not paths.prefix.is_dir():
+        return True
+
+    return stop_wine_session(paths, protonpath(paths, config), environ)

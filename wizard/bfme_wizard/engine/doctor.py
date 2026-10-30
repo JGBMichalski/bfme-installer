@@ -25,9 +25,11 @@ and install the same name with GL32 in place of GL, for example org.freedesktop.
 
 
 
-def flatpak_32bit_missing(lib_root: Path = LIB_ROOT) -> bool:
+def flatpak_32bit_missing(lib_root: Path | None = None) -> bool:
     """Whether the 32-bit Flatpak extensions are missing. Flatpak does not install them for apps outside Flathub, and
     without them Proton's container fails silently."""
+    lib_root = lib_root or LIB_ROOT
+
     if not (lib_root / "i386-linux-gnu/ld-linux.so.2").exists():
         return True
 
@@ -50,8 +52,9 @@ def flatpak_32bit_missing(lib_root: Path = LIB_ROOT) -> bool:
     return not (lib_root / "i386-linux-gnu/GL/default").is_dir()
 
 
-def flatpak_32bit_fix(lib_root: Path = LIB_ROOT) -> str:
+def flatpak_32bit_fix(lib_root: Path | None = None) -> str:
     """The command that installs the missing extensions, with the 32-bit match of each NVIDIA driver."""
+    lib_root = lib_root or LIB_ROOT
     extensions = [
         f"org.freedesktop.Platform.Compat.i386//{FLATPAK_RUNTIME_VERSION}",
         f"org.freedesktop.Platform.GL32.default//{FLATPAK_RUNTIME_VERSION}",
@@ -93,7 +96,7 @@ def _graphics_check(config: Config) -> Check:
     return Check("graphics", "ok", f"Graphics: {why}. Using {graphics.label(config.graphics)}, as you chose.")
 
 
-def run_checks(paths: Paths, config: Config, emit: Emit, lib_root: Path = LIB_ROOT) -> bool:
+def run_checks(paths: Paths, config: Config, emit: Emit, lib_root: Path | None = None) -> bool:
     """Run every check and report each one. False when a check failed and the setup cannot go on."""
     emit(Log(f"System check (graphics: {graphics.label(config.graphics)})"))
     checks: list[Check] = []

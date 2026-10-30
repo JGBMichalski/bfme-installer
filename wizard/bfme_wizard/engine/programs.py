@@ -128,7 +128,7 @@ def wait_for_stable_file(path: Path, limit_sec: int, cancel: threading.Event | N
 
 
 def install_aio_launcher(paths: Paths, config: Config, proton_path: str, emit: Emit, cancel: threading.Event | None = None,
-                         url: str = AIO_LAUNCHER_URL) -> None:
+                         url: str | None = None) -> None:
     """Run the AIO Launcher's setup in the game environment. The prefix must be ready."""
     if aio_launcher_installed(paths):
         return
@@ -136,7 +136,7 @@ def install_aio_launcher(paths: Paths, config: Config, proton_path: str, emit: E
     setup = paths.downloads / "AllInOneLauncherSetup.exe"
 
     if not setup.is_file():
-        download(url, setup, cancel=cancel)
+        download(url or AIO_LAUNCHER_URL, setup, cancel=cancel)
 
     emit(Log("Installing the AIO Launcher. It may open for a moment; the setup closes it again."))
 
@@ -155,7 +155,7 @@ def install_aio_launcher(paths: Paths, config: Config, proton_path: str, emit: E
             done = wait_for_stable_file(paths.aio_launcher_exe, AIO_LAUNCHER_WAIT_SEC, cancel)
         finally:
             if not proton.stop_wine_session(paths, proton_path):
-                emit(Warn("Could not find the Wine server. Close the AIO Launcher window to let the setup carry on."))
+                emit(Warn(proton.NO_WINE_SERVER))
 
             process.wait()
 
@@ -181,8 +181,9 @@ def _md5(path: Path) -> str:
     return digest.hexdigest()
 
 
-def arena_remote_hash(server_host: str = ARENA_SERVER_HOST) -> str:
+def arena_remote_hash(server_host: str | None = None) -> str:
     """The MD5 of the newest Arena, or "" when the server cannot be asked."""
+    server_host = server_host or ARENA_SERVER_HOST
     url = f"{server_host}/api/applications/versionHash?name=online-arena&version={ARENA_BRANCH}"
 
     try:
@@ -193,8 +194,9 @@ def arena_remote_hash(server_host: str = ARENA_SERVER_HOST) -> str:
 
 
 def install_or_update_arena(paths: Paths, emit: Emit, cancel: threading.Event | None = None,
-                            files_host: str = ARENA_FILES_HOST, server_host: str = ARENA_SERVER_HOST) -> None:
+                            files_host: str | None = None, server_host: str | None = None) -> None:
     """Download the Arena, or a newer one. An installed Arena is kept when the server cannot be asked."""
+    files_host = files_host or ARENA_FILES_HOST
     (paths.arena_exe.parent / "Data").mkdir(parents=True, exist_ok=True)
     remote = arena_remote_hash(server_host)
 
@@ -254,7 +256,8 @@ def remove(paths: Paths, config: Config, program: str, emit: Emit) -> None:
     if paths.drive_c not in folder.parents:
         raise SetupError(f"Refusing to delete '{folder}'.")
 
-    proton.end_wine_session(paths, config)
+    if not proton.end_wine_session(paths, config):
+        emit(Warn(proton.NO_WINE_SERVER))
     shutil.rmtree(folder, ignore_errors=True)
     leftovers: list[Path] = []
 
