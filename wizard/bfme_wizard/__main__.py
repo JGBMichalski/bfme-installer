@@ -1,9 +1,9 @@
 """Entry point: `python3 -m bfme_wizard` (the Flatpak runs this as `bfme-installer`).
 
-  bfme-installer                     the wizard
-  bfme-installer --open launcher     the "BFME All-in-One Launcher" shortcut
-  bfme-installer --open arena        the "BFME Online Arena" shortcut
-  bfme-installer --open aotr         the "Age of the Ring" shortcut
+  bfme-installer                       the wizard
+  bfme-installer --open aio-launcher   the "BFME All-in-One Launcher" shortcut
+  bfme-installer --open arena          the "BFME Online Arena" shortcut
+  bfme-installer --open aotr           the "Age of the Ring" shortcut
 
 A shortcut starts its program without a window. If the program is gone, the wizard opens and removes the shortcut.
 """
@@ -11,8 +11,10 @@ from __future__ import annotations
 
 import os
 import sys
+import threading
 
-from .runner import ScriptRunner, app_is_ready, find_script
+from .engine import jobs
+from .engine.events import Error, Event, Log
 
 # What a shortcut passes to --open, and the program it means. Shortcuts made before the AIO Launcher was called
 # "aio-launcher" pass "launcher".
@@ -32,22 +34,30 @@ def parse_args(argv: list[str]) -> str | None:
     return None
 
 
+def print_event(event: Event) -> None:
+    """What a program started from a shortcut reports, for whoever reads the output."""
+    if isinstance(event, Log):
+        print(event.text, flush=True)
+
+    if isinstance(event, Error):
+        print(f"ERROR: {event.message}", file=sys.stderr, flush=True)
+
+
 def main() -> int:
-    script = find_script()
-    if script is None:
-        print("ERROR: bfme-linux-setup.sh was not found. Set BFME_SETUP_SCRIPT to its path.", file=sys.stderr)
-        return 1
     offer = parse_args(sys.argv[1:])
-    if offer and app_is_ready(script, offer):
-        os.execv(script, [script, offer])   # no window needed
+
+    # A shortcut whose program is there starts it without a window.
+    if offer and jobs.ready_to_open(offer):
+        return jobs.open_program(offer, print_event, threading.Event())
+
     if not has_display():
-        # No display: install the AIO Launcher and the Arena in this terminal.
-        # Age of the Ring alone: `bfme-linux-setup prepare`, then `aotr-install <file>`.
-        print("No display found, so the setup wizard cannot open. Installing the AIO Launcher and the Arena in this terminal instead.")
-        sys.stdout.flush()
-        os.execv(script, [script, "install"])
-    from .ui import WizardApp  # late, so the terminal path needs no GTK
-    return WizardApp(ScriptRunner(script), offer=offer).run(sys.argv[:1])
+        print("No display found, so the setup wizard cannot open.", file=sys.stderr)
+        return 1
+
+    from .runner import JobRunner
+    from .ui import WizardApp  # late, so a shortcut that opens a program needs no GTK
+
+    return WizardApp(JobRunner(), offer=offer).run(sys.argv[:1])
 
 
 if __name__ == "__main__":

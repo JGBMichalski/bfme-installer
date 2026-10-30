@@ -1,14 +1,14 @@
 """What the wizard knows about the setup.
 
-The player's choice on the start page becomes a plan: jobs run one after the other, each one command of the setup script.
+The player's choice on the start page becomes a plan: jobs run one after the other, each one job of engine/jobs.py.
 
-  environment   prepare            doctor, runner, prefix                       left out when it is already ready
-  aio-launcher  aio-launcher-install   aio-launcher, arena, shortcuts
-  aotr          aotr-install       aotr-check, aotr-unpack, aotr-install, aotr-settings, once the player has
-                                   downloaded the file and chosen it (aotr-download: a step the script never reports)
+  environment   prepare                doctor, runner, prefix                   left out when it is already ready
+  aio-launcher  aio_launcher_install   aio-launcher, arena, shortcuts
+  aotr          aotr_install           aotr-check, aotr-unpack, aotr-install, aotr-settings, once the player has
+                                       downloaded the file and chosen it (aotr-download: a step no job reports)
 
 States:
-  checking   asking the script what is already installed (or re-checking the system)
+  checking   asking the setup what is already installed (or re-checking the system)
   idle       nothing running; the setup is not complete: the start page
   running    a job of the plan is running
   waiting    the plan needs the player: download Age of the Ring from ModDB and choose the file
@@ -23,7 +23,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from . import protocol as p
+from .engine import events
 
 # Start page choices, in install order. The Arena is not one: it comes with the AIO Launcher.
 PROGRAMS = ("aio-launcher", "aotr")
@@ -169,9 +169,9 @@ class SetupModel:
         self.current: str | None = None
         self.progress: int | None = None
         if not keep_checks:
-            self.checks: dict[str, p.Check] = {}
+            self.checks: dict[str, events.Check] = {}
             self.fixes: dict[str, str] = {}
-        self.error: p.Error | None = None
+        self.error: events.Error | None = None
         self.cancel_requested = False
         self._saw_done = False
         self._saw_cancelled = False
@@ -196,20 +196,27 @@ class SetupModel:
         self.fixes.clear()
 
     def request_cancel(self) -> None:
+        """Request cancellation of the current job, if it is running."""
         if self.state == "running":
             self.cancel_requested = True
 
-    def feed_line(self, line: str) -> None:
-        line = line.rstrip("\r\n")
-        self.log.append(line)
+    def feed_event(self, event: events.Event) -> None:
+        """What a job reported. Its log lines and warnings go into the log the player can copy."""
+        if isinstance(event, events.Log):
+            self._add_to_log(event.text)
+        elif isinstance(event, events.Warn):
+            self._add_to_log(f"WARNING: {event.message}")
+        self._apply(event)
+
+    def _add_to_log(self, text: str) -> None:
+        """Add a line to the job log, keeping it within the maximum number of lines."""
+        self.log.append(text)
         if len(self.log) > MAX_LOG_LINES:
             del self.log[: len(self.log) - MAX_LOG_LINES]
-        event = p.parse_line(line)
-        if event is not None:
-            self._apply(event)
 
-    def _apply(self, e: p.Event) -> None:
-        if isinstance(e, p.Step):
+    def _apply(self, e: events.Event) -> None:
+        """Apply an event to the model, updating its state accordingly."""
+        if isinstance(e, events.Step):
             if e.id not in self.steps:
                 return
             self.progress = None
@@ -220,33 +227,34 @@ class SetupModel:
                 self.steps[e.id] = "done" if e.status == "done" else "skipped"
                 if self.current == e.id:
                     self.current = None
-        elif isinstance(e, p.Progress):
+        elif isinstance(e, events.Progress):
             self.progress = e.percent
-        elif isinstance(e, p.Check):
+        elif isinstance(e, events.Check):
             self.checks[e.id] = e
-        elif isinstance(e, p.Fix):
+        elif isinstance(e, events.Fix):
             self.fixes[e.check_id] = e.command
-        elif isinstance(e, p.Error):
+        elif isinstance(e, events.Error):
             self.error = e
             if e.step in self.steps:
                 self.steps[e.step] = "failed"
-        elif isinstance(e, p.Cancelled):
+        elif isinstance(e, events.Cancelled):
             self._saw_cancelled = True
-        elif isinstance(e, p.Done):
+        elif isinstance(e, events.Done):
             self._saw_done = True
-        elif isinstance(e, p.Status):
+        elif isinstance(e, events.Status):
             self.installed[e.key] = e.value
 
     def finish_status(self, exit_code: int) -> None:
+        """Handle the completion of the status job."""
         if exit_code == 0 and self.installed.get("complete") == "yes":
             self.state = "done"
         else:
             self.state = "idle"
 
     def finish_check(self, exit_code: int) -> None:
-        """A recheck ended. Back to `blocked` if it still fails."""
+        """Handle the completion of a recheck job. Back to `blocked` if it still fails."""
         if exit_code != 0:
-            self.error = p.Error("doctor", "Your system still needs a change.")
+            self.error = events.Error("doctor", "Your system still needs a change.")
             self.state = "blocked"
 
     def finish_install(self, exit_code: int) -> str | None:
@@ -269,12 +277,12 @@ class SetupModel:
                 self.state = "done"
                 self.just_finished = True
             elif self.cancel_requested:
-                # The script cannot stop inside its last step. Stop before the next job.
+                # A job cannot stop inside its last step. Stop before the next job.
                 self.state = "done" if self.started_from_home else "cancelled"
                 return None
             return following
         if self.error is None:
-            self.error = p.Error(self.current, f"The setup stopped unexpectedly (exit {exit_code}).")
+            self.error = events.Error(self.current, f"The setup stopped unexpectedly (exit {exit_code}).")
         self.state = "blocked" if self.error.step == "doctor" else "failed"
         return None
 
@@ -295,6 +303,7 @@ class SetupModel:
 
     @property
     def graphics_label(self) -> str:
+        """Human-readable label for the graphics backend."""
         return "OpenGL (WineD3D)" if self.graphics == "opengl" else "Vulkan (DXVK)"
 
     @property
@@ -304,11 +313,12 @@ class SetupModel:
 
     @property
     def done_count(self) -> int:
+        """Number of steps that are done or skipped."""
         return sum(1 for s in self.steps.values() if s in ("done", "skipped"))
 
     @property
     def step_number(self) -> int:
-        """1-based position of the running step in the plan."""
+        """1-based position of the running step in the plan. Returns the next step if the current one is not found."""
         ids = self.step_ids
         if self.current in ids:
             return ids.index(self.current) + 1
@@ -316,29 +326,31 @@ class SetupModel:
 
     @property
     def last_check_message(self) -> str:
+        """Message of the last system check, if any."""
         return next(reversed(self.checks.values())).message if self.checks else ""
 
     @property
     def problems(self) -> list[Problem]:
-        """Failed system checks."""
+        """List of failed system checks as Problem instances."""
         return [Problem(c.message, self.fixes.get(cid)) for cid, c in self.checks.items() if c.level == "fail"]
 
     def is_installed(self, program: str) -> bool:
-        """Known only after a status check."""
+        """Return True if the given program is installed. Known only after a status check."""
         return self.installed.get(program) == "installed"
 
     @property
     def aotr_installed(self) -> bool:
+        """Return True if the AOTR mod is installed. Known only after a status check."""
         return self.is_installed("aotr")
 
     @property
     def games(self) -> list[str]:
-        """Installed game names. Known only after a status check."""
+        """Return a list of installed game names. Known only after a status check."""
         return [name for key, name in GAMES if self.installed.get(key) == "installed"]
 
     @property
     def check_rows(self) -> list[tuple[str, str, str, str | None]]:
-        """(id, level, message, fix command) per shown check, problems first."""
+        """Return a list of shown checks as (id, level, message, fix command) tuples, problems first."""
         rows = [
             (cid, c.level, c.message, self.fixes.get(cid))
             for cid, c in self.checks.items() if cid not in HIDDEN_CHECKS
@@ -348,17 +360,12 @@ class SetupModel:
 
     @property
     def failed_step(self) -> str | None:
+        """Return the step that failed, if any."""
         return self.error.step if self.error else None
 
     def log_text(self, last: int = 400) -> str:
-        """The log for Copy log. Repeated progress lines collapse to the latest."""
-        out: list[str] = []
-        for line in self.log[-last:]:
-            if line.startswith("@bfme PROGRESS") and out and out[-1].startswith("@bfme PROGRESS"):
-                out[-1] = line
-            else:
-                out.append(line)
-        return "\n".join(out)
+        """Return the last `last` lines of the job log for the Copy log feature."""
+        return "\n".join(self.log[-last:])
 
 
 def games_line(model: SetupModel) -> str:

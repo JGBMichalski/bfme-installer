@@ -1,18 +1,15 @@
-"""Connects the model to the script. No GTK: the UI calls these methods and re-renders on `on_change`."""
+"""Connects the model to the setup's jobs. No GTK: the UI calls these methods and re-renders on `on_change`."""
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
+from functools import partial
+from types import ModuleType
 
 from .apps import AppLauncher
+from .engine import jobs as engine_jobs
+from .engine.events import Event
 from .model import ALL_PROGRAMS, TOOLS, SetupModel
-from .runner import ScriptRunner
-
-# Script command per job. The aotr job also takes the file path.
-JOB_COMMANDS = {
-    "environment": "prepare",
-    "aio-launcher": "aio-launcher-install",
-    "aotr": "aotr-install"
-}
+from .runner import JobRunner
 
 # Shortcut target to the program that provides it.
 PROGRAM_OF = {
@@ -24,11 +21,13 @@ PROGRAM_OF = {
 
 
 class Controller:
-    def __init__(self, runner: ScriptRunner, on_change: Callable[[], None], offer: str | None = None) -> None:
+    def __init__(self, runner: JobRunner, on_change: Callable[[], None], offer: str | None = None,
+                 jobs: ModuleType | object = engine_jobs) -> None:
         self.runner = runner
+        self.jobs = jobs   # engine/jobs.py; the tests give a stand-in
         self.model = SetupModel()
         self._on_change = on_change
-        self.apps = AppLauncher(runner.script, on_change)
+        self.apps = AppLauncher(jobs.open_program, on_change)
         self._aotr_zip: str | None = None   # the file the player chose for Age of the Ring, kept for Retry and Resume
         self._offer = offer                 # what the shortcut that opened the wizard wanted, used once (see start)
 
@@ -38,9 +37,9 @@ class Controller:
             return
         self._aotr_zip = None
         self.model.begin_check()
-        self.model.installed.clear()   # what the script reports now replaces what was known before (a reset, say)
+        self.model.installed.clear()   # what the status job reports now replaces what was known before (a reset, say)
         self._on_change()
-        self.runner.run(["status"], self._line, self._status_done)
+        self.runner.run(self.jobs.status, self._event, self._status_done)
 
     def install(self, programs: Iterable[str]) -> None:
         """Install the choice. After a stop, the same choice resumes and a different one starts over."""
@@ -90,7 +89,7 @@ class Controller:
             return
         self.model.begin_check()
         self._on_change()
-        self.runner.run(["doctor"], self._line, self._recheck_done)
+        self.runner.run(self.jobs.check, self._event, self._recheck_done)
 
     def cancel(self) -> None:
         self.model.request_cancel()
@@ -105,16 +104,17 @@ class Controller:
         self.apps.start(name)
 
     def run_checks(self) -> bool:
-        """Rerun system checks in place. False if the script is busy."""
+        """Rerun system checks in place. False while another job runs."""
         if self.runner.busy:
             return False
         self.model.begin_quiet_check()
         self._on_change()
-        self.runner.run(["doctor"], self._line, self._checks_done)
+        self.runner.run(self.jobs.check, self._event, self._checks_done)
         return True
 
     @property
     def checking(self) -> bool:
+        """Return True if system checks are currently running, False otherwise."""
         return self.runner.busy
 
     def blocked_reason(self) -> str | None:
@@ -130,7 +130,7 @@ class Controller:
         return None
 
     def reset(self, on_done: Callable[[bool], None]) -> bool:
-        """Delete the game environment, then check the setup again."""
+        """Delete the game environment, then check the setup again. False if it cannot start now."""
         if self.blocked_reason() is not None:
             return False
 
@@ -140,7 +140,7 @@ class Controller:
 
         self.model.begin_check()
         self._on_change()
-        self.runner.run(["reset-prefix", "--yes"], self._line, finished)
+        self.runner.run(self.jobs.reset, self._event, finished)
         return True
 
     def set_graphics(self, backend: str, on_done: Callable[[bool], None] | None = None) -> bool:
@@ -153,7 +153,7 @@ class Controller:
                 on_done(code == 0)
             self.start()   # the saved backend, and the checks that may depend on it
 
-        self.runner.run(["graphics", backend], self._line, finished)
+        self.runner.run(partial(self.jobs.switch_graphics, backend), self._event, finished)
         return True
 
     def remove(self, program: str, on_done: Callable[[bool], None]) -> bool:
@@ -167,7 +167,7 @@ class Controller:
 
         self.model.begin_remove(program)
         self._on_change()
-        self.runner.run(["remove", program], self._line, finished)
+        self.runner.run(partial(self.jobs.remove, program), self._event, finished)
         return True
 
     def _run_job(self, name: str | None) -> None:
@@ -181,16 +181,23 @@ class Controller:
             return
         self.model.begin_job(name)
         self._on_change()
-        args = ["tool-install", name] if name in TOOLS else [JOB_COMMANDS[name]]
-        if name == "aotr":
-            args.append(self._aotr_zip)
-        self.runner.run(args, self._line, self._job_done)
+        if name in TOOLS:
+            job = partial(self.jobs.tool_install, name)
+        elif name == "aotr":
+            job = partial(self.jobs.aotr_install, self._aotr_zip)
+        elif name == "aio-launcher":
+            job = self.jobs.aio_launcher_install
+        else:
+            job = self.jobs.prepare
+        self.runner.run(job, self._event, self._job_done)
 
-    def _line(self, line: str) -> None:
-        self.model.feed_line(line)
+    def _event(self, event: Event) -> None:
+        """Handle an event from a running job."""
+        self.model.feed_event(event)
         self._on_change()
 
     def _status_done(self, code: int) -> None:
+        """Handle the completion of the status job."""
         self.model.finish_status(code)
         offered = PROGRAM_OF.get(self._offer or "")
         self._offer = None   # a shortcut is answered once, not every time the player comes back to the home screen
@@ -201,6 +208,7 @@ class Controller:
         self._sync_shortcuts(lambda: self._after_status(done, wants_aotr))
 
     def _after_status(self, done: bool, wants_aotr: bool) -> None:
+        """Handle the state after the status job has completed."""
         if wants_aotr:
             self.install(["aotr"])   # the shortcut of a mod that is not installed: go and install it
             return
@@ -209,14 +217,16 @@ class Controller:
             self.run_checks()        # quietly: a failed check shows a banner on the home screen
 
     def _sync_shortcuts(self, then: Callable[[], None]) -> None:
-        """Sync shortcuts with what is installed, then continue."""
-        self.runner.run(["shortcuts"], lambda _line: None, lambda _code: then())
+        """Sync shortcuts with what is installed, then continue. Call `then` when done."""
+        self.runner.run(self.jobs.sync_shortcuts, lambda _event: None, lambda _code: then())
 
     def _checks_done(self, code: int) -> None:
-        self.model.error = None   # the script ends a failing check with an ERROR line; it is not a setup error
+        """Handle the completion of the checks job."""
+        self.model.error = None   # a failing check job ends with an error; it is not a setup error
         self._on_change()
 
     def _job_done(self, code: int) -> None:
+        """Handle the completion of an installation job."""
         # Every job ends with STATUS lines, so no second status question is needed.
         following = self.model.finish_install(code)
         self._on_change()
@@ -224,6 +234,7 @@ class Controller:
             self._run_job(following)
 
     def _recheck_done(self, code: int) -> None:
+        """Handle the completion of a recheck job."""
         self.model.finish_check(code)
         if code == 0:
             self.resume()

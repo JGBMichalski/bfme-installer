@@ -1,9 +1,7 @@
 """The Programs page: one row per program, with Install when it is missing and Remove when it is installed."""
-from bfme_wizard.controller import Controller
-from bfme_wizard.runner import ScriptRunner
-from tests.helpers import buttons, descendants, make_script, wait_for
+from tests.fake_jobs import idle_controller
+from tests.helpers import buttons, descendants, wait_for
 
-IDLE = "#!/usr/bin/env bash\nexit 0\n"
 ALL = {"aio-launcher": "installed", "arena": "installed", "aotr": "installed"}
 
 
@@ -11,7 +9,7 @@ def make_page(installed, model_state="done", removing=None, apps=None):
     """The page, its controller, every row (the programs, then the tools) and what its buttons asked for."""
     from gi.repository import Adw
     from bfme_wizard.programs import ProgramsPage
-    c = Controller(ScriptRunner(make_script(IDLE)), lambda: None)
+    c = idle_controller()
     c.model.installed = dict(installed)
     c.model.state = model_state
     c.model.removing = removing

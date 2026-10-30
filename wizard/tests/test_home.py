@@ -2,7 +2,6 @@ import contextlib
 import io
 import os
 import time
-from pathlib import Path
 from unittest import mock
 
 import pytest
@@ -11,21 +10,24 @@ from bfme_wizard.__main__ import main, parse_args
 from bfme_wizard.apps import AppLauncher
 from bfme_wizard.controller import Controller
 from bfme_wizard.diagnostics import any_log, build_report, newest_log, system_lines, tail
+from bfme_wizard.engine.events import Cancelled, Check, Done, Fix, Status
 from bfme_wizard.model import SetupModel, games_line
-from bfme_wizard.runner import ScriptRunner, app_is_ready, setup_is_complete
-from tests.helpers import buttons, descendants, labels, make_script, wait_for
+from bfme_wizard.runner import JobRunner
+from tests.fake_jobs import FakeJobs, idle_controller
+from tests.helpers import buttons, descendants, labels, wait_for
 
 
-def feed(model, *lines):
-    for line in lines:
-        model.feed_line(line)
+def feed(model, *events):
+    for event in events:
+        model.feed_event(event)
+
 
 
 # The model: games, graphics and checks
 
 def test_installed_games_in_a_fixed_order():
     m = SetupModel()
-    feed(m, "@bfme STATUS rotwk installed", "@bfme STATUS bfme1 missing", "@bfme STATUS bfme2 installed")
+    feed(m, Status("rotwk", "installed"), Status("bfme1", "missing"), Status("bfme2", "installed"))
     assert m.games == ["BFME 2", "Rise of the Witch-king"]
 
 
@@ -35,16 +37,16 @@ def test_no_games_before_a_status_check():
 
 def test_just_finished_only_after_this_session_ran_the_setup():
     m = SetupModel()
-    feed(m, "@bfme STATUS complete yes")
+    feed(m, Status("complete", "yes"))
     m.finish_status(0)
     assert (m.state, m.just_finished) == ("done", False)
     m.begin_plan(["aio-launcher"])
     m.begin_job("environment")
-    feed(m, "@bfme DONE")
+    feed(m, Done())
     assert m.finish_install(0) == "aio-launcher"
     assert not m.just_finished   # the AIO Launcher is still to come
     m.begin_job("aio-launcher")
-    feed(m, "@bfme DONE")
+    feed(m, Done())
     m.finish_install(0)
     assert m.just_finished
     m.begin_plan(["aio-launcher"])
@@ -54,16 +56,16 @@ def test_just_finished_only_after_this_session_ran_the_setup():
 def test_the_backend_comes_from_the_status_and_defaults_to_vulkan():
     m = SetupModel()
     assert (m.graphics, m.graphics_label) == ("vulkan", "Vulkan (DXVK)")
-    feed(m, "@bfme STATUS graphics opengl")
+    feed(m, Status("graphics", "opengl"))
     assert (m.graphics, m.graphics_label) == ("opengl", "OpenGL (WineD3D)")
 
 
 def test_rows_hide_the_firewall_and_list_problems_first():
     m = SetupModel()
-    feed(m, "@bfme CHECK cpu ok x86_64 processor", "@bfme CHECK firewall warn firewall is active",
-          "@bfme CHECK flatpak-32bit fail the 32-bit parts are missing",
-          "@bfme FIX flatpak-32bit flatpak install --user flathub X", "@bfme CHECK disk warn low disk",
-          "@bfme CHECK curl ok curl found")
+    feed(m, Check("cpu", "ok", "x86_64 processor"), Check("firewall", "warn", "firewall is active"),
+          Check("flatpak-32bit", "fail", "the 32-bit parts are missing"),
+          Fix("flatpak-32bit", "flatpak install --user flathub X"), Check("disk", "warn", "low disk"),
+          Check("curl", "ok", "curl found"))
     assert [r[0] for r in m.check_rows] == ["flatpak-32bit", "disk", "cpu", "curl"]
     assert m.check_rows[0][3] == "flatpak install --user flathub X"
     assert [p.message for p in m.problems] == ["the 32-bit parts are missing"]
@@ -72,7 +74,7 @@ def test_rows_hide_the_firewall_and_list_problems_first():
 def test_a_quiet_check_keeps_the_state_and_forgets_old_results():
     m = SetupModel()
     m.state = "done"
-    feed(m, "@bfme CHECK cpu fail old")
+    feed(m, Check("cpu", "fail", "old"))
     m.begin_quiet_check()
     assert (m.state, m.checks, m.fixes) == ("done", {}, {})
 
@@ -104,60 +106,66 @@ def test_nothing_about_games_for_someone_who_did_not_install_the_aio_launcher():
 
 
 TOOLS_IDLE = {"workshop": "idle", "mission-control": "idle"}
-APP = """#!/usr/bin/env bash
-# fake setup script; the app commands run for APP_SECONDS
-case "$1" in
-  aio-launcher|arena) sleep "${APP_SECONDS:-0}" ;;
-  bad-exit) exit 3 ;;
-esac
-"""
 
 
-def test_a_short_run_is_reported_softly_and_a_long_one_is_not(monkeypatch):
-    monkeypatch.setenv("APP_SECONDS", "0.3")
+def opener(seconds=0.0, code=0, opened=None):
+    """A stand-in for jobs.open_program: the program runs for `seconds`, then the job ends with `code`."""
+    def open_program(program, emit, cancel):
+        if opened is not None:
+            opened.append(program)
+
+        time.sleep(seconds)
+        return code
+
+    return open_program
+
+
+def test_a_short_run_is_reported_softly_and_a_long_one_is_not():
     changes = []
-    apps = AppLauncher(make_script(APP), lambda: changes.append(dict(apps.state)), quick_seconds=5)
+    apps = AppLauncher(opener(0.3), lambda: changes.append(dict(apps.state)), quick_seconds=5)
     apps.start("aio-launcher")
     assert apps.state["aio-launcher"] == "running"
     wait_for(5000, lambda: apps.state["aio-launcher"] != "running")
     assert apps.state["aio-launcher"] == "quick"
-    monkeypatch.setenv("APP_SECONDS", "0.6")
-    apps = AppLauncher(make_script(APP), lambda: None, quick_seconds=0.2)
+    apps = AppLauncher(opener(0.6), lambda: None, quick_seconds=0.2)
     apps.start("arena")
     wait_for(5000, lambda: apps.state["arena"] != "running")
     assert apps.state["arena"] == "idle"
 
 
-def test_both_apps_can_run_at_once_and_each_only_once(monkeypatch):
-    monkeypatch.setenv("APP_SECONDS", "1")
-    apps = AppLauncher(make_script(APP), lambda: None, quick_seconds=0)
+def test_both_apps_can_run_at_once_and_each_only_once():
+    opened = []
+    apps = AppLauncher(opener(1, opened=opened), lambda: None, quick_seconds=0)
     apps.start("aio-launcher"); apps.start("aio-launcher"); apps.start("arena")
     assert apps.state == {"aio-launcher": "running", "arena": "running", "aotr": "idle", **TOOLS_IDLE}
     assert apps.any_running
     wait_for(5000, lambda: not apps.any_running)
     assert apps.state == {"aio-launcher": "idle", "arena": "idle", "aotr": "idle", **TOOLS_IDLE}
+    assert sorted(opened) == ["aio-launcher", "arena"]
 
 
 def test_a_program_that_cannot_start_counts_as_closed_quickly():
-    apps = AppLauncher("/nonexistent/script", lambda: None)
+    # The job fails before the program runs: it is not installed, say.
+    apps = AppLauncher(opener(code=1), lambda: None, quick_seconds=0)
     apps.start("aio-launcher")
+    wait_for(5000, lambda: apps.state["aio-launcher"] != "running")
     assert apps.state["aio-launcher"] == "quick"
 
 
 def test_unknown_names_are_ignored():
-    apps = AppLauncher(make_script(APP), lambda: None)
+    opened = []
+    apps = AppLauncher(opener(opened=opened), lambda: None)
     apps.start("bad-exit")
     assert apps.state == {"aio-launcher": "idle", "arena": "idle", "aotr": "idle", **TOOLS_IDLE}
+    assert opened == []
 
 
-def test_a_tool_is_started_with_the_tool_command(monkeypatch, tmp_path):
-    monkeypatch.setenv("APP_SECONDS", "1")
-    apps = AppLauncher(make_script('#!/usr/bin/env bash\nprintf "%s " "$@" > "$OUT"\n'), lambda: None)
-    out = tmp_path / "args"
-    monkeypatch.setenv("OUT", str(out))
+def test_a_tool_is_opened_by_its_name():
+    opened = []
+    apps = AppLauncher(opener(opened=opened), lambda: None)
     apps.start("mission-control")
     wait_for(5000, lambda: apps.state["mission-control"] != "running")
-    assert out.read_text() == "tool mission-control "
+    assert opened == ["mission-control"]
 
 
 # Diagnostics
@@ -170,7 +178,7 @@ def test_report_has_the_version_checks_fixes_and_log_tails(tmp_path):
     (logs / "arena-20260101-000000.log").write_text("arena says hi\n")
     m = SetupModel()
     m.installed = {"runner": "proton", "prefix": "ready", "aio-launcher": "installed", "arena": "installed", "bfme2": "installed"}
-    feed(m, "@bfme CHECK cpu ok x86_64 processor", "@bfme CHECK f fail parts missing", "@bfme FIX f flatpak install X")
+    feed(m, Check("cpu", "ok", "x86_64 processor"), Check("f", "fail", "parts missing"), Fix("f", "flatpak install X"))
     report = build_report("0.2.9", m, logs)
     for expected in ("Version: 0.2.9", "Runner: proton", "Graphics: unknown", "BFME 2 installed", "BFME unknown",
                      "[FAILED] parts missing", "fix: flatpak install X", "[ok] x86_64 processor",
@@ -224,25 +232,6 @@ def test_log_helpers(tmp_path):
     assert "could not read" in tail(d / "nope.log")
 
 
-STATUS = """#!/usr/bin/env bash
-case "$2" in
-  status) echo "@bfme STATUS complete ${COMPLETE:-yes}"; exit "${STATUS_EXIT:-0}" ;;
-esac
-"""
-
-# What `status` says when only the programs named in $INSTALLED are installed.
-INSTALLED = """#!/usr/bin/env bash
-case "$2" in
-  status)
-    echo "@bfme STATUS prefix ${PREFIX_STATE:-ready}"
-    for app in aio-launcher arena aotr; do
-      case " $INSTALLED " in *" $app "*) echo "@bfme STATUS $app installed" ;; *) echo "@bfme STATUS $app missing" ;; esac
-    done
-    exit "${STATUS_EXIT:-0}" ;;
-esac
-"""
-
-
 # Menu entries
 
 # "launcher": shortcuts made before the AIO Launcher was called "aio-launcher".
@@ -253,81 +242,54 @@ def test_parse_args(args, app):
     assert parse_args(args) == app
 
 
-def test_without_a_display_the_terminal_message_names_the_aio_launcher():
-    out = io.StringIO()
-    # os.execv never returns, so its stand-in must not either: past it, main() would start the real application.
-    with mock.patch("bfme_wizard.__main__.find_script", return_value="/x/setup.sh"), \
-            mock.patch("bfme_wizard.__main__.has_display", return_value=False), \
-            mock.patch("bfme_wizard.__main__.os.execv", side_effect=SystemExit) as execv, \
-            mock.patch("sys.argv", ["bfme-installer"]), contextlib.redirect_stdout(out), pytest.raises(SystemExit):
-        main()
-    assert "Installing the AIO Launcher and the Arena in this terminal instead." in out.getvalue()
-    execv.assert_called_once_with("/x/setup.sh", ["/x/setup.sh", "install"])
+def test_a_shortcut_whose_program_is_there_opens_it_without_a_window():
+    with mock.patch("bfme_wizard.__main__.jobs.ready_to_open", return_value=True) as ready, \
+            mock.patch("bfme_wizard.__main__.jobs.open_program", return_value=0) as open_program, \
+            mock.patch("sys.argv", ["bfme-installer", "--open", "launcher"]):
+        assert main() == 0
+
+    ready.assert_called_once_with("aio-launcher")
+    assert open_program.call_args.args[0] == "aio-launcher"
 
 
-def test_setup_is_complete(monkeypatch):
-    script = make_script(STATUS)
-    monkeypatch.setenv("COMPLETE", "yes")
-    monkeypatch.setenv("STATUS_EXIT", "0")
-    assert setup_is_complete(script)
-    monkeypatch.setenv("COMPLETE", "no")
-    assert not setup_is_complete(script)
-    monkeypatch.setenv("COMPLETE", "yes")
-    monkeypatch.setenv("STATUS_EXIT", "1")
-    assert not setup_is_complete(script)
-    assert not setup_is_complete("/nonexistent/script")
+def test_a_shortcut_whose_program_is_gone_opens_the_wizard_offering_it(monkeypatch):
+    from bfme_wizard import ui
+
+    with mock.patch("bfme_wizard.__main__.jobs.ready_to_open", return_value=False), \
+            mock.patch("bfme_wizard.__main__.jobs.open_program") as open_program, \
+            mock.patch("bfme_wizard.__main__.has_display", return_value=True), \
+            mock.patch.object(ui, "WizardApp") as app, \
+            mock.patch("sys.argv", ["bfme-installer", "--open", "aotr"]):
+        app.return_value.run.return_value = 0
+        assert main() == 0
+
+    open_program.assert_not_called()
+    assert app.call_args.kwargs["offer"] == "aotr"
 
 
-def ready(app, **env):
-    with mock.patch.dict(os.environ, env):
-        return app_is_ready(make_script(INSTALLED), app)
+def test_without_a_display_it_says_so_and_stops():
+    err = io.StringIO()
+
+    with mock.patch("bfme_wizard.__main__.has_display", return_value=False), \
+            mock.patch("sys.argv", ["bfme-installer"]), contextlib.redirect_stderr(err):
+        assert main() == 1
+
+    assert "No display found, so the setup wizard cannot open." in err.getvalue()
 
 
-def test_an_entry_starts_its_program_at_once_when_that_program_is_installed():
-    # Someone who chose only Age of the Ring has no AIO Launcher or Arena: only its own entry can start at once.
-    assert ready("aotr", INSTALLED="aotr")
-    assert not ready("aio-launcher", INSTALLED="aotr")
-    assert not ready("arena", INSTALLED="aotr")
-    for app in ("aio-launcher", "arena"):
-        assert ready(app, INSTALLED="aio-launcher arena"), app
-    assert not ready("aotr", INSTALLED="aio-launcher arena")
-
-
-def test_an_entry_opens_the_wizard_when_the_game_environment_is_gone_or_the_status_cannot_be_read():
-    assert not ready("aio-launcher", INSTALLED="aio-launcher arena", PREFIX_STATE="missing")
-    assert not ready("aio-launcher", INSTALLED="aio-launcher arena", STATUS_EXIT="1")
-    assert not app_is_ready("/nonexistent/script", "aio-launcher")
-
-
-FLOW = r"""#!/usr/bin/env bash
-shift  # --machine
-case "$1" in
-  status)
-    if [ -f "$FAKE_DIR/reset" ]; then echo "@bfme STATUS complete no"; exit 0; fi
-    echo "@bfme STATUS bfme2 installed"; echo "@bfme STATUS complete yes" ;;
-  doctor)
-    echo "@bfme CHECK cpu ok x86_64 processor"
-    if [ -f "$FAKE_DIR/broken" ]; then echo "@bfme CHECK flatpak-32bit fail missing"; echo "@bfme FIX flatpak-32bit flatpak install X"
-      echo "@bfme ERROR - Failed (exit 1)"; exit 1; fi ;;
-  reset-prefix)
-    [ "$2" = "--yes" ] || exit 9
-    [ -f "$FAKE_DIR/reset-fails" ] && { echo "@bfme ERROR - nope"; exit 1; }
-    touch "$FAKE_DIR/reset"; sleep 0.3 ;;
-esac
-"""
-
-
-# The controller running the fake script above
+# The controller running the stand-in jobs
 
 @pytest.fixture
-def fake_dir(tmp_path, monkeypatch):
-    monkeypatch.setenv("FAKE_DIR", str(tmp_path))
-    return tmp_path
+def fake(tmp_path):
+    """A complete setup with BFME 2 installed, whose system check passes."""
+    jobs = FakeJobs(tmp_path)
+    jobs.flag("prefix", "aio-launcher", "bfme2", "checks-pass")
+    return jobs
 
 
 @pytest.fixture
-def c(fake_dir):
-    return Controller(ScriptRunner(make_script(FLOW)), lambda: None)
+def c(fake):
+    return Controller(JobRunner(), lambda: None, jobs=fake)
 
 
 def settle(c, state, ms=8000):
@@ -340,26 +302,26 @@ def test_opening_on_a_complete_setup_runs_the_checks_quietly(c):
     settle(c, "done")
     assert c.model.games == ["BFME 2"]
     assert c.model.problems == []
-    assert [r[0] for r in c.model.check_rows] == ["cpu"]
+    assert [r[0] for r in c.model.check_rows] == ["cpu", "disk"]
 
 
-def test_a_failed_check_is_found_without_leaving_the_home_screen(c, fake_dir):
-    (fake_dir / "broken").touch()
+def test_a_failed_check_is_found_without_leaving_the_home_screen(c, fake):
+    fake.flag("broken")
     states = []
     c._on_change = lambda: states.append(c.model.state)
     c.start()
     settle(c, "done")
-    assert [p.message for p in c.model.problems] == ["missing"]
-    assert c.model.error is None          # the script's ERROR line is not a setup error
+    assert [p.message for p in c.model.problems] == ["the 32-bit Flatpak extensions are not installed"]
+    assert c.model.error is None          # a failing check is not a setup error
     assert "blocked" not in states
-    (fake_dir / "broken").unlink()
+    fake.unflag("broken")
     assert c.run_checks()            # "Check again"
     wait_for(8000, lambda: not c.runner.busy)
     assert c.model.problems == []
     assert c.model.state == "done"
 
 
-def test_check_again_does_nothing_while_the_script_is_busy(c):
+def test_check_again_does_nothing_while_a_job_runs(c):
     c.start()
     assert not c.run_checks()
     settle(c, "done")
@@ -383,8 +345,8 @@ def test_nothing_from_before_a_reset_is_remembered(c):
     assert c.model.games == []
 
 
-def test_a_failed_reset_is_reported_and_the_state_is_looked_at_again(c, fake_dir):
-    (fake_dir / "reset-fails").touch()
+def test_a_failed_reset_is_reported_and_the_state_is_looked_at_again(c, fake):
+    fake.flag("reset-fails")
     c.start(); settle(c, "done")
     results = []
     c.reset(results.append)
@@ -419,7 +381,7 @@ def test_the_advice_about_graphics_drivers_names_the_chosen_backend(gtk):
 
 def troubleshoot_button_labels(Gtk, graphics):
     from bfme_wizard.home import TroubleshootPage
-    c = Controller(ScriptRunner(make_script("#!/usr/bin/env bash\n")), lambda: None)
+    c = idle_controller()
     c.model.state = "idle"
     c.model.installed = {"graphics": graphics}
     page = TroubleshootPage(
@@ -442,7 +404,7 @@ ALL = {"aio-launcher": "installed", "arena": "installed", "aotr": "installed"}
 
 def home_page(installed):
     from bfme_wizard.home import HomePage
-    c = Controller(ScriptRunner(make_script(FLOW)), lambda: None)
+    c = idle_controller()
     c.model.installed = installed
     page = HomePage(c, lambda: "1.0.0")
     page.refresh()
@@ -568,7 +530,7 @@ def test_its_rows_open_its_program_folder_and_its_lowercase_maps_folder(gtk, tmp
 @pytest.fixture
 def start(gtk):
     from bfme_wizard.start import StartPage
-    c = Controller(ScriptRunner(make_script(FLOW)), lambda: None)
+    c = idle_controller()
     return c, StartPage(c)
 
 
@@ -616,7 +578,7 @@ def test_after_a_stop_the_same_choice_says_resume_and_another_says_install(start
     c.model.installed["prefix"] = "missing"
     c.model.begin_plan(["aio-launcher", "aotr"])
     c.model.begin_job("environment")
-    feed(c.model, "@bfme CANCELLED")
+    feed(c.model, Cancelled())
     c.model.finish_install(130)
     page.enter()
     assert (page.selected, page.button.get_label(), page.view.get_title()) == \

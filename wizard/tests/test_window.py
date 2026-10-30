@@ -8,11 +8,10 @@ import os
 import pytest
 
 from bfme_wizard.controller import Controller
-from bfme_wizard.runner import ScriptRunner
-from tests.helpers import buttons, descendants, labels, make_script, wait_for
-from tests.test_controller import FAKE
+from bfme_wizard.runner import JobRunner
+from tests.fake_jobs import FakeJobs
+from tests.helpers import buttons, descendants, labels, wait_for
 
-IDLE = "#!/usr/bin/env bash\nexit 0\n"
 ALL = {"aio-launcher": "installed", "arena": "installed", "aotr": "installed"}
 # The icon buttons that lead to the other pages, by tooltip, left to right.
 ICON_BUTTONS = ("Install or remove programs", "Game folders", "Troubleshoot")
@@ -34,13 +33,17 @@ def shared_app():
 
 
 @pytest.fixture
-def make_window(gtk):
-    """Builds windows for the test and destroys them afterwards."""
+def make_window(gtk, tmp_path):
+    """Builds windows for the test and destroys them afterwards. Without `jobs` nothing is installed as far as the jobs know."""
     from bfme_wizard import ui
     made = []
 
-    def make(script=IDLE, installed=None, state="done"):
-        win = ui.WizardWindow(shared_app(), lambda on_change: Controller(ScriptRunner(make_script(script)), on_change))
+    def make(jobs=None, installed=None, state="done"):
+        if jobs is None:
+            (tmp_path / "idle").mkdir(exist_ok=True)
+            jobs = FakeJobs(tmp_path / "idle")
+
+        win = ui.WizardWindow(shared_app(), lambda on_change: Controller(JobRunner(), on_change, jobs=jobs))
         made.append(win)
         win.model.installed = dict(installed if installed is not None else ALL)
         win.model.state = state
@@ -77,14 +80,10 @@ def toasts(monkeypatch):
 
 
 @pytest.fixture
-def fake_dir(tmp_path, monkeypatch):
-    """Returns a function that makes the fake script see these flags."""
-    monkeypatch.setenv("FAKE_DIR", str(tmp_path))
-
-    def flags(*names):
-        for flag in names:
-            (tmp_path / flag).touch()
-    return flags
+def fake(tmp_path):
+    """The stand-in jobs, with their flags in a folder of their own."""
+    (tmp_path / "fake").mkdir()
+    return FakeJobs(tmp_path / "fake")
 
 
 def corner_buttons(win, Gtk):
@@ -437,9 +436,9 @@ def test_a_removal_that_cannot_start_says_why(win, toasts):
     assert "still running" in shown[-1]
 
 
-def test_the_whole_removal_with_a_real_script_ends_on_the_home_screen_with_a_toast(make_window, gtk, fake_dir, toasts):
-    fake_dir("prefix", "aio-launcher", "arena", "aotr")
-    win = make_window(FAKE, state="checking")
+def test_the_whole_removal_ends_on_the_home_screen_with_a_toast(make_window, gtk, fake, toasts):
+    fake.flag("prefix", "aio-launcher", "arena", "aotr")
+    win = make_window(fake, state="checking")
     win.controller.start()
     wait_for(8000, lambda: win.model.state == "done" and not win.controller.runner.busy)
     win.show_programs()
@@ -457,9 +456,9 @@ def test_the_whole_removal_with_a_real_script_ends_on_the_home_screen_with_a_toa
     assert labels(win.home.content, gtk, "title-2") == ["AIO Launcher", "Age of the Ring"]
 
 
-def test_removing_the_last_program_lands_on_the_start_page(make_window, fake_dir):
-    fake_dir("prefix", "aotr")
-    win = make_window(FAKE, state="checking")
+def test_removing_the_last_program_lands_on_the_start_page(make_window, fake):
+    fake.flag("prefix", "aotr")
+    win = make_window(fake, state="checking")
     win.controller.start()
     wait_for(8000, lambda: win.model.state == "done" and not win.controller.runner.busy)
     win.show_programs()
@@ -470,9 +469,9 @@ def test_removing_the_last_program_lands_on_the_start_page(make_window, fake_dir
     assert win.start.view.get_title() == "Choose what to install"      # the game environment is still ready
 
 
-def test_a_removal_that_fails_says_so_and_nothing_changes(make_window, fake_dir, toasts):
-    fake_dir("prefix", "aio-launcher", "arena", "remove-fails")
-    win = make_window(FAKE, state="checking")
+def test_a_removal_that_fails_says_so_and_nothing_changes(make_window, fake, toasts):
+    fake.flag("prefix", "aio-launcher", "arena", "remove-fails")
+    win = make_window(fake, state="checking")
     win.controller.start()
     wait_for(8000, lambda: win.model.state == "done" and not win.controller.runner.busy)
     shown = toasts(win)

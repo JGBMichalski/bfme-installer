@@ -11,8 +11,9 @@ from bfme_wizard import catalog
 from bfme_wizard.catalog import CATALOG, ICONS_DIR, TOOLS, program
 
 EVERY_PROGRAM = (*CATALOG, *TOOLS)   # each has a picture; only the CATALOG ones have menu shortcuts
+from tests.fake_jobs import idle_controller
 from tests.helpers import (
-    EXPORT_SUFFIX, MANIFEST, PNG_SIGNATURE, ROOT, descendants, make_script, manifest_app_id,
+    EXPORT_SUFFIX, MANIFEST, PNG_SIGNATURE, ROOT, descendants, manifest_app_id,
     manifest_icon_exports, png_size,
 )
 
@@ -21,7 +22,6 @@ APP_ICON_SHA256 = "5d6fe21c636b0c3ba598afa2d81a635b267a3d70e70325016e390248702a2
 APP_ICON_SOURCE = ("https://www.iconarchive.com/show/mega-games-pack-28-icons-by-3xhumed/"
                    "The-Lord-of-the-Rings-The-Battle-for-Middle-Earth-II-1-icon.html")
 APP_ICON_LICENCE = "https://creativecommons.org/licenses/by-nc-nd/4.0/"
-IDLE = "#!/usr/bin/env bash\nexit 0\n"
 APP_ICON = ROOT / "flatpak" / "com.jgbmichalski.BfmeInstaller.png"
 
 
@@ -141,9 +141,7 @@ def avatars(widget):
 
 
 def make_controller(installed):
-    from bfme_wizard.controller import Controller
-    from bfme_wizard.runner import ScriptRunner
-    c = Controller(ScriptRunner(make_script(IDLE)), lambda: None)
+    c = idle_controller()
     c.model.installed = dict(installed)
     c.model.state = "done"
     return c

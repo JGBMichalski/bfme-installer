@@ -1,109 +1,73 @@
-"""Run scripts/bfme-linux-setup.sh and stream its output. GLib only, no GTK."""
+"""Run one setup job at a time on a worker thread, and pass what it reports to the main loop. GLib only, no GTK."""
 from __future__ import annotations
 
-import os
-import shutil
-import subprocess
-import signal
+import threading
 from collections.abc import Callable
-from pathlib import Path
 
 import gi
 
-gi.require_version("Gio", "2.0")
-from gi.repository import Gio, GLib  # noqa: E402
+gi.require_version("GLib", "2.0")
+from gi.repository import GLib  # noqa: E402
+
+from .engine.events import Emit, Error, Event  # noqa: E402
+
+# A job from engine/jobs.py with its own arguments already given: it takes (emit, cancel) and returns an exit status.
+Job = Callable[[Emit, threading.Event], int]
 
 
-SETSID = shutil.which("setsid")
+class JobRunner:
+    """One job at a time. Its events and its end reach the main loop in the order they happened."""
 
-
-def find_script() -> str | None:
-    """BFME_SETUP_SCRIPT, then the installed command, then the script in this checkout."""
-    override = os.environ.get("BFME_SETUP_SCRIPT")
-    if override:
-        return override
-    installed = shutil.which("bfme-linux-setup")
-    if installed:
-        return installed
-    here = Path(__file__).resolve().parents[2] / "scripts" / "bfme-linux-setup.sh"
-    return str(here) if here.is_file() else None
-
-
-class ScriptRunner:
-    """One script process at a time."""
-
-    def __init__(self, script: str) -> None:
-        self.script = script
-        self._proc: Gio.Subprocess | None = None
+    def __init__(self) -> None:
+        self._thread: threading.Thread | None = None
+        self._cancel = threading.Event()
 
     @property
     def busy(self) -> bool:
-        return self._proc is not None
+        """Return True if a job is currently running."""
+        return self._thread is not None
 
-    def run(self, args: list[str], on_line: Callable[[str], None], on_exit: Callable[[int], None]) -> None:
-        """Start `script --machine <args>`; call on_line per line, then on_exit(code) once."""
-        if self._proc is not None:
-            raise RuntimeError("a script is already running")
-        command = [self.script, "--machine", *args]
-        if SETSID:
-            # Own process group, so terminate() also stops its downloads and Proton processes.
-            command = [SETSID, *command]
-        proc = Gio.Subprocess.new(command, Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_MERGE)
-        self._proc = proc
-        stream = Gio.DataInputStream.new(proc.get_stdout_pipe())
+    def run(self, job: Job, on_event: Callable[[Event], None], on_exit: Callable[[int], None]) -> None:
+        """Start the job. on_event is called with each event, then on_exit with its exit status, all on the main loop. Raises RuntimeError if a job is already running."""
+        if self._thread is not None:
+            raise RuntimeError("a job is already running")
 
-        def exited(source: Gio.Subprocess, result: Gio.AsyncResult) -> None:
-            source.wait_finish(result)
-            code = source.get_exit_status() if source.get_if_exited() else 128 + source.get_term_sig()
-            self._proc = None
+        self._cancel = threading.Event()
+        cancel = self._cancel
+
+        def emit(event: Event) -> None:
+            """Emit an event to the main loop."""
+            GLib.idle_add(_once, on_event, event)
+
+        def finished(code: int) -> None:
+            """Handle the job's completion on the main loop."""
+            self._thread = None
             on_exit(code)
 
-        def got_line(source: Gio.DataInputStream, result: Gio.AsyncResult) -> None:
+        def work() -> None:
+            """Run the job in a separate thread."""
             try:
-                line, _length = source.read_line_finish_utf8(result)
-            except GLib.Error:
-                line = None
-            if line is None:  # end of output
-                proc.wait_async(None, exited)
-                return
-            on_line(line)
-            source.read_line_async(GLib.PRIORITY_DEFAULT, None, got_line)
+                code = job(emit, cancel)
+            except Exception as error:   # a bug in a job must not leave the wizard waiting for ever
+                emit(Error(None, f"Something went wrong: {error}"))
+                code = 1
 
-        stream.read_line_async(GLib.PRIORITY_DEFAULT, None, got_line)
+            GLib.idle_add(_once, finished, code)
+
+        self._thread = threading.Thread(target=work, daemon=True)
+        self._thread.start()
 
     def request_cancel(self) -> None:
-        """Ask the script to stop before its next step (SIGUSR1)."""
-        if self._proc is not None:
-            self._proc.send_signal(signal.SIGUSR1)
+        """Ask the job to stop. It stops before its next step, or at once while it downloads, unpacks or waits."""
+        self._cancel.set()
 
     def terminate(self) -> None:
-        """Kill the script and its children (SIGTERM). Partial downloads resume."""
-        if self._proc is None:
-            return
-        pid = int(self._proc.get_identifier())
-        try:
-            if os.getpgid(pid) == pid:  # setsid made the script a group leader
-                os.killpg(pid, signal.SIGTERM)
-                return
-        except OSError:
-            pass
-        self._proc.send_signal(signal.SIGTERM)
+        """Stop now. A job has no process of its own to end, so this is the same request: the parts that can take long
+        (downloads, unpacking, the installers) stop at once."""
+        self._cancel.set()
 
 
-def _status_lines(script: str, timeout: float) -> list[str]:
-    try:
-        done = subprocess.run([script, "--machine", "status"], capture_output=True, text=True, timeout=timeout)
-    except (OSError, subprocess.SubprocessError):
-        return []
-    return done.stdout.splitlines() if done.returncode == 0 else []
-
-
-def setup_is_complete(script: str, timeout: float = 20.0) -> bool:
-    """Whether the setup is complete. False on any error."""
-    return "@bfme STATUS complete yes" in _status_lines(script, timeout)
-
-
-def app_is_ready(script: str, app: str, timeout: float = 20.0) -> bool:
-    """Whether the game environment is ready and this program is installed in it."""
-    lines = _status_lines(script, timeout)
-    return "@bfme STATUS prefix ready" in lines and f"@bfme STATUS {app} installed" in lines
+def _once(callback: Callable, value: object) -> bool:
+    """Call the callback with the given value once, then return False to remove it from the idle loop."""
+    callback(value)
+    return False   # an idle callback that returns True would run again

@@ -1,9 +1,7 @@
-"""Utilities the tests share: a fake script to run and a way to wait for the main loop. The `gtk` fixture is in conftest.py."""
-import os
+"""Utilities the tests share: a way to wait for the main loop, and what the manifest says. The `gtk` fixture is in
+conftest.py, the stand-in jobs in fake_jobs.py."""
 import re
-import stat
 import struct
-import tempfile
 from pathlib import Path
 
 from gi.repository import GLib
@@ -11,19 +9,9 @@ from gi.repository import GLib
 ROOT = Path(__file__).resolve().parents[2]
 MANIFEST = ROOT / "flatpak" / "com.jgbmichalski.BfmeInstaller.yml"
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
-# What the setup script calls each program's shortcut and icon in the Flatpak (`<app id>.<this>`). The manifest must export
+# What the shortcuts call each program's shortcut and icon in the Flatpak (`<app id>.<this>`). The manifest must export
 # the icons under the same names, which the tests check from both sides.
 EXPORT_SUFFIX = {"aio-launcher": "AioLauncher", "arena": "Arena", "aotr": "Aotr"}
-
-
-def make_script(body):
-    """A script file with this text, in a folder of its own. Returns its path."""
-    d = tempfile.mkdtemp()
-    path = os.path.join(d, "fake.sh")
-    with open(path, "w") as f:
-        f.write(body)
-    os.chmod(path, os.stat(path).st_mode | stat.S_IXUSR)
-    return path
 
 
 def wait_for(loop_ms, condition):

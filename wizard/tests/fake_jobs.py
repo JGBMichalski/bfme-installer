@@ -1,0 +1,235 @@
+"""A stand-in for engine/jobs.py, for the tests of the controller and the window.
+
+What is installed lives in flag files in `dir`; every job that runs is added to `calls`. Flags:
+  prefix, aio-launcher, arena, aotr, workshop, mission-control, bfme2   what is installed
+  checks-pass             the system check passes (without it `prepare` stops at its check)
+  broken                  the system check also finds the 32-bit extensions missing
+  flaky                   `prepare` fails once, in the runner step
+  aio-launcher-flaky      `aio_launcher_install` fails once, in the aio-launcher step
+  cancel-once             `aio_launcher_install` is stopped once, before the arena step
+  aotr-bad                `aotr_install` fails once, in the check
+  shortcuts-fails         `sync_shortcuts` fails (the permission is gone, say)
+  remove-fails            `remove` fails and deletes nothing
+  reset-fails             `reset` fails and deletes nothing
+"""
+from __future__ import annotations
+
+import tempfile
+import time
+from pathlib import Path
+
+from bfme_wizard.controller import Controller
+from bfme_wizard.engine.events import (
+    Cancelled,
+    Check,
+    Done,
+    Error,
+    Fix,
+    Log,
+    Progress,
+    Status,
+    Step,
+)
+
+PROGRAMS = ("aio-launcher", "arena", "aotr")
+
+
+class FakeJobs:
+    def __init__(self, dir):
+        self.dir = Path(dir)
+        self.calls: list[str] = []
+        self.app_seconds = 0.0     # how long a program opened by open_program runs
+
+    # The flags
+
+    def flag(self, *names):
+        for name in names:
+            (self.dir / name).touch()
+
+    def unflag(self, *names):
+        for name in names:
+            (self.dir / name).unlink(missing_ok=True)
+
+    def has(self, name):
+        return (self.dir / name).exists()
+
+    def once(self, name):
+        """True the first time it is asked while the flag is there."""
+        if self.has(name) and not self.has(name + "-used"):
+            self.flag(name + "-used")
+            return True
+
+        return False
+
+    # What every job ends with
+
+    def report(self, emit):
+        emit(Status("graphics", (self.dir / "graphics").read_text() if self.has("graphics") else "vulkan"))
+        emit(Status("prefix", "ready" if self.has("prefix") else "missing"))
+        any_program = False
+
+        for program in (*PROGRAMS, "workshop", "mission-control", "bfme2"):
+            emit(Status(program, "installed" if self.has(program) else "missing"))
+
+            if program in PROGRAMS and self.has(program):
+                any_program = True
+
+        emit(Status("complete", "yes" if self.has("prefix") and any_program else "no"))
+
+    def fail(self, emit, step, message, code=1):
+        emit(Log(f"ERROR: {message}"))
+        emit(Error(step, message))
+        return code
+
+    # The jobs
+
+    def status(self, emit, cancel=None):
+        self.calls.append("status")
+        self.report(emit)
+        return 0
+
+    def check(self, emit, cancel=None):
+        self.calls.append("check")
+        return self._checks(emit)
+
+    def _checks(self, emit):
+        emit(Check("cpu", "ok", "x86_64 processor"))
+
+        if self.has("broken"):
+            emit(Check("flatpak-32bit", "fail", "the 32-bit Flatpak extensions are not installed"))
+            emit(Fix("flatpak-32bit", "flatpak install X"))
+            return 1
+
+        if not self.has("checks-pass"):
+            emit(Check("disk", "fail", "not enough room"))
+            emit(Fix("disk", "free some space"))
+            return 1
+
+        emit(Check("disk", "ok", "free disk space: 100 GB"))
+        return 0
+
+    def sync_shortcuts(self, emit, cancel=None):
+        self.calls.append("sync_shortcuts")
+        emit(Log("Shortcuts are up to date in /fake"))
+
+        if self.has("shortcuts-fails"):
+            return self.fail(emit, None, "The shortcuts could not be updated.")
+
+        return 0
+
+    def prepare(self, emit, cancel=None):
+        self.calls.append("prepare")
+        emit(Step("doctor", "start"))
+
+        if self._checks(emit) != 0:
+            return self.fail(emit, "doctor", "Fix the problems above, then run prepare again.")
+
+        emit(Step("doctor", "done"))
+        emit(Step("runner", "start"))
+
+        if self.once("flaky"):
+            return self.fail(emit, "runner", "Failed (exit 22).", 22)
+
+        emit(Progress(50))
+        emit(Step("runner", "done"))
+        emit(Step("prefix", "start"))
+        emit(Step("prefix", "done"))
+        self.flag("prefix")
+        self.report(emit)
+        emit(Done())
+        return 0
+
+    def aio_launcher_install(self, emit, cancel=None):
+        self.calls.append("aio_launcher_install")
+        emit(Step("aio-launcher", "start"))
+
+        if self.once("aio-launcher-flaky"):
+            return self.fail(emit, "aio-launcher", "Failed (exit 22).", 22)
+
+        emit(Step("aio-launcher", "done"))
+        emit(Step("arena", "start"))
+
+        if self.once("cancel-once"):
+            emit(Cancelled())
+            return 130
+
+        emit(Step("arena", "done"))
+        emit(Step("shortcuts", "skip"))
+        self.flag("aio-launcher", "arena")
+        self.report(emit)
+        emit(Done())
+        return 0
+
+    def aotr_install(self, zip_path, emit, cancel=None):
+        self.calls.append(f"aotr_install {zip_path}")
+        emit(Step("aotr-check", "start"))
+
+        if self.once("aotr-bad"):
+            return self.fail(emit, "aotr-check", "This file is incomplete.")
+
+        emit(Step("aotr-check", "done"))
+        emit(Progress(40))
+        emit(Step("aotr-install", "start"))
+        emit(Step("aotr-install", "done"))
+        self.flag("aotr")
+        self.report(emit)
+        emit(Done())
+        return 0
+
+    def tool_install(self, tool, emit, cancel=None):
+        self.calls.append(f"tool_install {tool}")
+        emit(Step(tool, "start"))
+        emit(Step(tool, "done"))
+        self.flag(tool)
+        self.report(emit)
+        emit(Done())
+        return 0
+
+    def remove(self, program, emit, cancel=None):
+        self.calls.append(f"remove {program}")
+
+        if self.has("remove-fails"):
+            return self.fail(emit, None, "Could not remove it")
+
+        self.unflag(program)
+        self.report(emit)
+        emit(Done())
+        return 0
+
+    def switch_graphics(self, backend, emit, cancel=None):
+        self.calls.append(f"switch_graphics {backend}")
+
+        if backend not in ("vulkan", "opengl"):
+            return self.fail(emit, None, "Use: graphics vulkan|opengl")
+
+        (self.dir / "graphics").write_text(backend)
+        self.report(emit)
+        emit(Done())
+        return 0
+
+    def reset(self, emit, cancel=None):
+        self.calls.append("reset")
+
+        if self.has("reset-fails"):
+            return self.fail(emit, None, "nope")
+
+        time.sleep(0.3)
+        self.unflag("prefix", "bfme2", *PROGRAMS)
+        emit(Log("Prefix deleted."))
+        return 0
+
+    def open_program(self, program, emit, cancel=None):
+        self.calls.append(f"open_program {program}")
+
+        if program == "bad-exit":
+            return 3
+
+        time.sleep(self.app_seconds)
+        return 0
+
+
+def idle_controller(on_change=lambda: None):
+    """A controller for a page that only needs one: nothing is installed and nothing runs until asked."""
+    from bfme_wizard.runner import JobRunner
+
+    return Controller(JobRunner(), on_change, jobs=FakeJobs(tempfile.mkdtemp()))
