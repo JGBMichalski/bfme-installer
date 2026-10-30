@@ -150,13 +150,14 @@ def umu_run() -> str:
 
 
 def start(paths: Paths, config: Config, proton: str, args: list[str], inprefix: bool, output: IO | None = None,
-          environ: dict[str, str] | None = None) -> subprocess.Popen:
-    """Start a program in the game environment. Its output goes to `output` (a log file), else nowhere."""
+          environ: dict[str, str] | None = None, cwd: Path | None = None) -> subprocess.Popen:
+    """Start a program in the game environment, in folder `cwd` if given. Its output goes to `output` (a log file), else
+    nowhere."""
     (paths.base / "dxvk-cache").mkdir(parents=True, exist_ok=True)
     env = runner_env(paths, config, proton, inprefix, environ)
     sink = output if output is not None else subprocess.DEVNULL
 
-    return subprocess.Popen([umu_run(), *args], env=env, stdout=sink, stderr=sink, stdin=subprocess.DEVNULL)
+    return subprocess.Popen([umu_run(), *args], env=env, stdout=sink, stderr=sink, stdin=subprocess.DEVNULL, cwd=cwd)
 
 
 def run(paths: Paths, config: Config, proton: str, args: list[str], inprefix: bool, output: IO | None = None,

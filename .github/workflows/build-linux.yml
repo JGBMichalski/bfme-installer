@@ -41,7 +41,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Install PyGObject and pytest
-        run: sudo apt-get update && sudo apt-get install -y python3-gi gir1.2-glib-2.0 python3-pytest
+        run: sudo apt-get update && sudo apt-get install -y python3-gi gir1.2-glib-2.0 python3-pytest p7zip-full
 
       - name: Unit tests
         run: python3 -m pytest
