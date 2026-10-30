@@ -175,7 +175,7 @@ def test_the_picture_is_not_mixed_up_between_programs(widgets):
 
 
 def test_a_picture_is_read_from_its_file_once_and_kept(widgets):
-    info = program("launcher")
+    info = program("aio-launcher")
     first = widgets.read_picture(str(info.icon))
     assert widgets.read_picture(str(info.icon)) is first
     assert widgets.read_picture.cache_info().hits == 1
@@ -194,10 +194,10 @@ def test_a_missing_file_gives_the_initials_in_a_circle_and_not_a_broken_image(wi
 
 
 def test_a_damaged_file_does_the_same(widgets, monkeypatch, tmp_path):
-    (tmp_path / "launcher.png").write_bytes(b"\x89PNG\r\n\x1a\n this is not a picture")
+    (tmp_path / "aio-launcher.png").write_bytes(b"\x89PNG\r\n\x1a\n this is not a picture")
     (tmp_path / "arena.png").write_bytes(b"")
     monkeypatch.setattr(catalog, "ICONS_DIR", tmp_path)
-    shown = [widgets.program_icon(program(key), 64) for key in ("launcher", "arena")]
+    shown = [widgets.program_icon(program(key), 64) for key in ("aio-launcher", "arena")]
     assert [a.get_custom_image() for a in shown] == [None, None]
     assert [a.get_text() for a in shown] == ["AIO Launcher", "Arena"]
 
@@ -212,7 +212,7 @@ def test_a_failure_to_read_is_not_kept_so_a_file_that_appears_later_is_found(wid
 
 def test_the_home_screen_shows_each_installed_programs_picture_at_64_and_only_those(widgets):
     from bfme_wizard.home import HomePage
-    page = HomePage(make_controller({"launcher": "installed", "aotr": "installed"}), lambda: "1.0")
+    page = HomePage(make_controller({"aio-launcher": "installed", "aotr": "installed"}), lambda: "1.0")
     page.refresh()
     shown = avatars(page.content)
     assert [(a.get_text(), a.get_size()) for a in shown] == [("AIO Launcher", 64), ("Age of the Ring", 64)]
@@ -221,7 +221,7 @@ def test_the_home_screen_shows_each_installed_programs_picture_at_64_and_only_th
 
 def test_the_programs_page_shows_every_programs_picture_at_40_installed_or_not(widgets):
     from bfme_wizard.programs import ProgramsPage
-    c = make_controller({"launcher": "installed"})
+    c = make_controller({"aio-launcher": "installed"})
     page = ProgramsPage(c, install=lambda key: None, remove=lambda key: None, open_app=lambda key: None)
     shown = [avatars(row) for row in page.rows()]
     assert [[(a.get_text(), a.get_size()) for a in found] for found in shown] == \
@@ -236,7 +236,7 @@ def test_the_old_generic_glyphs_are_gone_from_the_cards_and_rows(gtk, widgets):
     from bfme_wizard.programs import ProgramsPage
     old = {"applications-games-symbolic", "input-gaming-symbolic", "network-workgroup-symbolic",
            "system-users-symbolic", "media-optical-symbolic", "starred-symbolic"}
-    c = make_controller({"launcher": "installed", "arena": "installed", "aotr": "installed"})
+    c = make_controller({"aio-launcher": "installed", "arena": "installed", "aotr": "installed"})
     home = HomePage(c, lambda: "1.0")
     home.refresh()
     programs = ProgramsPage(c, install=lambda key: None, remove=lambda key: None, open_app=lambda key: None)

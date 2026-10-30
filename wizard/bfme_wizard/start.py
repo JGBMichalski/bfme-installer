@@ -12,7 +12,7 @@ from .widgets import first_icon, pill
 
 # (program, title, description) in install order. The Arena comes with the AIO Launcher.
 CHOICES = [
-    ("launcher", "All-in-One Launcher",
+    ("aio-launcher", "All-in-One Launcher",
      "Install, patch and play the BFME games. Includes the Online Arena for multiplayer."),
     ("aotr", "Age of the Ring",
      "A large mod with its own launcher and its own copy of the games. You download it from ModDB, about 14 GB."),

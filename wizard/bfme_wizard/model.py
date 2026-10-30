@@ -3,7 +3,7 @@
 The player's choice on the start page becomes a plan: jobs run one after the other, each one command of the setup script.
 
   environment   prepare            doctor, runner, prefix                       left out when it is already ready
-  launcher      launcher-install   launcher, arena, shortcuts
+  aio-launcher  aio-launcher-install   aio-launcher, arena, shortcuts
   aotr          aotr-install       aotr-check, aotr-unpack, aotr-install, aotr-settings, once the player has
                                    downloaded the file and chosen it (aotr-download: a step the script never reports)
 
@@ -26,9 +26,9 @@ from dataclasses import dataclass
 from . import protocol as p
 
 # Start page choices, in install order. The Arena is not one: it comes with the AIO Launcher.
-PROGRAMS = ("launcher", "aotr")
+PROGRAMS = ("aio-launcher", "aotr")
 # Everything that can be opened, and removed again.
-ALL_PROGRAMS = ("launcher", "arena", "aotr")
+ALL_PROGRAMS = ("aio-launcher", "arena", "aotr")
 # Extra programs of the Tools page. Each installs as a job of its own, from the home screen.
 TOOLS = ("workshop", "mission-control")
 
@@ -38,8 +38,8 @@ JOB_STEPS: dict[str, list[tuple[str, str, str]]] = {
         ("runner", "Get Proton", "Downloading the compatibility layer that runs Windows games."),
         ("prefix", "Create the game environment", "Setting up a private folder for the launchers and games."),
     ],
-    "launcher": [
-        ("launcher", "Download the AIO Launcher", "Fetching the All-in-One Launcher for managing the games."),
+    "aio-launcher": [
+        ("aio-launcher", "Download the AIO Launcher", "Fetching the All-in-One Launcher for managing the games."),
         ("arena", "Download the Arena", "Fetching the Online Arena for playing multiplayer."),
         ("shortcuts", "Add menu shortcuts", "Adding the AIO Launcher and the Arena to your application menu."),
     ],
@@ -363,7 +363,7 @@ class SetupModel:
 
 def games_line(model: SetupModel) -> str:
     """The home screen's top sentence. Empty when games are installed or there is no AIO Launcher."""
-    if model.games or not model.is_installed("launcher"):
+    if model.games or not model.is_installed("aio-launcher"):
         return ""
     if model.just_finished:
         return "Setup is complete. Open the AIO Launcher to install your games."

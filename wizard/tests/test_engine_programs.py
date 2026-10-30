@@ -17,9 +17,6 @@ from bfme_wizard.engine.paths import Paths
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "bfme-linux-setup.sh"
-# The setup script calls the AIO Launcher "launcher".
-SCRIPT_NAME = {"aio-launcher": "launcher"}
-ENGINE_NAME = {"launcher": "aio-launcher"}
 
 
 def executable(path, text):
@@ -106,7 +103,7 @@ def script_status(tmp_path, paths):
     for line in out.splitlines():
         if line.startswith("@bfme STATUS "):
             _, _, key, value = line.split(" ", 3)
-            found[ENGINE_NAME.get(key, key)] = value
+            found[key] = value
 
     return found
 
@@ -152,7 +149,7 @@ def test_waiting_stops_when_cancelled(tmp_path):
 # ends it, as the real one would.
 FAKE_UMU = r"""#!/bin/sh
 printf '%s|%s\n' "$*" "${PROTON_VERB:-}" >> "$UMU_LOG"
-[ -n "$NO_INSTALL" ] || { mkdir -p "$(dirname "$AIO_LAUNCHER_EXE")"; printf 'launcher' > "$AIO_LAUNCHER_EXE"; }
+[ -n "$NO_INSTALL" ] || { mkdir -p "$(dirname "$AIO_LAUNCHER_EXE")"; printf 'aio-launcher' > "$AIO_LAUNCHER_EXE"; }
 sleep 30 &
 echo $! > "$SESSION_PID"
 wait
@@ -190,7 +187,7 @@ def test_the_aio_launcher_setup_runs_once_and_the_session_is_ended(paths, aio_la
     assert (tmp / "umu.log").read_text() == f"{setup}|\n"      # the first start is not runinprefix
     assert (tmp / "wineserver.log").read_text() == "-k\n-w\n"
     assert not setup.exists()
-    assert (paths.logs / "launcher-setup.log").exists()
+    assert (paths.logs / "aio-launcher-setup.log").exists()
     assert logs(events) == ["Installing the AIO Launcher. It may open for a moment; the setup closes it again."]
 
 
@@ -211,7 +208,7 @@ def test_an_interrupted_install_is_redone_with_the_setup_already_downloaded(path
     programs.install_aio_launcher(paths, Config(), aio_launcher_env["proton"], [].append, url=aio_launcher_env["url"])
 
     assert file_server.requests == []
-    assert paths.aio_launcher_exe.read_text() == "launcher"
+    assert paths.aio_launcher_exe.read_text() == "aio-launcher"
     assert programs.aio_launcher_installed(paths)
 
 
@@ -219,7 +216,7 @@ def test_a_setup_that_installs_nothing_fails_and_stays_unfinished(paths, aio_lau
     monkeypatch.setenv("NO_INSTALL", "1")
     monkeypatch.setattr(programs, "AIO_LAUNCHER_WAIT_SEC", 0.3)
 
-    with pytest.raises(SetupError, match="The AIO Launcher was not installed. See .*launcher-setup.log"):
+    with pytest.raises(SetupError, match="The AIO Launcher was not installed. See .*aio-launcher-setup.log"):
         programs.install_aio_launcher(paths, Config(), aio_launcher_env["proton"], [].append, url=aio_launcher_env["url"])
 
     assert (paths.prefix / programs.AIO_LAUNCHER_INSTALLING).exists()
@@ -369,7 +366,7 @@ def tree(paths):
 def test_removing_is_the_scripts(tmp_path, paths, program):
     env = {"PATH": "/usr/bin:/bin", "HOME": str(tmp_path), "BFME_HOME": str(paths.base)}
     everything(paths)
-    done = subprocess.run([str(SCRIPT), "remove", SCRIPT_NAME.get(program, program)], env=env, capture_output=True, text=True, timeout=60)
+    done = subprocess.run([str(SCRIPT), "remove", program], env=env, capture_output=True, text=True, timeout=60)
     assert done.returncode == 0, done.stderr
     from_script = tree(paths)
     script_said = done.stdout.splitlines()[-1]

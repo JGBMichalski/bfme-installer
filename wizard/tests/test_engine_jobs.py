@@ -32,7 +32,7 @@ case "${1:-}" in
   "") mkdir -p "$WINEPREFIX/drive_c/windows" "$WINEPREFIX/drive_c/users/steamuser" ;;
   *AllInOneLauncherSetup.exe)
       d="$WINEPREFIX/drive_c/users/steamuser/AppData/Roaming/BFME All In One Launcher"
-      mkdir -p "$d"; printf 'launcher' > "$d/AllInOneLauncher.exe" ;;
+      mkdir -p "$d"; printf 'aio-launcher' > "$d/AllInOneLauncher.exe" ;;
   *AotR_Standalone*Installer.exe)
       mkdir -p "$WINEPREFIX/drive_c/AgeoftheRing"; printf 'aotr' > "$WINEPREFIX/drive_c/AgeoftheRing/AotR_Launcher.exe" ;;
 esac
@@ -122,7 +122,7 @@ class World:
 
         for line in done.stdout.splitlines():
             if line.startswith("@bfme ") and not line.startswith("@bfme PROGRESS"):
-                lines.append(line.replace("@bfme STATUS launcher ", "@bfme STATUS aio-launcher "))
+                lines.append(line)
 
         return done.returncode, lines
 
@@ -243,15 +243,15 @@ def test_prepare_stops_at_a_failed_check(world, monkeypatch):
 
 
 def test_the_aio_launcher_and_the_arena(world):
-    events = same(world, world.make_prefix, ["launcher-install"], jobs.aio_launcher_install)
+    events = same(world, world.make_prefix, ["aio-launcher-install"], jobs.aio_launcher_install)
 
     assert Status("aio-launcher", "installed") in events
     assert Status("arena", "installed") in events
-    assert (world.home / f".local/share/applications/{shortcuts.RELEASE_APP_ID}.Launcher.desktop").is_file()
+    assert (world.home / f".local/share/applications/{shortcuts.RELEASE_APP_ID}.AioLauncher.desktop").is_file()
 
 
 def test_the_aio_launcher_needs_the_game_environment(world):
-    same(world, nothing, ["launcher-install"], jobs.aio_launcher_install)
+    same(world, nothing, ["aio-launcher-install"], jobs.aio_launcher_install)
 
 
 @pytest.mark.parametrize("tool", programs.TOOLS)
@@ -293,8 +293,7 @@ def test_remove(world, program):
             exe.parent.mkdir(parents=True, exist_ok=True)
             exe.write_text("x")
 
-    script_name = "launcher" if program == "aio-launcher" else program
-    events = same(world, setup, ["remove", script_name], jobs.remove, program)
+    events = same(world, setup, ["remove", program], jobs.remove, program)
 
     assert Status(program, "missing") in events
 
@@ -344,7 +343,7 @@ def test_missing_32bit_extensions_stop_before_proton_runs(world, monkeypatch):
     code, events = world.engine(jobs.aio_launcher_install)
 
     assert code == jobs.FAILED
-    assert events[-1] == Error("launcher", "The 32-bit Flatpak extensions are not installed.")
+    assert events[-1] == Error("aio-launcher", "The 32-bit Flatpak extensions are not installed.")
     assert not Path(world.env["UMU_LOG"]).exists()
 
 
@@ -404,7 +403,7 @@ def test_opening_the_aio_launcher_installs_it_first(world):
     assert code == jobs.OK
     assert programs.aio_launcher_installed(world.paths)
     assert events[-1].text.startswith("Starting the AIO Launcher. Log: ")
-    assert list(world.paths.logs.glob("launcher-2*.log"))
+    assert list(world.paths.logs.glob("aio-launcher-2*.log"))
 
 
 def test_the_lock_is_free_while_the_program_runs(world, monkeypatch):

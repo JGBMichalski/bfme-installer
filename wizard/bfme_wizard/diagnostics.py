@@ -106,7 +106,7 @@ def build_report(version: str, model: SetupModel, log_dir: Path, system: list[st
     out = ["BFME Installer diagnostics", f"Version: {version}", f"Runner: {model.installed.get('runner', 'unknown')}",
            f"Graphics: {graphics}"]
     out += system_lines() if system is None else system
-    out.append("Setup: " + ", ".join(f"{k} {model.installed.get(k, 'unknown')}" for k in ("prefix", "launcher", "arena")))
+    out.append("Setup: " + ", ".join(f"{k} {model.installed.get(k, 'unknown')}" for k in ("prefix", "aio-launcher", "arena")))
     out.append("Games: " + ", ".join(f"{name} {model.installed.get(key, 'unknown')}" for key, name in GAMES))
     out += ["", "System checks:"]
     if model.checks:
@@ -117,7 +117,7 @@ def build_report(version: str, model: SetupModel, log_dir: Path, system: list[st
                 out.append(f"      fix: {fix}")
     else:
         out.append("  (not run yet)")
-    for title, prefix in (("AIO Launcher", "launcher"), ("Arena", "arena"), ("prefix creation", "prefix-create")):
+    for title, prefix in (("AIO Launcher", "aio-launcher"), ("Arena", "arena"), ("prefix creation", "prefix-create")):
         log = newest_log(log_dir, prefix)
         out += ["", f"--- latest {title} log ({log.name}, last {LOG_LINES} lines) ---" if log else f"--- no {title} log ---"]
         if log:

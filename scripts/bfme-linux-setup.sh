@@ -11,16 +11,16 @@
 # Usage: bfme-linux-setup.sh [--machine] <command>
 #   doctor              Check system requirements for the chosen runner.
 #   prepare             Set up the game environment only (runner, prefix, settings). Installs no program.
-#   launcher-install    Install the All-in-One Launcher and the Arena, and their shortcuts.
-#   install             Everything for the AIO Launcher and the Arena: prepare, then launcher-install.
-#   launcher            Start the All-in-One Launcher (installs it first if needed).
+#   aio-launcher-install    Install the All-in-One Launcher and the Arena, and their shortcuts.
+#   install             Everything for the AIO Launcher and the Arena: prepare, then aio-launcher-install.
+#   aio-launcher            Start the All-in-One Launcher (installs it first if needed).
 #   arena               Start the Online Arena (downloads or updates it first).
 #   game bfme1|bfme2|rotwk   Start a game without the Arena.
 #   aotr-install <zip>  Install Age of the Ring (needs prepare first) from the zip you downloaded from ModDB.
 #   aotr                Start the Age of the Ring Launcher.
 #   tool-install <tool> Install a tool (workshop or mission-control). Needs prepare first.
 #   tool <tool>         Start a tool.
-#   remove <program>    Remove one program (launcher, arena, aotr, workshop or mission-control): its folder and
+#   remove <program>    Remove one program (aio-launcher, arena, aotr, workshop or mission-control): its folder and
 #                       its shortcut. Keeps the games, the other programs and the settings a program keeps in your own folder.
 #   graphics [vulkan|opengl]  Show the graphics backend, or switch it. OpenGL suits older graphics cards.
 #   shortcuts           Bring the menu shortcuts in line with what is installed: add the missing ones, remove the others.
@@ -62,7 +62,7 @@ readonly PROTON_SHA256="62e99e029a18fa313e6fa63d42390918101730a940e3491c54d9d58c
 readonly UMU_VERSION="1.4.4"
 readonly UMU_URL="https://github.com/Open-Wine-Components/umu-launcher/releases/download/${UMU_VERSION}/umu-launcher-${UMU_VERSION}-zipapp.tar"
 readonly UMU_SHA256="eb590691841f7fad3fc3ad8fd5db4ccb87849fe7948e62b28ece7a4ee48cc851"
-readonly LAUNCHER_SETUP_URL="https://arena-files.bfmeladder.com/downloads/AllInOneLauncherSetup.exe"
+readonly AIO_LAUNCHER_SETUP_URL="https://arena-files.bfmeladder.com/downloads/AllInOneLauncherSetup.exe"
 readonly WORKSHOP_URL="https://bfmeladder.com/download-go?app=workshop"
 readonly MISSION_CONTROL_URL="https://bfmeladder.com/download-go?app=mission-control"
 readonly ARENA_FILES_HOST="https://arena-files.bfmeladder.com"
@@ -110,8 +110,8 @@ case "$RUNNER" in
 esac
 
 ROAMING="$PREFIX/drive_c/users/$WINE_USER/AppData/Roaming"
-LAUNCHER_DIR="$ROAMING/BFME All In One Launcher"
-LAUNCHER_EXE="$LAUNCHER_DIR/AllInOneLauncher.exe"
+AIO_LAUNCHER_DIR="$ROAMING/BFME All In One Launcher"
+AIO_LAUNCHER_EXE="$AIO_LAUNCHER_DIR/AllInOneLauncher.exe"
 ARENA_DIR="$ROAMING/BFME Competetive Arena"
 ARENA_EXE="$ARENA_DIR/BfmeFoundationProject_OnlineArena.exe"
 AOTR_DIR="$PREFIX/drive_c/AgeoftheRing"
@@ -805,36 +805,36 @@ end_wine_session() {
   if [ -d "$PREFIX" ]; then stop_wine_session || true; fi
 }
 
-# install_launcher leaves .bfme-launcher-installing behind until it finishes, so a half-copied file is not taken for the AIO Launcher.
-launcher_installed() {
-  [ -f "$LAUNCHER_EXE" ] && [ ! -e "$PREFIX/.bfme-launcher-installing" ]
+# install_aio_launcher leaves .bfme-aio-launcher-installing behind until it finishes, so a half-copied file is not taken for the AIO Launcher.
+aio_launcher_installed() {
+  [ -f "$AIO_LAUNCHER_EXE" ] && [ ! -e "$PREFIX/.bfme-aio-launcher-installing" ]
 }
 
-install_launcher() {
+install_aio_launcher() {
   ensure_prefix
-  launcher_installed && return
+  aio_launcher_installed && return
   local setup="$DOWNLOADS/AllInOneLauncherSetup.exe"
-  [ -f "$setup" ] || download "$LAUNCHER_SETUP_URL" "$setup"
+  [ -f "$setup" ] || download "$AIO_LAUNCHER_SETUP_URL" "$setup"
   say "Installing the AIO Launcher. It may open for a moment; the setup closes it again."
   # A leftover half-copied file would look finished to wait_for_stable_file.
-  rm -f "$LAUNCHER_EXE"
-  : >"$PREFIX/.bfme-launcher-installing"
+  rm -f "$AIO_LAUNCHER_EXE"
+  : >"$PREFIX/.bfme-aio-launcher-installing"
   # The first start of the setup must not use runinprefix.
   # 9>&- because a function run with & copies this shell and would hold the lock.
-  run_in_runner create "$setup" >"$LOGS/launcher-setup.log" 2>&1 9>&- &
+  run_in_runner create "$setup" >"$LOGS/aio-launcher-setup.log" 2>&1 9>&- &
   local setup_pid=$! installed=0
   # The setup starts the AIO Launcher, and Proton does not return until every program in the session ends.
   # Wait for the installed file to appear and stop growing, then end the session.
-  wait_for_stable_file "$LAUNCHER_EXE" 180 && installed=1
+  wait_for_stable_file "$AIO_LAUNCHER_EXE" 180 && installed=1
   stop_wine_session || true
   wait "$setup_pid" 2>/dev/null || true
-  [ "$installed" = "1" ] || die "The AIO Launcher was not installed. See $LOGS/launcher-setup.log"
-  rm -f "$PREFIX/.bfme-launcher-installing" "$setup"
+  [ "$installed" = "1" ] || die "The AIO Launcher was not installed. See $LOGS/aio-launcher-setup.log"
+  rm -f "$PREFIX/.bfme-aio-launcher-installing" "$setup"
 }
 
-cmd_launcher() {
-  install_launcher
-  start_app "launcher" "$LAUNCHER_DIR" "$LAUNCHER_EXE" "the AIO Launcher"
+cmd_aio_launcher() {
+  install_aio_launcher
+  start_app "aio-launcher" "$AIO_LAUNCHER_DIR" "$AIO_LAUNCHER_EXE" "the AIO Launcher"
 }
 
 arena_installed() {
@@ -1165,7 +1165,7 @@ cmd_game() {
 }
 
 # `name` is the key: it names the log files. `label` is what the message calls the program, for a key that is not a name a person
-# would say ("launcher" could be Age of the Ring's launcher too).
+# would say.
 start_app() {
   local name="$1" dir="$2" exe="$3" label="${4:-$1}"
   release_setup_lock
@@ -1183,11 +1183,11 @@ start_app() {
 # The Flatpak exports no entry of its own: one for an uninstalled program would lead nowhere.
 
 readonly RELEASE_FLATPAK_ID="com.jgbmichalski.BfmeInstaller"
-readonly SHORTCUT_PROGRAMS=(launcher arena aotr)
+readonly SHORTCUT_PROGRAMS=(aio-launcher arena aotr)
 
 program_installed() {
   case "$1" in
-    launcher) launcher_installed ;;
+    aio-launcher) aio_launcher_installed ;;
     arena)    arena_installed ;;
     aotr)     aotr_installed ;;
     *)        return 1 ;;
@@ -1196,7 +1196,7 @@ program_installed() {
 
 shortcut_name() {
   case "$1" in
-    launcher) printf 'BFME All-in-One Launcher' ;;
+    aio-launcher) printf 'BFME All-in-One Launcher' ;;
     arena)    printf 'BFME Online Arena' ;;
     aotr)     printf 'Age of the Ring' ;;
   esac
@@ -1204,7 +1204,7 @@ shortcut_name() {
 
 shortcut_comment() {
   case "$1" in
-    launcher) printf 'Install, mod and manage the Battle for Middle-earth games' ;;
+    aio-launcher) printf 'Install, mod and manage the Battle for Middle-earth games' ;;
     arena)    printf 'Play Battle for Middle-earth online' ;;
     aotr)     printf 'Play the Age of the Ring mod for Battle for Middle-earth 2' ;;
   esac
@@ -1214,7 +1214,7 @@ shortcut_comment() {
 # The manifest installs the pictures under these names, and the tests check that the two agree.
 shortcut_suffix() {
   case "$1" in
-    launcher) printf 'Launcher' ;;
+    aio-launcher) printf 'AioLauncher' ;;
     arena)    printf 'Arena' ;;
     aotr)     printf 'Aotr' ;;
   esac
@@ -1271,10 +1271,12 @@ copy_program_pictures() {
   local from program
   from="$(dirname "$(self_path)")/../wizard/bfme_wizard/icons"
   [ -d "$from" ] || return 0
+  local picture
   for program in "${SHORTCUT_PROGRAMS[@]}"; do
-    [ -f "$from/$program.png" ] || continue
-    if ! cmp -s "$from/$program.png" "$BASE/icons/$program.png" 2>/dev/null; then
-      if ! { mkdir -p "$BASE/icons" && cp -f "$from/$program.png" "$BASE/icons/$program.png"; } 2>/dev/null; then
+    picture="$from/$program.png"
+    [ -f "$picture" ] || continue
+    if ! cmp -s "$picture" "$BASE/icons/$program.png" 2>/dev/null; then
+      if ! { mkdir -p "$BASE/icons" && cp -f "$picture" "$BASE/icons/$program.png"; } 2>/dev/null; then
         warn "Could not copy the picture of $program to $BASE/icons. Its shortcut shows a themed icon instead."
       fi
     fi
@@ -1350,6 +1352,8 @@ cmd_shortcuts() {
   for program in "${SHORTCUT_PROGRAMS[@]}"; do
     sync_shortcut "$program" || failed=1
   done
+  # The AIO Launcher's shortcut from before it was called AioLauncher.
+  if [ "$IN_FLATPAK" = "1" ]; then rm -f "$APPS_DIR/$FLATPAK_ID.Launcher.desktop" || failed=1; fi
   if [ "$failed" = "1" ]; then
     warn "Could not update the shortcuts in $APPS_DIR."
     return 1
@@ -1362,9 +1366,9 @@ cmd_shortcuts() {
 
 # Each job reports its steps as status lines and ends with DONE. Rerunning skips what is done.
 #   prepare           steps: doctor, runner, prefix            (the game environment)
-#   launcher-install  steps: launcher, arena, shortcuts        (the AIO Launcher and the Arena)
+#   aio-launcher-install  steps: aio-launcher, arena, shortcuts        (the AIO Launcher and the Arena)
 #   aotr-install      steps: aotr-check, aotr-unpack, aotr-install, aotr-settings
-#   install           prepare, then launcher-install           (what the terminal setup does)
+#   install           prepare, then aio-launcher-install           (what the terminal setup does)
 
 prepare_environment() {
   step_start doctor
@@ -1381,14 +1385,14 @@ prepare_environment() {
   step_done prefix
 }
 
-install_launcher_and_arena() {
+install_aio_launcher_and_arena() {
   acquire_setup_lock
-  if launcher_installed; then
-    step_skip launcher
+  if aio_launcher_installed; then
+    step_skip aio-launcher
   else
-    step_start launcher
-    install_launcher
-    step_done launcher
+    step_start aio-launcher
+    install_aio_launcher
+    step_done aio-launcher
   fi
   step_start arena
   install_or_update_arena
@@ -1403,12 +1407,12 @@ cmd_prepare() {
   report_status
   machine DONE
   say ""
-  say "The game environment is ready. Install a program into it: launcher-install or aotr-install <zip>."
+  say "The game environment is ready. Install a program into it: aio-launcher-install or aotr-install <zip>."
 }
 
-cmd_launcher_install() {
+cmd_aio_launcher_install() {
   prefix_ready || die "Set up the game environment first. Run: prepare"
-  install_launcher_and_arena
+  install_aio_launcher_and_arena
   report_status
   machine DONE
   say ""
@@ -1418,7 +1422,7 @@ cmd_launcher_install() {
 
 cmd_install() {
   prepare_environment install
-  install_launcher_and_arena
+  install_aio_launcher_and_arena
   report_status
   machine DONE
   say ""
@@ -1431,14 +1435,14 @@ report_status() {
   # Complete means the game environment is ready and at least one program is installed.
   local p="missing" l="missing" a="missing" o="missing" done_all="no" t
   prefix_ready && p="ready"
-  launcher_installed && l="installed"
+  aio_launcher_installed && l="installed"
   arena_installed && a="installed"
   aotr_installed && o="installed"
   if [ "$p" = "ready" ] && { [ "$l" = "installed" ] || [ "$a" = "installed" ] || [ "$o" = "installed" ]; }; then done_all="yes"; fi
   machine STATUS runner "$RUNNER"
   machine STATUS graphics "$GRAPHICS"
   machine STATUS prefix "$p"
-  machine STATUS launcher "$l"
+  machine STATUS aio-launcher "$l"
   machine STATUS arena "$a"
   machine STATUS aotr "$o"
   for t in "${TOOLS[@]}"; do
@@ -1484,7 +1488,7 @@ cmd_status() {
   say "Graphics:   $(graphics_label)"
   say "Data dir:   $BASE"
   say "Prefix:     $PREFIX $(prefix_ready && echo '(ready)' || echo '(not created)')"
-  say "AIO Launcher: $(launcher_installed && echo installed || echo 'not installed')"
+  say "AIO Launcher: $(aio_launcher_installed && echo installed || echo 'not installed')"
   say "Arena:      $(arena_installed && echo installed || echo 'not installed')"
   say "Age of the Ring: $(aotr_installed && echo installed || echo 'not installed')"
   local t
@@ -1505,11 +1509,11 @@ cmd_status() {
 cmd_remove() {
   local program="${1:-}" dir
   case "$program" in
-    launcher) dir="$LAUNCHER_DIR" ;;
+    aio-launcher) dir="$AIO_LAUNCHER_DIR" ;;
     arena)    dir="$ARENA_DIR" ;;
     aotr)     dir="$AOTR_DIR" ;;
     workshop|mission-control) dir="$(tool_dir "$program")" ;;
-    *)        die "Use: remove launcher|arena|aotr|workshop|mission-control" ;;
+    *)        die "Use: remove aio-launcher|arena|aotr|workshop|mission-control" ;;
   esac
   # Whatever the settings say, never delete outside the game environment.
   case "$dir" in
@@ -1520,7 +1524,7 @@ cmd_remove() {
   end_wine_session
   rm -rf -- "$dir"
   case "$program" in
-    launcher) rm -f -- "$PREFIX/.bfme-launcher-installing" "$DOWNLOADS/AllInOneLauncherSetup.exe" "$DOWNLOADS/AllInOneLauncherSetup.exe.part" ;;
+    aio-launcher) rm -f -- "$PREFIX/.bfme-aio-launcher-installing" "$DOWNLOADS/AllInOneLauncherSetup.exe" "$DOWNLOADS/AllInOneLauncherSetup.exe.part" ;;
     arena)    rm -f -- "$DOWNLOADS/OnlineArena.exe" "$DOWNLOADS/OnlineArena.exe.part" ;;
     aotr)     rm -f -- "$PREFIX/.bfme-aotr-installing"; rm -rf -- "$AOTR_UNPACK" ;;
   esac
@@ -1554,9 +1558,9 @@ main() {
   case "$cmd" in
     doctor)            cmd_doctor ;;
     prepare)           cmd_prepare ;;
-    launcher-install)  cmd_launcher_install ;;
+    aio-launcher-install)  cmd_aio_launcher_install ;;
     install)           cmd_install ;;
-    launcher)          cmd_launcher ;;
+    aio-launcher)          cmd_aio_launcher ;;
     arena)             cmd_arena ;;
     game)              cmd_game "$@" ;;
     aotr-install)      cmd_aotr_install "$@" ;;

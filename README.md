@@ -151,7 +151,7 @@ Only want Age of the Ring? Skip `install` and prepare the game environment on it
 ./scripts/bfme-linux-setup.sh aotr-install ~/Downloads/AotR_Standalone_9.3.0_Installer.zip
 ```
 
-Other commands: `launcher-install` (the AIO Launcher and the Arena, after `prepare`), `launcher`, `arena`, `aotr`,
+Other commands: `aio-launcher-install` (the AIO Launcher and the Arena, after `prepare`), `aio-launcher`, `arena`, `aotr`,
 `game bfme1|bfme2|rotwk`, `graphics opengl|vulkan`, `shortcuts`, `status`, `reset-prefix --yes`, `version`, `help`.
 Configuration variables (such as `BFME_HOME` and `BFME_RUNNER=wine`) are in [How it works](docs/how-it-works.md).
 

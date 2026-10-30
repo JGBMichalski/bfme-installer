@@ -14,10 +14,13 @@ import sys
 
 from .runner import ScriptRunner, app_is_ready, find_script
 
-OPENABLE = ("launcher", "arena", "aotr")
+# What a shortcut passes to --open, and the program it means. Shortcuts made before the AIO Launcher was called
+# "aio-launcher" pass "launcher".
+OPENABLE = {"aio-launcher": "aio-launcher", "launcher": "aio-launcher", "arena": "arena", "aotr": "aotr"}
 
 
 def has_display() -> bool:
+    """Return True if a display is available, False otherwise."""
     return bool(os.environ.get("WAYLAND_DISPLAY") or os.environ.get("DISPLAY"))
 
 
@@ -25,7 +28,7 @@ def parse_args(argv: list[str]) -> str | None:
     """The program named by --open, or None. GTK has its own options, so others are ignored."""
     for i, arg in enumerate(argv):
         if arg == "--open" and i + 1 < len(argv) and argv[i + 1] in OPENABLE:
-            return argv[i + 1]
+            return OPENABLE[argv[i + 1]]
     return None
 
 

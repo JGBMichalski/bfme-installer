@@ -113,13 +113,10 @@ def test_the_script_finds_each_program_where_the_engine_puts_it(tmp_path, progra
     else:
         exe = p.tool_exe(program)
 
-    # The setup script calls the AIO Launcher "launcher".
-    key = "launcher" if program == "aio-launcher" else program
-
-    assert script_status(tmp_path)[key] == "missing"
+    assert script_status(tmp_path)[program] == "missing"
     exe.parent.mkdir(parents=True)
     exe.write_text("x")
-    assert script_status(tmp_path)[key] == "installed"
+    assert script_status(tmp_path)[program] == "installed"
 
 
 @pytest.mark.parametrize("index,key,exe", [(0, "bfme1", "lotrbfme.exe"), (1, "bfme2", "lotrbfme2.exe"),

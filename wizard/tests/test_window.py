@@ -13,7 +13,7 @@ from tests.helpers import buttons, descendants, labels, make_script, wait_for
 from tests.test_controller import FAKE
 
 IDLE = "#!/usr/bin/env bash\nexit 0\n"
-ALL = {"launcher": "installed", "arena": "installed", "aotr": "installed"}
+ALL = {"aio-launcher": "installed", "arena": "installed", "aotr": "installed"}
 # The icon buttons that lead to the other pages, by tooltip, left to right.
 ICON_BUTTONS = ("Install or remove programs", "Game folders", "Troubleshoot")
 NEAR = 12      # how far from the corner of the page the icon buttons may sit, in pixels
@@ -146,7 +146,7 @@ def test_they_float_in_the_top_right_corner_of_the_page_under_the_header_bar(win
 
 
 def test_troubleshoot_stays_where_it_is_when_the_other_two_come_and_go(win, gtk):
-    win.model.begin_plan(["launcher"])
+    win.model.begin_plan(["aio-launcher"])
     places = set()
     for state in ("done", "running", "idle", "done", "failed"):
         win.model.state = state
@@ -195,7 +195,7 @@ def things_on_the_page(win, rect, Gtk):
 
 
 def test_nothing_on_any_page_is_under_them_at_any_size_the_window_can_have(win, gtk):
-    win.model.begin_plan(["launcher"])
+    win.model.begin_plan(["aio-launcher"])
     page = win.root_page.get_child()
     across, down = gtk.Orientation.HORIZONTAL, gtk.Orientation.VERTICAL
     least_w = page.measure(across, -1)[0]
@@ -252,7 +252,7 @@ def test_the_old_menu_button_is_gone(win, gtk):
 
 @pytest.mark.parametrize("state", ["checking", "idle", "running", "waiting", "cancelled", "failed", "blocked", "removing", "done"])
 def test_troubleshoot_is_always_there_and_the_other_two_belong_to_the_home_screen(win, gtk, state):
-    win.model.begin_plan(["launcher"])          # the run page shows a step of the plan
+    win.model.begin_plan(["aio-launcher"])          # the run page shows a step of the plan
     win.model.state = state
     win.model.removing = "arena" if state == "removing" else None
     win.render()
@@ -302,7 +302,7 @@ def test_popping_a_page_does_not_forget_the_one_underneath_it(win):
 
 
 def test_installing_from_the_programs_page_goes_back_to_the_main_page_and_installs_that_program(make_window):
-    win = make_window(installed={"launcher": "installed", "arena": "installed"})
+    win = make_window(installed={"aio-launcher": "installed", "arena": "installed"})
     asked = []
     win.controller.install = asked.append
     win.show_programs()
@@ -310,13 +310,13 @@ def test_installing_from_the_programs_page_goes_back_to_the_main_page_and_instal
     assert win.nav.get_visible_page() is win.root_page
     assert asked == [["aotr"]]
     win.install_program("arena")       # the Arena installs with the AIO Launcher
-    assert asked[-1] == ["launcher"]
+    assert asked[-1] == ["aio-launcher"]
 
 
 @pytest.mark.parametrize("state", ["idle", "cancelled", "running", "waiting", "failed", "blocked"])
 def test_the_programs_page_does_not_outlive_the_home_screen(win, state):
     # The last program was removed, or the setup is being started over: there is nothing to manage.
-    win.model.begin_plan(["launcher"])
+    win.model.begin_plan(["aio-launcher"])
     win.show_programs()
     win.model.state = state
     win.render()
@@ -342,7 +342,7 @@ def test_its_rows_hold_still_while_the_answer_is_awaited(win):
     win.render()
     assert [(r.get_title(), r.get_subtitle()) for r in win.programs.rows()] == before
     assert not win._programs_page.get_can_pop()      # it is still the removal finishing: no way out yet
-    win.model.installed.update(launcher="installed", arena="installed")      # the answer: Age of the Ring is gone
+    win.model.installed.update({"aio-launcher": "installed", "arena": "installed"})      # the answer: Age of the Ring is gone
     win.model.state = "done"
     win.render()
     assert [r.get_subtitle()[:13] for r in win.programs.rows()] == ["Installed", "Installed", "Not installed"]
@@ -361,7 +361,7 @@ def test_the_page_cannot_be_left_while_a_program_is_removed(win):
 
 
 def test_its_rows_follow_the_model(make_window):
-    win = make_window(installed={"launcher": "installed", "arena": "installed"})
+    win = make_window(installed={"aio-launcher": "installed", "arena": "installed"})
     win.show_programs()
     titles = lambda: [(r.get_title(), r.get_subtitle()) for r in win.programs.rows()]
     assert titles()[2][0] == "Age of the Ring"
@@ -381,7 +381,7 @@ def row_button(row, Gtk):
     return [b.get_label() for b in buttons(row, Gtk)][0]
 
 
-@pytest.mark.parametrize("program, heading", [("launcher", "Remove the AIO Launcher?"), ("arena", "Remove the Arena?"),
+@pytest.mark.parametrize("program, heading", [("aio-launcher", "Remove the AIO Launcher?"), ("arena", "Remove the Arena?"),
                                               ("aotr", "Remove Age of the Ring?")])
 def test_the_confirmation_names_the_program_says_what_stays_and_offers_a_way_out(win, dialogs, program, heading):
     from gi.repository import Adw
@@ -403,7 +403,7 @@ def test_the_reset_dialog_also_names_the_aio_launcher_among_the_programs_to_clos
 def test_a_removal_toast_says_the_aio_launcher_in_full(win, toasts):
     win.controller.remove = lambda program, on_done: on_done(True) or True
     shown = toasts(win)
-    win._do_remove("launcher")
+    win._do_remove("aio-launcher")
     assert shown[-1] == "The AIO Launcher was removed."
 
 
@@ -431,14 +431,14 @@ def test_cancel_removes_nothing_and_remove_asks_the_controller(win, dialogs):
 
 
 def test_a_removal_that_cannot_start_says_why(win, toasts):
-    win.controller.apps.state["launcher"] = "running"
+    win.controller.apps.state["aio-launcher"] = "running"
     shown = toasts(win)
     win._do_remove("arena")
     assert "still running" in shown[-1]
 
 
 def test_the_whole_removal_with_a_real_script_ends_on_the_home_screen_with_a_toast(make_window, gtk, fake_dir, toasts):
-    fake_dir("prefix", "launcher", "arena", "aotr")
+    fake_dir("prefix", "aio-launcher", "arena", "aotr")
     win = make_window(FAKE, state="checking")
     win.controller.start()
     wait_for(8000, lambda: win.model.state == "done" and not win.controller.runner.busy)
@@ -471,15 +471,15 @@ def test_removing_the_last_program_lands_on_the_start_page(make_window, fake_dir
 
 
 def test_a_removal_that_fails_says_so_and_nothing_changes(make_window, fake_dir, toasts):
-    fake_dir("prefix", "launcher", "arena", "remove-fails")
+    fake_dir("prefix", "aio-launcher", "arena", "remove-fails")
     win = make_window(FAKE, state="checking")
     win.controller.start()
     wait_for(8000, lambda: win.model.state == "done" and not win.controller.runner.busy)
     shown = toasts(win)
-    win._do_remove("launcher")
+    win._do_remove("aio-launcher")
     wait_for(8000, lambda: win.model.state == "done" and not win.controller.runner.busy)
     assert shown == ["Could not remove the AIO Launcher: Could not remove it"]
-    assert win.model.is_installed("launcher")
+    assert win.model.is_installed("aio-launcher")
 
 
 def test_the_page_shown_while_it_runs_says_what_is_going(win):
@@ -499,7 +499,7 @@ def test_closing_the_window_in_the_middle_of_a_removal_asks_first(win, dialogs):
 
 def test_closing_the_window_otherwise_just_closes(win, dialogs):
     assert not win._on_close_request(win)
-    win.model.begin_plan(["launcher"])
+    win.model.begin_plan(["aio-launcher"])
     win.model.state = "running"
     assert win._on_close_request(win)
     assert dialogs[-1].get_heading() == "Setup is still running"

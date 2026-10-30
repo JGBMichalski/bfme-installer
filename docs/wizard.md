@@ -42,7 +42,7 @@ The lifebuoy is Troubleshoot's icon because it says "help when something goes wr
 
 - The window stays open when a program starts. The card shows "Running" until it ends, and programs can run at once. A program that ends within 15 seconds gets a note pointing to Troubleshoot, because the script returns 0 either way.
 - When the window opens with the setup complete, the system checks run in the background. A **failed** check (not a warning) shows a banner linking to Troubleshoot.
-- Each installed program has a shortcut running `bfme-installer --open launcher|arena|aotr`, with the program's own picture as its icon. It exists only while the program is installed.
+- Each installed program has a shortcut running `bfme-installer --open aio-launcher|arena|aotr`, with the program's own picture as its icon. It exists only while the program is installed.
 
 ## Programs
 
@@ -60,7 +60,7 @@ Under a **Tools** heading come **Workshop Studio** and **Mission Control** (down
 The AIO Launcher, the Arena and Age of the Ring each have a picture: a PNG in `bfme_wizard/icons/` that ships with the wizard, so nothing is downloaded and it shows with no network. The pictures are not this project's: they belong to their owners.
 
 - **In the window**, the home screen cards (64 px) and the Programs rows (40 px) draw each one as a circle with `Adw.Avatar`, so the square Age of the Ring picture sits well beside the two round ones. If a file is missing or damaged the circle shows the program's initials, never a broken image.
-- **In the menu**, each shortcut uses its program's picture as its icon, unchanged. In the Flatpak, the manifest exports each one as an icon of the app, named `<app id>.Launcher`, `<app id>.Arena` and `<app id>.Aotr` (an icon, not a menu entry), and the shortcut's `Icon=` is that name, so the pictures go when the app is uninstalled. Without the Flatpak the script copies them to `<data dir>/icons` and the shortcuts point at the copies, so they keep working if the checkout moves.
+- **In the menu**, each shortcut uses its program's picture as its icon, unchanged. In the Flatpak, the manifest exports each one as an icon of the app, named `<app id>.AioLauncher`, `<app id>.Arena` and `<app id>.Aotr` (an icon, not a menu entry), and the shortcut's `Icon=` is that name, so the pictures go when the app is uninstalled. Without the Flatpak the script copies them to `<data dir>/icons` and the shortcuts point at the copies, so they keep working if the checkout moves.
 
 ## Troubleshoot
 

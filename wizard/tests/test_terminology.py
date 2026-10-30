@@ -4,9 +4,9 @@ Age of the Ring has a launcher of its own, so "the Launcher" on its own could me
 wizard's words, the setup script's messages and help, the docs, the install page) says "AIO Launcher" for the community
 All-in-One Launcher; CONTEXT.md has the term. This test reads those files as text and fails on a bare mention.
 
-It leaves alone what is not a word of the language: the `launcher` command, key, step and file names, `.Launcher` at the end of
-an icon's name, `AllInOneLauncher.exe`, `umu-launcher`. It also leaves the notes of releases that are out: they say what they
-said then.
+It leaves alone what is not a word of the language: the `aio-launcher` command, key, step and file names, `.AioLauncher` at the end
+of an icon's name, the old `.Launcher` shortcut the uninstaller still removes, `AllInOneLauncher.exe`, `umu-launcher`. It also
+leaves the notes of releases that are out: they say what they said then.
 """
 import re
 
@@ -20,11 +20,11 @@ READ = (
     "README.md", "CONTEXT.md", "CONTRIBUTING.md", "CHANGELOG.md", "docs/*.md",
     "flatpak/*.html", "flatpak/*.xml", "flatpak/*.flatpakrepo", "flatpak/*.desktop", "flatpak/*.sh", ".github/ISSUE_TEMPLATE/*.yml",
 )
-# Where a bare "Launcher" is not a word: (file, a piece of the line). The icon of a program is named for it, and the suffix is
-# `Launcher`.
+# Where a bare "Launcher" is not a word: (file, a piece of the line). The uninstaller still removes the AIO Launcher's shortcut
+# from before it was called AioLauncher.
 NOT_A_WORD = (
-    ("scripts/bfme-linux-setup.sh", "printf 'Launcher'"),
-    ("flatpak/install-flatpak.sh", "for program in Launcher Arena Aotr"),
+    ("flatpak/install-flatpak.sh", "for program in AioLauncher Launcher Arena Aotr"),
+    ("flatpak/install-flatpak.sh", "# Launcher: the AIO Launcher's shortcut before it was called AioLauncher."),
     # The glossary names the phrase it forbids, in quotes.
     ("CONTEXT.md", 'Never shortened to "the Launcher"'),
 )
@@ -115,7 +115,7 @@ def test_the_check_finds_a_bare_name(line):
                                   "BFME All-in-One Launcher", "The Age of the Ring Launcher updates the mod itself.",
                                   "It has its own launcher and its own games.", "a launcher of its own", "AotR_Launcher.exe",
                                   "AllInOneLauncher.exe", "BFME All In One Launcher", "`<app id>.Launcher`", "umu-launcher",
-                                  "launcher-install", "--open launcher", "the launchers and games", "Gtk.UriLauncher",
+                                  "aio-launcher-install", "--open aio-launcher", "the launchers and games", "Gtk.UriLauncher",
                                   "AppLauncher", "AIO Launcher: not installed"))
 def test_the_check_leaves_a_full_name_alone(line):
     assert not bare_mention(line)
@@ -126,5 +126,5 @@ def test_an_allowed_phrase_is_allowed_only_where_it_is_listed_and_only_that_phra
     assert not bare_mention(without_allowed("CONTEXT.md", phrase))
     assert bare_mention(without_allowed("README.md", phrase))                          # another file: not allowed
     assert bare_mention(without_allowed("CONTEXT.md", phrase + ", but open the Launcher"))   # a second mention: found
-    assert not bare_mention(without_allowed("scripts/bfme-linux-setup.sh", "    launcher) printf 'Launcher' ;;"))
+    assert not bare_mention(without_allowed("flatpak/install-flatpak.sh", "  for program in AioLauncher Launcher Arena Aotr; do"))
     assert bare_mention(without_allowed("scripts/bfme-linux-setup.sh", "say 'Open the Launcher'"))

@@ -16,12 +16,12 @@ import pytest
 
 INSTALLER = Path(__file__).resolve().parents[2] / "flatpak" / "install-flatpak.sh"
 APP_ID = "com.jgbmichalski.BfmeInstaller"
-SHORTCUTS = [f"{APP_ID}.{program}.desktop" for program in ("Launcher", "Arena", "Aotr")]
+SHORTCUTS = [f"{APP_ID}.{program}.desktop" for program in ("AioLauncher", "Launcher", "Arena", "Aotr")]
 # Files in the same folder that belong to somebody else, or to another copy of the app. None may go.
 BYSTANDERS = [
-    "com.jgbmichalski.BfmeInstallerDev.Launcher.desktop",   # a build made by dev/install-local.sh
+    "com.jgbmichalski.BfmeInstallerDev.AioLauncher.desktop",   # a build made by dev/install-local.sh
     "com.jgbmichalski.BfmeInstaller.desktop",                # the app's own entry (Flatpak exports it, not the app)
-    "bfme-launcher.desktop",                                  # written by the script outside the Flatpak
+    "bfme-aio-launcher.desktop",                              # written by the script outside the Flatpak
     "firefox.desktop",
 ]
 
@@ -73,7 +73,7 @@ def test_the_app_is_uninstalled_too(box):
 
 
 def test_one_shortcut_alone_is_removed_and_the_others_are_not_invented(box):
-    put(box.apps, SHORTCUTS[1:2] + BYSTANDERS)   # only the Arena's
+    put(box.apps, SHORTCUTS[2:3] + BYSTANDERS)   # only the Arena's
     uninstall(box)
     assert names(box.apps) == sorted(BYSTANDERS)
 

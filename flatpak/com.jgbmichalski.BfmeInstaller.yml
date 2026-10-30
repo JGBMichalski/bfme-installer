@@ -98,7 +98,7 @@ modules:
       # The pictures of the programs, exported as icons of the app for the shortcuts it writes (Icon=<app id>.<Name>, see
       # "shortcuts" in bfme-linux-setup.sh). Only the pictures: the programs get no menu entry from the Flatpak. Flatpak
       # exports an icon only when its name is the app ID plus a suffix, and each goes in the folder for its real size.
-      - install -Dm644 bfme_wizard/icons/launcher.png /app/share/icons/hicolor/128x128/apps/com.jgbmichalski.BfmeInstaller.Launcher.png
+      - install -Dm644 bfme_wizard/icons/aio-launcher.png /app/share/icons/hicolor/128x128/apps/com.jgbmichalski.BfmeInstaller.AioLauncher.png
       - install -Dm644 bfme_wizard/icons/arena.png /app/share/icons/hicolor/256x256/apps/com.jgbmichalski.BfmeInstaller.Arena.png
       - install -Dm644 bfme_wizard/icons/aotr.png /app/share/icons/hicolor/128x128/apps/com.jgbmichalski.BfmeInstaller.Aotr.png
     sources:

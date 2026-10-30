@@ -10,14 +10,14 @@ from .runner import ScriptRunner
 # Script command per job. The aotr job also takes the file path.
 JOB_COMMANDS = {
     "environment": "prepare",
-    "launcher": "launcher-install",
+    "aio-launcher": "aio-launcher-install",
     "aotr": "aotr-install"
 }
 
 # Shortcut target to the program that provides it.
 PROGRAM_OF = {
-    "launcher": "launcher",
-    "arena": "launcher",
+    "aio-launcher": "aio-launcher",
+    "arena": "aio-launcher",
     "aotr": "aotr",
     **{tool: tool for tool in TOOLS},
 }

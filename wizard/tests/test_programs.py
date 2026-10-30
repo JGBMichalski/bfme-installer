@@ -4,7 +4,7 @@ from bfme_wizard.runner import ScriptRunner
 from tests.helpers import buttons, descendants, make_script, wait_for
 
 IDLE = "#!/usr/bin/env bash\nexit 0\n"
-ALL = {"launcher": "installed", "arena": "installed", "aotr": "installed"}
+ALL = {"aio-launcher": "installed", "arena": "installed", "aotr": "installed"}
 
 
 def make_page(installed, model_state="done", removing=None, apps=None):
@@ -40,12 +40,12 @@ def test_a_row_for_every_program_in_the_order_of_the_home_screen(gtk):
 
 
 def test_an_installed_program_offers_remove_and_a_missing_one_offers_install(gtk):
-    rows = program_rows({"launcher": "installed", "arena": "installed"})
+    rows = program_rows({"aio-launcher": "installed", "arena": "installed"})
     assert [[b.get_label() for b in buttons(r, gtk)] for r in rows] == [["Remove"], ["Remove"], ["Install"]]
 
 
 def test_install_looks_like_the_main_action_and_remove_like_the_dangerous_one(gtk):
-    rows = program_rows({"launcher": "installed"})
+    rows = program_rows({"aio-launcher": "installed"})
     remove, = buttons(rows[0], gtk)
     install, = buttons(rows[2], gtk)
     assert remove.has_css_class("destructive-action") and not remove.has_css_class("suggested-action")
@@ -53,15 +53,15 @@ def test_install_looks_like_the_main_action_and_remove_like_the_dangerous_one(gt
 
 
 def test_the_buttons_ask_for_their_own_program(gtk):
-    _c, _page, rows, asked = make_page({"launcher": "installed", "aotr": "installed"})
+    _c, _page, rows, asked = make_page({"aio-launcher": "installed", "aotr": "installed"})
     for row in rows[:3]:
         for button in buttons(row, gtk):
             button.emit("clicked")
-    assert asked == [("remove", "launcher"), ("install", "arena"), ("remove", "aotr")]
+    assert asked == [("remove", "aio-launcher"), ("install", "arena"), ("remove", "aotr")]
 
 
 def test_each_row_says_whether_the_program_is_there(gtk):
-    rows = program_rows({"launcher": "installed", "arena": "installed"})
+    rows = program_rows({"aio-launcher": "installed", "arena": "installed"})
     assert rows[0].get_subtitle() == "Installed"
     assert rows[1].get_subtitle() == "Installed"
     assert rows[2].get_subtitle().startswith("Not installed.")
@@ -73,7 +73,7 @@ def test_a_missing_program_says_what_installing_it_installs_with_it(gtk):
     rows = program_rows({})
     assert "Installs the Arena too" in rows[0].get_subtitle()
     assert "Installs the AIO Launcher too" in rows[1].get_subtitle()
-    rows = program_rows({"launcher": "installed"})
+    rows = program_rows({"aio-launcher": "installed"})
     assert "too" not in rows[1].get_subtitle()                      # the AIO Launcher is there: nothing else comes
     rows = program_rows({"arena": "installed"})
     assert "too" not in rows[0].get_subtitle()
@@ -89,19 +89,19 @@ def test_a_program_that_is_open_cannot_be_removed_and_the_others_say_what_to_clo
 
 
 def test_with_two_programs_open_it_names_both_in_the_order_of_the_page(gtk):
-    rows = program_rows(ALL, apps={"aotr": "running", "launcher": "running"})
+    rows = program_rows(ALL, apps={"aotr": "running", "aio-launcher": "running"})
     assert rows[1].get_subtitle() == "Installed. Close the AIO Launcher and Age of the Ring to remove it."
 
 
 def test_a_missing_program_can_still_be_installed_while_another_is_open(gtk):
     # Only removing is dangerous to what is open.
-    rows = program_rows({"launcher": "installed", "arena": "installed"}, apps={"launcher": "running"})
+    rows = program_rows({"aio-launcher": "installed", "arena": "installed"}, apps={"aio-launcher": "running"})
     install, = buttons(rows[2], gtk)
     assert (install.get_label(), install.get_sensitive()) == ("Install", True)
 
 
 def test_nothing_can_be_changed_while_the_script_is_busy(gtk):
-    c, page, _rows, _asked = make_page({"launcher": "installed"})
+    c, page, _rows, _asked = make_page({"aio-launcher": "installed"})
     assert c.run_checks()
     page.refresh()
     found = [b for r in rows_of(page) for b in buttons(r, gtk)]

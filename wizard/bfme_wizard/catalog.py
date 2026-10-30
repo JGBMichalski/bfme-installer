@@ -19,7 +19,7 @@ AOTR_INSTALLED_GB = 22
 
 @dataclass(frozen=True)
 class Program:
-    key: str                  # what the setup script calls it
+    key: str                  # what the engine calls it
     title: str                # on a card and in a list
     name: str                 # in a sentence
     summary: str              # what it is
@@ -34,7 +34,7 @@ class Program:
 
 CATALOG: tuple[Program, ...] = (
     Program(
-        "launcher", "AIO Launcher", "the AIO Launcher",
+        "aio-launcher", "AIO Launcher", "the AIO Launcher",
         "Install, patch and start your games",
         "Its files and settings are deleted. The games it installed, the Arena and Age of the Ring are not touched.",
     ),
@@ -69,7 +69,7 @@ TOOLS: tuple[Program, ...] = (
 )
 
 # Installing one of these installs the other when it is missing: the Arena only plays what the AIO Launcher installs.
-INSTALLED_TOGETHER = {"launcher": "arena", "arena": "launcher"}
+INSTALLED_TOGETHER = {"aio-launcher": "arena", "arena": "aio-launcher"}
 
 
 def program(key: str) -> Program:

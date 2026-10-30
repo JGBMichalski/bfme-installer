@@ -9,11 +9,11 @@ from bfme_wizard.controller import Controller
 from bfme_wizard.runner import ScriptRunner
 
 # A fake setup script. State lives in flag files in $FAKE_DIR; every call is appended to $FAKE_DIR/calls.
-#   prefix, launcher, arena, aotr   what is installed
+#   prefix, aio-launcher, arena, aotr   what is installed
 #   curl-fixed               the system check passes (without it `prepare` fails its check)
 #   flaky                    `prepare` fails once, in the runner step
-#   launcher-flaky           `launcher-install` fails once, in the `launcher` step
-#   cancel-once              `launcher-install` is stopped once, before the arena step
+#   aio-launcher-flaky           `aio-launcher-install` fails once, in the `aio-launcher` step
+#   cancel-once              `aio-launcher-install` is stopped once, before the arena step
 #   aotr-bad                 `aotr-install` fails once, in the check
 #   shortcuts-fails          `shortcuts` fails (the permission is gone, say)
 #   remove-fails             `remove` fails and deletes nothing
@@ -26,10 +26,10 @@ once() { [ -f "$FAKE_DIR/$1" ] && [ ! -f "$FAKE_DIR/$1-used" ] && touch "$FAKE_D
 report() {
   if [ -f "$FAKE_DIR/graphics" ]; then echo "@bfme STATUS graphics $(cat "$FAKE_DIR/graphics")"; else echo "@bfme STATUS graphics vulkan"; fi
   if [ -f "$FAKE_DIR/prefix" ]; then echo "@bfme STATUS prefix ready"; else echo "@bfme STATUS prefix missing"; fi
-  if [ -f "$FAKE_DIR/launcher" ]; then echo "@bfme STATUS launcher installed"; else echo "@bfme STATUS launcher missing"; fi
+  if [ -f "$FAKE_DIR/aio-launcher" ]; then echo "@bfme STATUS aio-launcher installed"; else echo "@bfme STATUS aio-launcher missing"; fi
   if [ -f "$FAKE_DIR/arena" ]; then echo "@bfme STATUS arena installed"; else echo "@bfme STATUS arena missing"; fi
   if [ -f "$FAKE_DIR/aotr" ]; then echo "@bfme STATUS aotr installed"; else echo "@bfme STATUS aotr missing"; fi
-  if [ -f "$FAKE_DIR/prefix" ] && { [ -f "$FAKE_DIR/launcher" ] || [ -f "$FAKE_DIR/arena" ] || [ -f "$FAKE_DIR/aotr" ]; }; then
+  if [ -f "$FAKE_DIR/prefix" ] && { [ -f "$FAKE_DIR/aio-launcher" ] || [ -f "$FAKE_DIR/arena" ] || [ -f "$FAKE_DIR/aotr" ]; }; then
     echo "@bfme STATUS complete yes"; else echo "@bfme STATUS complete no"; fi
 }
 case "$cmd" in
@@ -42,7 +42,7 @@ case "$cmd" in
   shortcuts)
     echo "Shortcuts are up to date in /fake"
     if [ -f "$FAKE_DIR/shortcuts-fails" ]; then echo "@bfme ERROR - Could not update the shortcuts"; exit 1; fi ;;
-  reset-prefix) rm -f "$FAKE_DIR/prefix" "$FAKE_DIR/launcher" "$FAKE_DIR/arena" "$FAKE_DIR/aotr"; echo "Prefix deleted." ;;
+  reset-prefix) rm -f "$FAKE_DIR/prefix" "$FAKE_DIR/aio-launcher" "$FAKE_DIR/arena" "$FAKE_DIR/aotr"; echo "Prefix deleted." ;;
   remove)
     if [ -f "$FAKE_DIR/remove-fails" ]; then echo "@bfme ERROR - Could not remove it"; exit 1; fi
     rm -f "$FAKE_DIR/$2"; report; echo "@bfme DONE" ;;
@@ -61,13 +61,13 @@ case "$cmd" in
     echo "@bfme PROGRESS 50"; echo "@bfme STEP runner done"
     echo "@bfme STEP prefix start"; echo "@bfme STEP prefix done"
     touch "$FAKE_DIR/prefix"; report; echo "@bfme DONE" ;;
-  launcher-install)
-    echo "@bfme STEP launcher start"
-    if once launcher-flaky; then echo "@bfme ERROR launcher Failed (exit 22)."; exit 22; fi
-    echo "@bfme STEP launcher done"; echo "@bfme STEP arena start"
+  aio-launcher-install)
+    echo "@bfme STEP aio-launcher start"
+    if once aio-launcher-flaky; then echo "@bfme ERROR aio-launcher Failed (exit 22)."; exit 22; fi
+    echo "@bfme STEP aio-launcher done"; echo "@bfme STEP arena start"
     if once cancel-once; then echo "@bfme CANCELLED"; exit 130; fi
     echo "@bfme STEP arena done"; echo "@bfme STEP shortcuts skip"
-    touch "$FAKE_DIR/launcher" "$FAKE_DIR/arena"; report; echo "@bfme DONE" ;;
+    touch "$FAKE_DIR/aio-launcher" "$FAKE_DIR/arena"; report; echo "@bfme DONE" ;;
   aotr-install)
     echo "@bfme STEP aotr-check start"
     if once aotr-bad; then echo "@bfme ERROR aotr-check This file is incomplete."; exit 1; fi
@@ -139,7 +139,7 @@ class Fake:
         return results
 
 
-EVERYTHING = ("prefix", "launcher", "arena", "aotr")
+EVERYTHING = ("prefix", "aio-launcher", "arena", "aotr")
 
 
 @pytest.fixture
@@ -153,15 +153,15 @@ def test_fresh_start_then_install_the_aio_launcher(fake):
     fake.run_until("idle", fake.c.start)
     assert not fake.c.model.paused
     fake.flag("curl-fixed")
-    fake.run_until("done", lambda: fake.c.install(["launcher"]))
+    fake.run_until("done", lambda: fake.c.install(["aio-launcher"]))
     assert fake.c.model.done_count == 6
-    assert fake.calls() == ["status", "prepare", "launcher-install"]
-    assert fake.c.model.is_installed("launcher")
+    assert fake.calls() == ["status", "prepare", "aio-launcher-install"]
+    assert fake.c.model.is_installed("aio-launcher")
     assert fake.c.model.just_finished
 
 
 def test_already_installed_starts_on_done(fake):
-    fake.flag("prefix", "launcher")
+    fake.flag("prefix", "aio-launcher")
     fake.run_until("done", fake.c.start)
 
 
@@ -169,8 +169,8 @@ def test_a_ready_environment_is_not_set_up_again(fake):
     fake.flag("prefix", "curl-fixed")
     fake.run_until("idle", fake.c.start)
     assert fake.c.model.environment_ready
-    fake.run_until("done", lambda: fake.c.install(["launcher"]))
-    assert fake.calls() == ["status", "launcher-install"]
+    fake.run_until("done", lambda: fake.c.install(["aio-launcher"]))
+    assert fake.calls() == ["status", "aio-launcher-install"]
 
 
 def test_nothing_chosen_installs_nothing(fake):
@@ -180,74 +180,74 @@ def test_nothing_chosen_installs_nothing(fake):
 
 
 def test_blocked_then_recheck_continues_the_plan(fake):
-    fake.run_until("blocked", lambda: fake.c.install(["launcher"]))
+    fake.run_until("blocked", lambda: fake.c.install(["aio-launcher"]))
     assert [(p.message, p.command) for p in fake.c.model.problems] == [("curl not found", "sudo apt install curl")]
     fake.run_until("blocked", fake.c.recheck)  # still not fixed
     assert len(fake.c.model.problems) == 1
     fake.flag("curl-fixed")
     fake.run_until("done", fake.c.recheck)  # fixed: the recheck carries on into the plan
     assert fake.c.model.problems == []
-    assert fake.calls()[-2:] == ["prepare", "launcher-install"]
+    assert fake.calls()[-2:] == ["prepare", "aio-launcher-install"]
 
 
 def test_failure_then_retry_runs_the_job_that_failed(fake):
     fake.flag("curl-fixed", "flaky")
-    fake.run_until("failed", lambda: fake.c.install(["launcher"]))
+    fake.run_until("failed", lambda: fake.c.install(["aio-launcher"]))
     assert fake.c.model.failed_step == "runner"
     assert "Failed (exit 22)." in fake.c.model.log_text()
     fake.run_until("done", fake.c.retry)
     assert fake.c.model.error is None
-    assert fake.calls() == ["prepare", "prepare", "launcher-install"]
+    assert fake.calls() == ["prepare", "prepare", "aio-launcher-install"]
 
 
 def test_a_retry_does_not_repeat_the_jobs_that_finished(fake):
-    fake.flag("curl-fixed", "launcher-flaky")
-    fake.run_until("failed", lambda: fake.c.install(["launcher"]))
-    assert fake.c.model.failed_step == "launcher"
+    fake.flag("curl-fixed", "aio-launcher-flaky")
+    fake.run_until("failed", lambda: fake.c.install(["aio-launcher"]))
+    assert fake.c.model.failed_step == "aio-launcher"
     fake.run_until("done", fake.c.retry)
-    assert fake.calls() == ["prepare", "launcher-install", "launcher-install"]
+    assert fake.calls() == ["prepare", "aio-launcher-install", "aio-launcher-install"]
 
 
 def test_stopping_pauses_the_setup_and_resume_carries_on_with_the_aio_launcher(fake):
     fake.flag("curl-fixed", "cancel-once")
-    fake.run_until("cancelled", lambda: fake.c.install(["launcher"]))
+    fake.run_until("cancelled", lambda: fake.c.install(["aio-launcher"]))
     assert fake.c.model.paused
     fake.run_until("done", fake.c.resume)
-    assert fake.calls() == ["prepare", "launcher-install", "launcher-install"]
+    assert fake.calls() == ["prepare", "aio-launcher-install", "aio-launcher-install"]
 
 
 def test_choosing_the_same_again_after_a_stop_picks_up_where_it_stopped(fake):
     # The start page button is install() for both Install and Resume.
     fake.flag("curl-fixed", "cancel-once")
-    fake.run_until("cancelled", lambda: fake.c.install(["launcher"]))
-    fake.run_until("done", lambda: fake.c.install(["launcher"]))
-    assert fake.calls() == ["prepare", "launcher-install", "launcher-install"]   # no second prepare
+    fake.run_until("cancelled", lambda: fake.c.install(["aio-launcher"]))
+    fake.run_until("done", lambda: fake.c.install(["aio-launcher"]))
+    assert fake.calls() == ["prepare", "aio-launcher-install", "aio-launcher-install"]   # no second prepare
 
 
 def test_a_different_choice_after_a_stop_starts_a_new_plan(fake):
     fake.flag("curl-fixed", "cancel-once")
-    fake.run_until("cancelled", lambda: fake.c.install(["launcher"]))
+    fake.run_until("cancelled", lambda: fake.c.install(["aio-launcher"]))
     fake.run_until("waiting", lambda: fake.c.install(["aotr"]))
     # The jobs report the prepared environment, so the new plan skips it.
     assert fake.c.model.plan == ["aotr"]
-    assert fake.calls() == ["prepare", "launcher-install"]
+    assert fake.calls() == ["prepare", "aio-launcher-install"]
 
 
 def test_a_cancel_pressed_during_the_last_step_of_a_job_does_not_start_the_next_job(fake):
     fake.flag("curl-fixed")
-    fake.c.install(["launcher", "aotr"])
+    fake.c.install(["aio-launcher", "aotr"])
     fake.c.model.request_cancel()   # as the Cancel button does; the script has no step left to stop before
     fake.run_until("cancelled", lambda: None)
     assert fake.calls() == ["prepare"]
     # The same choice resumes at the next job, then waits for the Age of the Ring file.
-    fake.run_until("waiting", lambda: fake.c.install(["launcher", "aotr"]))
-    assert fake.calls() == ["prepare", "launcher-install"]
+    fake.run_until("waiting", lambda: fake.c.install(["aio-launcher", "aotr"]))
+    assert fake.calls() == ["prepare", "aio-launcher-install"]
 
 
 def test_a_second_install_while_running_is_ignored(fake):
     fake.flag("curl-fixed")
-    fake.c.install(["launcher"])
-    fake.c.install(["launcher"])  # ignored: the first is still running
+    fake.c.install(["aio-launcher"])
+    fake.c.install(["aio-launcher"])  # ignored: the first is still running
     fake.c.start()                # also ignored
     GLib.timeout_add(5000, fake.loop.quit)
     GLib.timeout_add(50, lambda: (fake.loop.quit(), False)[1] if fake.c.model.state == "done" else True)
@@ -267,18 +267,18 @@ def test_alone_it_installs_neither_the_aio_launcher_nor_the_arena(fake):
     assert fake.calls() == ["status", "prepare", f"aotr-install {ZIP}"]
     m = fake.c.model
     assert m.aotr_installed
-    assert not m.is_installed("launcher")
+    assert not m.is_installed("aio-launcher")
     assert not m.is_installed("arena")
     assert m.just_finished
 
 
 def test_with_the_aio_launcher_it_comes_last(fake):
     fake.flag("curl-fixed")
-    fake.run_until("waiting", lambda: fake.c.install(["aotr", "launcher"]))
-    assert fake.calls() == ["prepare", "launcher-install"]
+    fake.run_until("waiting", lambda: fake.c.install(["aotr", "aio-launcher"]))
+    assert fake.calls() == ["prepare", "aio-launcher-install"]
     fake.run_until("done", lambda: fake.c.choose_aotr_file(ZIP))
-    assert fake.calls() == ["prepare", "launcher-install", f"aotr-install {ZIP}"]
-    assert fake.c.model.aotr_installed and fake.c.model.is_installed("launcher")
+    assert fake.calls() == ["prepare", "aio-launcher-install", f"aotr-install {ZIP}"]
+    assert fake.c.model.aotr_installed and fake.c.model.is_installed("aio-launcher")
 
 
 def test_the_download_page_knows_what_the_jobs_before_it_installed(fake):
@@ -287,9 +287,9 @@ def test_the_download_page_knows_what_the_jobs_before_it_installed(fake):
     fake.flag("curl-fixed")
     fake.run_until("idle", fake.c.start)
     assert not fake.c.model.has_home_screen
-    fake.run_until("waiting", lambda: fake.c.install(["launcher", "aotr"]))
+    fake.run_until("waiting", lambda: fake.c.install(["aio-launcher", "aotr"]))
     assert fake.c.model.has_home_screen
-    assert fake.calls() == ["status", "prepare", "launcher-install"]   # learned without asking again
+    assert fake.calls() == ["status", "prepare", "aio-launcher-install"]   # learned without asking again
     fake.run_until("done", fake.c.back_home)    # and it really is the home screen
 
 
@@ -301,7 +301,7 @@ def test_leaving_when_only_the_environment_was_prepared_lands_on_the_start_page(
 
 
 def test_from_the_home_screen_it_goes_straight_to_the_download_page(fake):
-    fake.flag("prefix", "launcher")
+    fake.flag("prefix", "aio-launcher")
     fake.run_until("done", fake.c.start)
     before = fake.calls()
     fake.run_until("waiting", lambda: fake.c.install(["aotr"]))
@@ -310,7 +310,7 @@ def test_from_the_home_screen_it_goes_straight_to_the_download_page(fake):
 
 
 def test_a_failed_check_can_be_retried_with_the_same_file(fake):
-    fake.flag("prefix", "launcher", "aotr-bad")
+    fake.flag("prefix", "aio-launcher", "aotr-bad")
     fake.run_until("done", fake.c.start)
     fake.c.install(["aotr"])
     fake.run_until("failed", lambda: fake.c.choose_aotr_file(ZIP))
@@ -322,7 +322,7 @@ def test_a_failed_check_can_be_retried_with_the_same_file(fake):
 
 
 def test_a_failed_check_can_be_followed_by_another_file(fake):
-    fake.flag("prefix", "launcher", "aotr-bad")
+    fake.flag("prefix", "aio-launcher", "aotr-bad")
     fake.run_until("done", fake.c.start)
     fake.c.install(["aotr"])
     fake.run_until("failed", lambda: fake.c.choose_aotr_file("/tmp/old.zip"))
@@ -332,7 +332,7 @@ def test_a_failed_check_can_be_followed_by_another_file(fake):
 
 
 def test_back_home_looks_at_the_setup_again(fake):
-    fake.flag("prefix", "launcher", "aotr-bad")
+    fake.flag("prefix", "aio-launcher", "aotr-bad")
     fake.run_until("done", fake.c.start)
     fake.c.install(["aotr"])
     fake.run_until("failed", lambda: fake.c.choose_aotr_file(ZIP))
@@ -351,7 +351,7 @@ def test_leaving_the_download_page_of_a_first_setup_goes_back_to_the_start_page(
 # Shortcuts: a shortcut lives exactly as long as its program, so the wizard asks the script to bring them in line with
 # what is installed every time it starts, whichever page comes next. (The script does the writing and the removing.)
 def test_a_start_with_something_installed_does_it_before_the_quiet_checks(fake):
-    fake.flag("prefix", "launcher")
+    fake.flag("prefix", "aio-launcher")
     fake.run_until("done", fake.c.start)
     assert fake.calls(raw=True) == ["status", "shortcuts", "doctor"]
 
@@ -363,7 +363,7 @@ def test_a_start_with_nothing_installed_does_it_too(fake):
 
 
 def test_a_program_removed_by_hand_is_noticed_at_the_next_start(fake):
-    fake.flag("prefix", "launcher", "aotr")
+    fake.flag("prefix", "aio-launcher", "aotr")
     fake.run_until("done", fake.c.start)
     os.unlink(os.path.join(fake.dir, "aotr"))          # the player deleted Age of the Ring
     fake.run_until("done", fake.c.start)               # and opens the wizard again
@@ -372,15 +372,15 @@ def test_a_program_removed_by_hand_is_noticed_at_the_next_start(fake):
 
 
 def test_the_only_program_removed_by_hand_is_noticed_too(fake):
-    fake.flag("prefix", "launcher")
+    fake.flag("prefix", "aio-launcher")
     fake.run_until("done", fake.c.start)
-    os.unlink(os.path.join(fake.dir, "launcher"))
+    os.unlink(os.path.join(fake.dir, "aio-launcher"))
     fake.run_until("idle", fake.c.start)               # no home screen any more: the start page
     assert fake.calls(raw=True) == ["status", "shortcuts", "doctor", "status", "shortcuts"]
 
 
 def test_reset_removes_the_programs_and_then_looks_again_so_the_shortcuts_follow(fake):
-    fake.flag("prefix", "launcher", "aotr")
+    fake.flag("prefix", "aio-launcher", "aotr")
     fake.run_until("done", fake.c.start)
     results = []
     fake.run_until("idle", lambda: fake.c.reset(results.append))
@@ -390,7 +390,7 @@ def test_reset_removes_the_programs_and_then_looks_again_so_the_shortcuts_follow
 
 def test_a_shortcut_of_a_program_that_is_gone_is_removed_before_the_install_page_comes_up(fake):
     # Clicking the Age of the Ring shortcut after the mod was deleted: the shortcut goes, and the wizard offers it again.
-    fake.flag("prefix", "launcher")
+    fake.flag("prefix", "aio-launcher")
     fake.c = fake.controller(offer="aotr")
     fake.run_until("waiting", fake.c.start)
     assert fake.calls(raw=True) == ["status", "shortcuts"]
@@ -400,19 +400,19 @@ def test_installing_does_not_add_a_run_of_its_own(fake):
     # The jobs write the shortcuts of what they install themselves, so the wizard asks once per start.
     fake.flag("curl-fixed")
     fake.run_until("idle", fake.c.start)
-    fake.run_until("done", lambda: fake.c.install(["launcher"]))
-    assert fake.calls(raw=True) == ["status", "shortcuts", "prepare", "launcher-install"]
+    fake.run_until("done", lambda: fake.c.install(["aio-launcher"]))
+    assert fake.calls(raw=True) == ["status", "shortcuts", "prepare", "aio-launcher-install"]
 
 
 def test_what_the_script_says_about_it_stays_out_of_the_log(fake):
-    fake.flag("prefix", "launcher")
+    fake.flag("prefix", "aio-launcher")
     fake.run_until("done", fake.c.start)
     assert "Shortcuts are up to date" not in fake.c.model.log_text()
 
 
 def test_a_failing_run_changes_nothing_for_the_player(fake):
     # Shortcuts are optional, so the wizard still starts.
-    fake.flag("prefix", "launcher", "shortcuts-fails")
+    fake.flag("prefix", "aio-launcher", "shortcuts-fails")
     fake.run_until("done", fake.c.start)
     assert fake.c.model.error is None
     assert not fake.c.checking
@@ -422,7 +422,7 @@ def test_a_failing_run_changes_nothing_for_the_player(fake):
 def test_the_page_waits_for_the_shortcuts_so_its_buttons_never_meet_a_busy_script(fake):
     # Shown first, its buttons would do nothing while the script ran. So the first time the home screen is rendered,
     # the shortcuts have been brought in line and the script is free again.
-    fake.flag("prefix", "launcher")
+    fake.flag("prefix", "aio-launcher")
     first = []
     def changed():
         if fake.c.model.state == "done" and not first:
@@ -458,7 +458,7 @@ def test_it_is_refused_while_the_setup_or_a_program_runs(fake):
     fake.c.model.state = "running"
     assert not fake.c.set_graphics("opengl", lambda ok: None)
     fake.c.model.state = "done"
-    fake.c.apps.state["launcher"] = "running"
+    fake.c.apps.state["aio-launcher"] = "running"
     assert not fake.c.set_graphics("opengl", lambda ok: None)
     assert fake.calls() == calls
 
@@ -473,24 +473,24 @@ def test_a_program_goes_and_the_others_stay(fake):
     fake.started()
     assert fake.remove("arena") == [True]
     m = fake.c.model
-    assert [m.is_installed(p) for p in ("launcher", "arena", "aotr")] == [True, False, True]
+    assert [m.is_installed(p) for p in ("aio-launcher", "arena", "aotr")] == [True, False, True]
     assert fake.calls() == ["status", "doctor", "remove arena", "status", "doctor"]
 
 
-@pytest.mark.parametrize("program", ["launcher", "arena", "aotr"])
+@pytest.mark.parametrize("program", ["aio-launcher", "arena", "aotr"])
 
 
 def test_each_program_can_go_by_itself(fake, program):
     fake.started()
     assert fake.remove(program) == [True]
-    gone = [p for p in ("launcher", "arena", "aotr") if not fake.c.model.is_installed(p)]
+    gone = [p for p in ("aio-launcher", "arena", "aotr") if not fake.c.model.is_installed(p)]
     assert gone == [program]
 
 
 def test_the_window_sees_it_as_a_state_of_its_own_and_then_looks_at_the_setup_again(fake):
     fake.started()
     fake.states.clear()
-    fake.remove("launcher")
+    fake.remove("aio-launcher")
     assert fake.states == ["removing", "checking", "done"]
 
 
@@ -506,9 +506,9 @@ def test_a_failed_removal_says_what_went_wrong_and_looks_again(fake):
     fake.started()
     fake.flag("remove-fails")
     seen = []
-    fake.run_until("done", lambda: fake.c.remove("launcher", lambda ok: seen.append((ok, fake.c.model.error.message))))
+    fake.run_until("done", lambda: fake.c.remove("aio-launcher", lambda ok: seen.append((ok, fake.c.model.error.message))))
     assert seen == [(False, "Could not remove it")]
-    assert fake.c.model.is_installed("launcher")      # nothing was deleted
+    assert fake.c.model.is_installed("aio-launcher")      # nothing was deleted
     assert fake.c.model.error is None                        # and the home screen is not an error page
 
 
@@ -518,9 +518,9 @@ def test_it_is_refused_while_the_setup_runs_or_a_program_is_open_or_the_script_i
     fake.c.model.state = "running"
     assert not fake.c.remove("arena", lambda ok: None)
     fake.c.model.state = "done"
-    fake.c.apps.state["launcher"] = "running"
+    fake.c.apps.state["aio-launcher"] = "running"
     assert not fake.c.remove("arena", lambda ok: None)
-    fake.c.apps.state["launcher"] = "idle"
+    fake.c.apps.state["aio-launcher"] = "idle"
     fake.c.run_checks()
     assert not fake.c.remove("arena", lambda ok: None)
     fake.run_until("done", lambda: None)
@@ -529,7 +529,7 @@ def test_it_is_refused_while_the_setup_runs_or_a_program_is_open_or_the_script_i
 
 def test_only_a_program_can_be_removed(fake):
     fake.started()
-    for name in ("everything", "prefix", "", "BFME2", "launcher-install"):
+    for name in ("everything", "prefix", "", "BFME2", "aio-launcher-install"):
         assert not fake.c.remove(name, lambda ok: None), name
     assert [c for c in fake.calls() if c.startswith("remove")] == []
 
@@ -544,14 +544,14 @@ def test_the_reason_it_waits_is_told(fake):
 
 def test_a_program_that_was_removed_can_be_installed_again(fake):
     fake.started()
-    fake.remove("launcher")
+    fake.remove("aio-launcher")
     fake.flag("curl-fixed")
-    fake.run_until("done", lambda: fake.c.install(["launcher"]))
-    assert fake.c.model.is_installed("launcher")
+    fake.run_until("done", lambda: fake.c.install(["aio-launcher"]))
+    assert fake.c.model.is_installed("aio-launcher")
 
 
 # Offer: what a shortcut wanted, when the setup could not just start it.
-@pytest.mark.parametrize("entry, program", [("launcher", "launcher"), ("arena", "launcher"), ("aotr", "aotr")])
+@pytest.mark.parametrize("entry, program", [("aio-launcher", "aio-launcher"), ("arena", "aio-launcher"), ("aotr", "aotr")])
 
 
 def test_an_entry_for_a_program_that_is_not_installed_prechooses_it_on_the_start_page(fake, entry, program):
@@ -566,27 +566,27 @@ def test_no_entry_chooses_nothing(fake):
 
 
 def test_the_age_of_the_ring_entry_goes_to_its_download_page_on_a_complete_setup(fake):
-    fake.flag("prefix", "launcher")
+    fake.flag("prefix", "aio-launcher")
     fake.c = fake.controller(offer="aotr")
     fake.run_until("waiting", fake.c.start)
     assert fake.calls() == ["status"]   # no system checks first: the download page is already waiting
 
 
 def test_but_only_once(fake):
-    fake.flag("prefix", "launcher")
+    fake.flag("prefix", "aio-launcher")
     fake.c = fake.controller(offer="aotr")
     fake.run_until("waiting", fake.c.start)
     fake.run_until("done", fake.c.back_home)
 
 
 def test_the_age_of_the_ring_entry_does_nothing_when_it_is_installed(fake):
-    fake.flag("prefix", "launcher", "aotr")
+    fake.flag("prefix", "aio-launcher", "aotr")
     fake.c = fake.controller(offer="aotr")
     fake.run_until("done", fake.c.start)
 
 
 def test_an_aio_launcher_entry_on_a_complete_setup_just_shows_the_home_screen(fake):
     fake.flag("prefix", "aotr")
-    fake.c = fake.controller(offer="launcher")
+    fake.c = fake.controller(offer="aio-launcher")
     fake.run_until("done", fake.c.start)
-    assert not fake.c.model.is_installed("launcher")
+    assert not fake.c.model.is_installed("aio-launcher")

@@ -26,21 +26,21 @@ ENVIRONMENT_DONE = ("@bfme STEP doctor done", "@bfme STEP runner done", "@bfme S
 
 def test_complete_setup_goes_straight_to_done():
     m = SetupModel()
-    feed(m, "@bfme STATUS prefix ready", "@bfme STATUS launcher installed",
+    feed(m, "@bfme STATUS prefix ready", "@bfme STATUS aio-launcher installed",
          "@bfme STATUS arena installed", "@bfme STATUS complete yes")
     m.finish_status(0)
     assert m.state == "done"
 
 def test_a_ready_environment_with_nothing_installed_is_not_complete():
     m = SetupModel()
-    feed(m, "@bfme STATUS prefix ready", "@bfme STATUS launcher missing",
+    feed(m, "@bfme STATUS prefix ready", "@bfme STATUS aio-launcher missing",
          "@bfme STATUS arena missing", "@bfme STATUS aotr missing", "@bfme STATUS complete no")
     m.finish_status(0)
     assert (m.state, m.paused, m.environment_ready) == ("idle", False, True)
 
 def test_nothing_installed_is_a_fresh_start():
     m = SetupModel()
-    feed(m, "@bfme STATUS prefix missing", "@bfme STATUS launcher missing",
+    feed(m, "@bfme STATUS prefix missing", "@bfme STATUS aio-launcher missing",
          "@bfme STATUS arena missing", "@bfme STATUS complete no")
     m.finish_status(0)
     assert (m.state, m.paused, m.environment_ready) == ("idle", False, False)
@@ -52,9 +52,9 @@ def test_a_failing_status_command_is_not_done():
 
 def test_each_program_is_known_from_its_status_line():
     m = SetupModel()
-    assert not any(m.is_installed(p) for p in ("launcher", "arena", "aotr"))
-    feed(m, "@bfme STATUS launcher installed", "@bfme STATUS arena missing", "@bfme STATUS aotr installed")
-    assert [m.is_installed(p) for p in ("launcher", "arena", "aotr")] == [True, False, True]
+    assert not any(m.is_installed(p) for p in ("aio-launcher", "arena", "aotr"))
+    feed(m, "@bfme STATUS aio-launcher installed", "@bfme STATUS arena missing", "@bfme STATUS aotr installed")
+    assert [m.is_installed(p) for p in ("aio-launcher", "arena", "aotr")] == [True, False, True]
     assert m.aotr_installed
 
 def test_leaving_a_plan_lands_on_the_home_screen_only_when_something_is_installed():
@@ -68,8 +68,8 @@ def test_leaving_a_plan_lands_on_the_home_screen_only_when_something_is_installe
 
 def test_a_choice_is_kept_in_install_order_and_unknown_programs_are_ignored():
     m = SetupModel()
-    assert m.choose(["aotr", "launcher", "teleport"]) == ("launcher", "aotr")
-    assert m.selection == ("launcher", "aotr")
+    assert m.choose(["aotr", "aio-launcher", "teleport"]) == ("aio-launcher", "aotr")
+    assert m.selection == ("aio-launcher", "aotr")
 
 def test_choosing_nothing_gives_no_plan():
     m = SetupModel()
@@ -78,46 +78,46 @@ def test_choosing_nothing_gives_no_plan():
     assert m.plan == []
 
 def test_the_same_choice_after_a_stop_resumes_and_a_different_one_does_not():
-    m = planned("launcher", "aotr")
-    assert not m.resumes(["launcher", "aotr"])   # nothing was stopped
+    m = planned("aio-launcher", "aotr")
+    assert not m.resumes(["aio-launcher", "aotr"])   # nothing was stopped
     run_next(m)
     feed(m, "@bfme CANCELLED")
     m.finish_install(130)
     assert m.paused
-    assert m.resumes(["aotr", "launcher"])    # the order does not matter
-    assert m.resumes(["launcher", "aotr", "teleport"])   # neither does a name that is not a program
-    assert not m.resumes(["launcher"])
+    assert m.resumes(["aotr", "aio-launcher"])    # the order does not matter
+    assert m.resumes(["aio-launcher", "aotr", "teleport"])   # neither does a name that is not a program
+    assert not m.resumes(["aio-launcher"])
     assert not m.resumes([])
 
 
 def test_the_environment_comes_first_and_the_programs_follow_in_a_fixed_order():
-    assert plan_for(["launcher"], environment_ready=False) == ["environment", "launcher"]
+    assert plan_for(["aio-launcher"], environment_ready=False) == ["environment", "aio-launcher"]
     assert plan_for(["aotr"], environment_ready=False) == ["environment", "aotr"]
-    assert plan_for(["aotr", "launcher"], environment_ready=False) == ["environment", "launcher", "aotr"]
+    assert plan_for(["aotr", "aio-launcher"], environment_ready=False) == ["environment", "aio-launcher", "aotr"]
 
 def test_a_ready_environment_is_not_set_up_again():
     assert plan_for(["aotr"], environment_ready=True) == ["aotr"]
-    assert plan_for(["launcher", "aotr"], environment_ready=True) == ["launcher", "aotr"]
+    assert plan_for(["aio-launcher", "aotr"], environment_ready=True) == ["aio-launcher", "aotr"]
 
 def test_the_aio_launcher_alone_has_the_six_steps_it_always_had():
-    m = planned("launcher")
-    assert m.step_ids == ["doctor", "runner", "prefix", "launcher", "arena", "shortcuts"]
+    m = planned("aio-launcher")
+    assert m.step_ids == ["doctor", "runner", "prefix", "aio-launcher", "arena", "shortcuts"]
     assert len(m.step_defs) == 6
 
-def test_the_steps_name_the_aio_launcher_in_full_because_age_of_the_ring_has_a_launcher_too():
+def test_the_steps_name_the_aio_launcher_in_full_because_age_of_the_ring_has_a_aio_launcher_too():
     from bfme_wizard.model import description_of, title_of
-    assert title_of("launcher") == "Download the AIO Launcher"
+    assert title_of("aio-launcher") == "Download the AIO Launcher"
     assert description_of("shortcuts") == "Adding the AIO Launcher and the Arena to your application menu."
 
 def test_age_of_the_ring_alone_does_not_download_the_aio_launcher_or_the_arena():
     m = planned("aotr")
     assert m.step_ids == ["doctor", "runner", "prefix", "aotr-download", "aotr-check", "aotr-unpack",
                                   "aotr-install", "aotr-settings"]
-    assert "launcher" not in m.step_ids
+    assert "aio-launcher" not in m.step_ids
     assert "arena" not in m.step_ids
 
 def test_both_programs_make_one_long_list_of_steps():
-    m = planned("launcher", "aotr")
+    m = planned("aio-launcher", "aotr")
     assert len(m.step_defs) == 11
     assert m.step_ids.index("aotr-check") + 1 == 8
 
@@ -125,7 +125,7 @@ def test_with_the_environment_ready_only_the_programs_are_listed():
     assert planned("aotr", environment_ready=True).step_ids[0] == "aotr-download"
 
 def test_a_new_plan_forgets_the_old_one():
-    m = planned("launcher")
+    m = planned("aio-launcher")
     run_next(m)
     feed(m, "@bfme STEP doctor start", "@bfme ERROR doctor nope")
     m.finish_install(1)
@@ -135,7 +135,7 @@ def test_a_new_plan_forgets_the_old_one():
 
 
 def started(*programs):
-    m = planned(*(programs or ("launcher",)))
+    m = planned(*(programs or ("aio-launcher",)))
     run_next(m)
     return m
 
@@ -147,15 +147,15 @@ def test_happy_path():
     feed(m, "@bfme STEP runner done")
     assert m.progress is None
     feed(m, "@bfme STEP prefix start", "@bfme STEP prefix done", "@bfme DONE")
-    assert m.finish_install(0) == "launcher"   # the environment is ready: the `launcher` job is next
+    assert m.finish_install(0) == "aio-launcher"   # the environment is ready: the `aio-launcher` job is next
     assert m.state == "running"
-    m.begin_job("launcher")
-    feed(m, "@bfme STEP launcher skip", "@bfme STEP arena start", "@bfme STEP arena done",
+    m.begin_job("aio-launcher")
+    feed(m, "@bfme STEP aio-launcher skip", "@bfme STEP arena start", "@bfme STEP arena done",
          "@bfme STEP shortcuts start", "@bfme STEP shortcuts done", "@bfme DONE")
     assert m.finish_install(0) is None
     assert m.state == "done"
     assert m.done_count == 6
-    assert m.steps["launcher"] == "skipped"
+    assert m.steps["aio-launcher"] == "skipped"
     assert m.just_finished
 
 def test_failed_step():
@@ -198,7 +198,7 @@ def test_done_line_with_bad_exit_code_is_not_done():
 def test_a_step_the_script_forgot_is_not_left_pending_once_the_job_says_it_is_done():
     m = started()
     feed(m, "@bfme STEP doctor done", "@bfme DONE")     # runner and prefix were never reported
-    assert m.finish_install(0) == "launcher"   # no endless loop on the same job
+    assert m.finish_install(0) == "aio-launcher"   # no endless loop on the same job
     assert [m.steps[s] for s in ("doctor", "runner", "prefix")] == ["done"] * 3
 
 def test_cancel_only_applies_while_running():
@@ -212,18 +212,18 @@ def test_unknown_step_ids_are_ignored():
     assert m.current is None
 
 def test_a_step_of_a_job_that_is_not_in_the_plan_is_ignored():
-    m = started("launcher")
+    m = started("aio-launcher")
     feed(m, "@bfme STEP aotr-check start")
     assert m.current is None
 
 
 def test_the_next_job_waits_for_nobody_unless_it_needs_a_file():
-    m = planned("launcher", "aotr")
+    m = planned("aio-launcher", "aotr")
     assert run_next(m) == "environment"
     feed(m, *ENVIRONMENT_DONE)
-    assert m.finish_install(0) == "launcher"
-    m.begin_job("launcher")
-    feed(m, "@bfme STEP launcher done", "@bfme STEP arena done", "@bfme STEP shortcuts skip", "@bfme DONE")
+    assert m.finish_install(0) == "aio-launcher"
+    m.begin_job("aio-launcher")
+    feed(m, "@bfme STEP aio-launcher done", "@bfme STEP arena done", "@bfme STEP shortcuts skip", "@bfme DONE")
     assert m.finish_install(0) == "aotr"
     assert (m.state, m.just_finished) == ("running", False)   # not finished: Age of the Ring is left
 
@@ -237,13 +237,13 @@ def test_age_of_the_ring_waits_for_the_player_to_choose_the_file():
 
 def test_the_counter_never_runs_past_the_last_step():
     # Between the last step finishing and the script exiting, every step is done: "Step 4 of 3" would show for a moment.
-    m = planned("launcher", environment_ready=True)
+    m = planned("aio-launcher", environment_ready=True)
     run_next(m)
-    feed(m, "@bfme STEP launcher done", "@bfme STEP arena done", "@bfme STEP shortcuts done")
+    feed(m, "@bfme STEP aio-launcher done", "@bfme STEP arena done", "@bfme STEP shortcuts done")
     assert (m.state, m.done_count, len(m.step_defs), m.step_number) == ("running", 3, 3, 3)
 
 def test_the_download_step_is_counted_in_the_numbering():
-    m = planned("launcher", "aotr")
+    m = planned("aio-launcher", "aotr")
     m.begin_job("aotr")
     feed(m, "@bfme STEP aotr-check start")
     assert (m.current, m.step_number) == ("aotr-check", 8)
@@ -264,7 +264,7 @@ def test_a_stopped_age_of_the_ring_install_from_the_setup_pauses_it():
 
 def test_stopping_an_install_started_from_the_home_screen_goes_back_to_the_home_screen():
     m = SetupModel()
-    feed(m, "@bfme STATUS prefix ready", "@bfme STATUS launcher installed", "@bfme STATUS complete yes")
+    feed(m, "@bfme STATUS prefix ready", "@bfme STATUS aio-launcher installed", "@bfme STATUS complete yes")
     m.finish_status(0)
     assert m.state == "done"
     m.begin_plan(["aotr"])
@@ -275,28 +275,28 @@ def test_stopping_an_install_started_from_the_home_screen_goes_back_to_the_home_
     assert (m.state, m.paused) == ("done", False)
 
 def test_resume_starts_at_the_first_job_that_is_not_finished():
-    m = planned("launcher", "aotr")
+    m = planned("aio-launcher", "aotr")
     run_next(m)
     feed(m, *ENVIRONMENT_DONE)
     m.finish_install(0)
-    m.begin_job("launcher")
-    feed(m, "@bfme STEP launcher done", "@bfme CANCELLED")
+    m.begin_job("aio-launcher")
+    feed(m, "@bfme STEP aio-launcher done", "@bfme CANCELLED")
     m.finish_install(130)
-    assert (m.state, m.first_unfinished_job()) == ("cancelled", "launcher")
-    run_next(m)   # the `launcher` job runs again from its own start; the environment keeps its results
-    assert (m.steps["doctor"], m.steps["launcher"], m.steps["arena"]) == ("done", "pending", "pending")
+    assert (m.state, m.first_unfinished_job()) == ("cancelled", "aio-launcher")
+    run_next(m)   # the `aio-launcher` job runs again from its own start; the environment keeps its results
+    assert (m.steps["doctor"], m.steps["aio-launcher"], m.steps["arena"]) == ("done", "pending", "pending")
 
 def test_a_cancel_pressed_during_the_last_step_of_a_job_stops_before_the_next_job():
     # The script cannot stop inside its last step, so it ends with DONE. The player asked to stop: the plan does.
-    m = planned("launcher", "aotr")
+    m = planned("aio-launcher", "aotr")
     run_next(m)
     m.request_cancel()
     feed(m, *ENVIRONMENT_DONE)
     assert m.finish_install(0) is None
-    assert (m.state, m.paused, m.first_unfinished_job()) == ("cancelled", True, "launcher")
+    assert (m.state, m.paused, m.first_unfinished_job()) == ("cancelled", True, "aio-launcher")
 
 def test_a_cancel_during_the_last_job_changes_nothing_because_there_is_nothing_left_to_stop():
-    m = planned("launcher", environment_ready=True)
+    m = planned("aio-launcher", environment_ready=True)
     run_next(m)
     m.request_cancel()
     feed(m, "@bfme STEP shortcuts done", "@bfme DONE")
@@ -307,7 +307,7 @@ def test_a_plan_started_on_the_home_screen_goes_back_there_when_stopped_between_
     m = SetupModel()
     feed(m, "@bfme STATUS prefix ready", "@bfme STATUS aotr installed", "@bfme STATUS complete yes")
     m.finish_status(0)
-    m.begin_plan(["launcher", "aotr"])
+    m.begin_plan(["aio-launcher", "aotr"])
     run_next(m)
     m.request_cancel()
     feed(m, "@bfme DONE")
@@ -315,29 +315,29 @@ def test_a_plan_started_on_the_home_screen_goes_back_there_when_stopped_between_
     assert m.state == "done"
 
 def test_retry_runs_the_job_that_failed():
-    m = planned("launcher", "aotr")
+    m = planned("aio-launcher", "aotr")
     run_next(m)
     feed(m, *ENVIRONMENT_DONE)
     m.finish_install(0)
-    m.begin_job("launcher")
-    feed(m, "@bfme STEP launcher start", "@bfme ERROR launcher Failed (exit 22).")
+    m.begin_job("aio-launcher")
+    feed(m, "@bfme STEP aio-launcher start", "@bfme ERROR aio-launcher Failed (exit 22).")
     m.finish_install(22)
-    assert (m.state, m.job, m.failed_step, m.first_unfinished_job()) == ("failed", "launcher", "launcher", "launcher")
+    assert (m.state, m.job, m.failed_step, m.first_unfinished_job()) == ("failed", "aio-launcher", "aio-launcher", "aio-launcher")
     m.begin_job(m.job)
-    assert (m.state, m.error, m.steps["launcher"]) == ("running", None, "pending")
+    assert (m.state, m.error, m.steps["aio-launcher"]) == ("running", None, "pending")
 
 def test_the_system_checks_survive_the_jobs_after_the_environment():
-    m = planned("launcher")
+    m = planned("aio-launcher")
     run_next(m)
     feed(m, "@bfme STEP doctor start", "@bfme CHECK cpu ok x86_64 processor", *ENVIRONMENT_DONE)
     m.finish_install(0)
-    m.begin_job("launcher")
+    m.begin_job("aio-launcher")
     assert [r[0] for r in m.check_rows] == ["cpu"]   # Troubleshoot still has them
 
 
 def done_setup():
     m = SetupModel()
-    feed(m, "@bfme STATUS prefix ready", "@bfme STATUS launcher installed", "@bfme STATUS arena installed",
+    feed(m, "@bfme STATUS prefix ready", "@bfme STATUS aio-launcher installed", "@bfme STATUS arena installed",
          "@bfme STATUS complete yes")
     m.finish_status(0)
     return m

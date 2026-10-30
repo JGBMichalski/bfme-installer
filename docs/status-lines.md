@@ -15,10 +15,10 @@
 | `@bfme WARN <message>` | A non-fatal problem. |
 | `@bfme ERROR <step\|-> <message>` | The command failed. The step is `-` if none was running. Last status line before a non-zero exit, except after `CANCELLED`. |
 | `@bfme CANCELLED` | Stopped cleanly on request. Exit status 130. |
-| `@bfme DONE` | The job finished: `install`, `prepare`, `launcher-install` or `aotr-install`. |
+| `@bfme DONE` | The job finished: `install`, `prepare`, `aio-launcher-install` or `aotr-install`. |
 | `@bfme STATUS <key> <value>` | Printed by `status` and before every `DONE`. |
 
-`STATUS` keys: `runner`; `graphics` (`vulkan` or `opengl`); `prefix` (`ready` or `missing`); `launcher`, `arena` and `aotr` (`installed` or `missing`; `launcher` is the AIO Launcher and `aotr` is Age of the Ring); `workshop` and `mission-control` (`installed` or `missing`; the tools, which do not count towards `complete`); `bfme1`, `bfme2` and `rotwk` (`installed` when the game's program is present, else `missing`); `complete` (`yes` or `no`: the game environment is ready and holds at least one of `launcher`, `arena` and `aotr`).
+`STATUS` keys: `runner`; `graphics` (`vulkan` or `opengl`); `prefix` (`ready` or `missing`); `aio-launcher`, `arena` and `aotr` (`installed` or `missing`; `aio-launcher` is the AIO Launcher and `aotr` is Age of the Ring); `workshop` and `mission-control` (`installed` or `missing`; the tools, which do not count towards `complete`); `bfme1`, `bfme2` and `rotwk` (`installed` when the game's program is present, else `missing`); `complete` (`yes` or `no`: the game environment is ready and holds at least one of `aio-launcher`, `arena` and `aotr`).
 
 ## Jobs and steps
 
@@ -27,13 +27,13 @@ The wizard runs only the jobs the player chose, one after the other. Each job en
 | Command | Steps | What it is for |
 | --- | --- | --- |
 | `prepare` | `doctor`, `runner`, `prefix` | Game environment only. |
-| `launcher-install` | `launcher`, `arena`, `shortcuts` | The All-in-One Launcher and the Arena. Needs `prepare` first. |
+| `aio-launcher-install` | `aio-launcher`, `arena`, `shortcuts` | The All-in-One Launcher and the Arena. Needs `prepare` first. |
 | `aotr-install <zip>` | `aotr-check`, `aotr-unpack`, `aotr-install`, `aotr-settings` | Age of the Ring. Needs only `prepare`. |
 | `tool-install <tool>` | `workshop` or `mission-control` | Workshop Studio or Mission Control, downloaded as they are. Needs only `prepare`. |
 | `tool <tool>` | none | Starts an installed tool. |
-| `install` | `prepare`, then `launcher-install` | The terminal setup. |
+| `install` | `prepare`, then `aio-launcher-install` | The terminal setup. |
 | `graphics vulkan\|opengl` | none | Saves the graphics backend in `config.env`. `graphics` alone prints the current one. Switching applies the prefix settings again, so it takes effect the next time a program opens. |
-| `remove <program>` | none | Takes `launcher`, `arena`, `aotr`, `workshop` or `mission-control` out of the game environment: its folder, its shortcut, and what an interrupted install of it left. Keeps the games, the other programs and the settings a program keeps in the player's own folder. Ends the Wine session first and refuses while a setup runs. Prints `STATUS` lines, then `DONE`. |
+| `remove <program>` | none | Takes `aio-launcher`, `arena`, `aotr`, `workshop` or `mission-control` out of the game environment: its folder, its shortcut, and what an interrupted install of it left. Keeps the games, the other programs and the settings a program keeps in the player's own folder. Ends the Wine session first and refuses while a setup runs. Prints `STATUS` lines, then `DONE`. |
 
 The wizard adds `aotr-download` before Age of the Ring's steps, where the player gets the file from ModDB. The script never prints it.
 
@@ -42,7 +42,7 @@ The wizard adds `aotr-download` before Age of the Ring's steps, where the player
 | `doctor` | System checks (prints `CHECK` and `FIX`). |
 | `runner` | Downloads and verifies umu and Proton (`PROGRESS` lines). |
 | `prefix` | Creates the prefix and applies its settings. |
-| `launcher` | Downloads and installs the All-in-One Launcher. `skip` if already installed. |
+| `aio-launcher` | Downloads and installs the All-in-One Launcher. `skip` if already installed. |
 | `arena` | Downloads or updates the Online Arena. |
 | `shortcuts` | Writes missing menu shortcuts and removes those of programs not installed. A shortcut that cannot be written is a warning. |
 

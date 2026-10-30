@@ -13,7 +13,7 @@ class ParseLine(unittest.TestCase):
 
     def test_steps(self):
         self.assertEqual(parse_line("@bfme STEP runner start"), Step("runner", "start"))
-        self.assertEqual(parse_line("@bfme STEP launcher skip\n"), Step("launcher", "skip"))
+        self.assertEqual(parse_line("@bfme STEP aio-launcher skip\n"), Step("aio-launcher", "skip"))
         self.assertIsNone(parse_line("@bfme STEP runner paused"))
 
     def test_progress_is_clamped(self):

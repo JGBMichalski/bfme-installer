@@ -164,12 +164,12 @@ def test_the_text_of_a_shortcut(tmp_path, paths):
 
     sandbox.engine(paths)
 
-    assert sandbox.files()[f"{DEV_ID}.Launcher.desktop"] == (
+    assert sandbox.files()[f"{DEV_ID}.AioLauncher.desktop"] == (
         "[Desktop Entry]\nType=Application\nName=BFME All-in-One Launcher (Dev)\n"
         "Comment=Install, mod and manage the Battle for Middle-earth games\n"
-        f"Exec=flatpak run --command=bfme-installer {DEV_ID} --open launcher\n"
+        f"Exec=flatpak run --command=bfme-installer {DEV_ID} --open aio-launcher\n"
         f"TryExec={tmp_path}/flatpak/exports/bin/{DEV_ID}\n"
-        f"Icon={DEV_ID}.Launcher\nTerminal=false\nCategories=Game;\nStartupNotify=true\nX-Flatpak={DEV_ID}\n")
+        f"Icon={DEV_ID}.AioLauncher\nTerminal=false\nCategories=Game;\nStartupNotify=true\nX-Flatpak={DEV_ID}\n")
 
 
 def test_a_removed_programs_shortcut_goes_and_a_correct_one_is_left_alone(tmp_path, paths):

@@ -19,29 +19,27 @@ class Shortcut:
     name: str
     comment: str
     suffix: str # The end of the shortcut's file name and of its icon's name, both <app id>.<suffix>.
-    open_arg: str # What the shortcut passes to --open. Existing shortcuts on players' computers use these, so they stay as they are.
 
 
 SHORTCUTS = {
     "aio-launcher": Shortcut(
         name="BFME All-in-One Launcher",
         comment="Install, mod and manage the Battle for Middle-earth games",
-        suffix="Launcher",
-        open_arg="launcher",
+        suffix="AioLauncher",
     ),
     "arena": Shortcut(
         name="BFME Online Arena",
         comment="Play Battle for Middle-earth online",
         suffix="Arena",
-        open_arg="arena",
     ),
     "aotr": Shortcut(
         name="Age of the Ring",
         comment="Play the Age of the Ring mod for Battle for Middle-earth 2",
         suffix="Aotr",
-        open_arg="aotr",
     ),
 }
+# Shortcuts the app wrote before, under names it no longer uses. Removed so the menu has no duplicates.
+OLD_SUFFIXES = ("Launcher",)
 
 
 def app_id(environ: dict[str, str] | None = None) -> str:
@@ -127,7 +125,7 @@ def shortcut_text(app: str, program: str, wrapper: str) -> str:
         "Type=Application",
         f"Name={name}",
         f"Comment={shortcut.comment}",
-        f"Exec=flatpak run --command=bfme-installer {app} --open {shortcut.open_arg}",
+        f"Exec=flatpak run --command=bfme-installer {app} --open {program}",
     ]
 
     if wrapper:
@@ -195,6 +193,12 @@ def sync(paths: Paths, emit: Emit, environ: dict[str, str] | None = None, info: 
 
     for program in SHORTCUTS:
         if not _sync_one(folder, app, program, installed[program], wrapper):
+            failed = True
+
+    for suffix in OLD_SUFFIXES:
+        try:
+            (folder / f"{app}.{suffix}.desktop").unlink(missing_ok=True)
+        except OSError:
             failed = True
 
     if failed:

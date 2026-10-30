@@ -156,7 +156,8 @@ remove_shortcuts() {
   local data="${XDG_DATA_HOME:-}" program file removed=0
   if [ -z "$data" ] && [ -n "${HOME:-}" ]; then data="$HOME/.local/share"; fi
   [ -n "$data" ] || return 0
-  for program in Launcher Arena Aotr; do
+  # Launcher: the AIO Launcher's shortcut before it was called AioLauncher.
+  for program in AioLauncher Launcher Arena Aotr; do
     file="$data/applications/$APP_ID.$program.desktop"
     if [ -e "$file" ]; then rm -f -- "$file"; removed=1; fi
   done

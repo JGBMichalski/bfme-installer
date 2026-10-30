@@ -30,10 +30,10 @@ case "$1" in
       start|running)
         echo "@bfme STATUS prefix missing"; echo "@bfme STATUS complete no" ;;
       aotr-download|aotr-running)
-        echo "@bfme STATUS prefix ready"; echo "@bfme STATUS launcher missing"; echo "@bfme STATUS arena missing"
+        echo "@bfme STATUS prefix ready"; echo "@bfme STATUS aio-launcher missing"; echo "@bfme STATUS arena missing"
         echo "@bfme STATUS aotr missing"; echo "@bfme STATUS complete no" ;;
       aotr-home)
-        echo "@bfme STATUS prefix ready"; echo "@bfme STATUS launcher missing"; echo "@bfme STATUS arena missing"
+        echo "@bfme STATUS prefix ready"; echo "@bfme STATUS aio-launcher missing"; echo "@bfme STATUS arena missing"
         echo "@bfme STATUS aotr installed"; echo "@bfme STATUS complete yes" ;;
       *)
         for k in prefix launcher arena bfme1 bfme2 rotwk; do

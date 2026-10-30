@@ -35,7 +35,6 @@ AIO_LAUNCHER_DONE = [
     "Do not switch patches in the AIO Launcher after a game is installed. On Wine this once broke the BFME 2 files.",
 ]
 
-LOG_NAMES = {"aio-launcher": "launcher"}
 LABELS = {"aio-launcher": "the AIO Launcher", "workshop": "Workshop Studio", "mission-control": "Mission Control"}
 
 @dataclass
@@ -197,12 +196,12 @@ def aio_launcher_install(emit: Emit, cancel: threading.Event | None = None, envi
 
         with job.lock():
             if programs.aio_launcher_installed(job.paths):
-                job.skip("launcher")
+                job.skip("aio-launcher")
             else:
-                job.start("launcher")
+                job.start("aio-launcher")
                 proton_path = _ensure_prefix(job)
                 programs.install_aio_launcher(job.paths, job.config, proton_path, job.emit, job.cancel)
-                job.done("launcher")
+                job.done("aio-launcher")
 
             job.start("arena")
             _ensure_prefix(job)
@@ -331,7 +330,7 @@ def open_program(program: str, emit: Emit, cancel: threading.Event | None = None
             if program == "arena":
                 programs.install_or_update_arena(job.paths, job.emit, job.cancel)
 
-        launch.start_program(job.paths, job.config, proton_path, LOG_NAMES.get(program, program), _exe(job.paths, program),
+        launch.start_program(job.paths, job.config, proton_path, program, _exe(job.paths, program),
                              LABELS.get(program, program), job.emit)
 
     return _run(body, emit, cancel, environ)

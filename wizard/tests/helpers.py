@@ -13,7 +13,7 @@ MANIFEST = ROOT / "flatpak" / "com.jgbmichalski.BfmeInstaller.yml"
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 # What the setup script calls each program's shortcut and icon in the Flatpak (`<app id>.<this>`). The manifest must export
 # the icons under the same names, which the tests check from both sides.
-EXPORT_SUFFIX = {"launcher": "Launcher", "arena": "Arena", "aotr": "Aotr"}
+EXPORT_SUFFIX = {"aio-launcher": "AioLauncher", "arena": "Arena", "aotr": "Aotr"}
 
 
 def make_script(body):
@@ -76,7 +76,7 @@ def manifest_app_id():
 def manifest_icon_exports():
     """{picture file name: (width of its folder, height of its folder, exported name)}, from the manifest's install commands.
 
-    For example {"launcher.png": (128, 128, "com.jgbmichalski.BfmeInstaller.Launcher")}.
+    For example {"aio-launcher.png": (128, 128, "com.jgbmichalski.BfmeInstaller.AioLauncher")}.
     """
     found = {}
     pattern = r"install -Dm644 bfme_wizard/icons/(\S+\.png) /app/share/icons/hicolor/(\d+)x(\d+)/apps/(\S+)\.png"

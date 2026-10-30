@@ -46,7 +46,7 @@ def test_the_script_is_kept_out_while_the_engine_holds_it(tmp_path, paths):
     env = {"PATH": "/usr/bin:/bin", "HOME": str(tmp_path), "BFME_HOME": str(paths.base)}
 
     with setup_lock(paths, {}):
-        done = subprocess.run([str(SCRIPT), "remove", "launcher"], env=env, capture_output=True, text=True, timeout=60)
+        done = subprocess.run([str(SCRIPT), "remove", "aio-launcher"], env=env, capture_output=True, text=True, timeout=60)
 
     assert done.returncode == 1
     assert "Another setup is already running" in done.stderr

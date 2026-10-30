@@ -38,16 +38,16 @@ def test_just_finished_only_after_this_session_ran_the_setup():
     feed(m, "@bfme STATUS complete yes")
     m.finish_status(0)
     assert (m.state, m.just_finished) == ("done", False)
-    m.begin_plan(["launcher"])
+    m.begin_plan(["aio-launcher"])
     m.begin_job("environment")
     feed(m, "@bfme DONE")
-    assert m.finish_install(0) == "launcher"
+    assert m.finish_install(0) == "aio-launcher"
     assert not m.just_finished   # the AIO Launcher is still to come
-    m.begin_job("launcher")
+    m.begin_job("aio-launcher")
     feed(m, "@bfme DONE")
     m.finish_install(0)
     assert m.just_finished
-    m.begin_plan(["launcher"])
+    m.begin_plan(["aio-launcher"])
     assert not m.just_finished
 
 
@@ -79,7 +79,7 @@ def test_a_quiet_check_keeps_the_state_and_forgets_old_results():
 
 # The line about games on the home screen
 
-LAUNCHER = {"launcher": "installed", "arena": "installed"}
+LAUNCHER = {"aio-launcher": "installed", "arena": "installed"}
 
 
 def games(installed, finished=False):
@@ -107,7 +107,7 @@ TOOLS_IDLE = {"workshop": "idle", "mission-control": "idle"}
 APP = """#!/usr/bin/env bash
 # fake setup script; the app commands run for APP_SECONDS
 case "$1" in
-  launcher|arena) sleep "${APP_SECONDS:-0}" ;;
+  aio-launcher|arena) sleep "${APP_SECONDS:-0}" ;;
   bad-exit) exit 3 ;;
 esac
 """
@@ -117,10 +117,10 @@ def test_a_short_run_is_reported_softly_and_a_long_one_is_not(monkeypatch):
     monkeypatch.setenv("APP_SECONDS", "0.3")
     changes = []
     apps = AppLauncher(make_script(APP), lambda: changes.append(dict(apps.state)), quick_seconds=5)
-    apps.start("launcher")
-    assert apps.state["launcher"] == "running"
-    wait_for(5000, lambda: apps.state["launcher"] != "running")
-    assert apps.state["launcher"] == "quick"
+    apps.start("aio-launcher")
+    assert apps.state["aio-launcher"] == "running"
+    wait_for(5000, lambda: apps.state["aio-launcher"] != "running")
+    assert apps.state["aio-launcher"] == "quick"
     monkeypatch.setenv("APP_SECONDS", "0.6")
     apps = AppLauncher(make_script(APP), lambda: None, quick_seconds=0.2)
     apps.start("arena")
@@ -131,23 +131,23 @@ def test_a_short_run_is_reported_softly_and_a_long_one_is_not(monkeypatch):
 def test_both_apps_can_run_at_once_and_each_only_once(monkeypatch):
     monkeypatch.setenv("APP_SECONDS", "1")
     apps = AppLauncher(make_script(APP), lambda: None, quick_seconds=0)
-    apps.start("launcher"); apps.start("launcher"); apps.start("arena")
-    assert apps.state == {"launcher": "running", "arena": "running", "aotr": "idle", **TOOLS_IDLE}
+    apps.start("aio-launcher"); apps.start("aio-launcher"); apps.start("arena")
+    assert apps.state == {"aio-launcher": "running", "arena": "running", "aotr": "idle", **TOOLS_IDLE}
     assert apps.any_running
     wait_for(5000, lambda: not apps.any_running)
-    assert apps.state == {"launcher": "idle", "arena": "idle", "aotr": "idle", **TOOLS_IDLE}
+    assert apps.state == {"aio-launcher": "idle", "arena": "idle", "aotr": "idle", **TOOLS_IDLE}
 
 
 def test_a_program_that_cannot_start_counts_as_closed_quickly():
     apps = AppLauncher("/nonexistent/script", lambda: None)
-    apps.start("launcher")
-    assert apps.state["launcher"] == "quick"
+    apps.start("aio-launcher")
+    assert apps.state["aio-launcher"] == "quick"
 
 
 def test_unknown_names_are_ignored():
     apps = AppLauncher(make_script(APP), lambda: None)
     apps.start("bad-exit")
-    assert apps.state == {"launcher": "idle", "arena": "idle", "aotr": "idle", **TOOLS_IDLE}
+    assert apps.state == {"aio-launcher": "idle", "arena": "idle", "aotr": "idle", **TOOLS_IDLE}
 
 
 def test_a_tool_is_started_with_the_tool_command(monkeypatch, tmp_path):
@@ -164,17 +164,17 @@ def test_a_tool_is_started_with_the_tool_command(monkeypatch, tmp_path):
 
 def test_report_has_the_version_checks_fixes_and_log_tails(tmp_path):
     logs = tmp_path
-    (logs / "launcher-20260101-000000.log").write_text("old\n")
+    (logs / "aio-launcher-20260101-000000.log").write_text("old\n")
     time.sleep(0.02)
-    (logs / "launcher-20260102-000000.log").write_text("\n".join(f"line {i}" for i in range(100)))
+    (logs / "aio-launcher-20260102-000000.log").write_text("\n".join(f"line {i}" for i in range(100)))
     (logs / "arena-20260101-000000.log").write_text("arena says hi\n")
     m = SetupModel()
-    m.installed = {"runner": "proton", "prefix": "ready", "launcher": "installed", "arena": "installed", "bfme2": "installed"}
+    m.installed = {"runner": "proton", "prefix": "ready", "aio-launcher": "installed", "arena": "installed", "bfme2": "installed"}
     feed(m, "@bfme CHECK cpu ok x86_64 processor", "@bfme CHECK f fail parts missing", "@bfme FIX f flatpak install X")
     report = build_report("0.2.9", m, logs)
     for expected in ("Version: 0.2.9", "Runner: proton", "Graphics: unknown", "BFME 2 installed", "BFME unknown",
                      "[FAILED] parts missing", "fix: flatpak install X", "[ok] x86_64 processor",
-                     "--- latest AIO Launcher log (launcher-20260102-000000.log", "line 99", "arena says hi", "--- no prefix creation log ---"):
+                     "--- latest AIO Launcher log (aio-launcher-20260102-000000.log", "line 99", "arena says hi", "--- no prefix creation log ---"):
         assert expected in report
     assert "line 59" not in report   # only the last 40 lines
     assert "old\n" not in report     # only the newest log
@@ -235,7 +235,7 @@ INSTALLED = """#!/usr/bin/env bash
 case "$2" in
   status)
     echo "@bfme STATUS prefix ${PREFIX_STATE:-ready}"
-    for app in launcher arena aotr; do
+    for app in aio-launcher arena aotr; do
       case " $INSTALLED " in *" $app "*) echo "@bfme STATUS $app installed" ;; *) echo "@bfme STATUS $app missing" ;; esac
     done
     exit "${STATUS_EXIT:-0}" ;;
@@ -245,8 +245,10 @@ esac
 
 # Menu entries
 
-@pytest.mark.parametrize("args, app", [(["--open", "launcher"], "launcher"), (["x", "--open", "arena"], "arena"),
-                                       ([], None), (["--open"], None), (["--open", "bfme2"], None), (["launcher"], None)])
+# "launcher": shortcuts made before the AIO Launcher was called "aio-launcher".
+@pytest.mark.parametrize("args, app", [(["--open", "aio-launcher"], "aio-launcher"), (["--open", "launcher"], "aio-launcher"),
+                                       (["x", "--open", "arena"], "arena"), ([], None), (["--open"], None),
+                                       (["--open", "bfme2"], None), (["aio-launcher"], None)])
 def test_parse_args(args, app):
     assert parse_args(args) == app
 
@@ -284,17 +286,17 @@ def ready(app, **env):
 def test_an_entry_starts_its_program_at_once_when_that_program_is_installed():
     # Someone who chose only Age of the Ring has no AIO Launcher or Arena: only its own entry can start at once.
     assert ready("aotr", INSTALLED="aotr")
-    assert not ready("launcher", INSTALLED="aotr")
+    assert not ready("aio-launcher", INSTALLED="aotr")
     assert not ready("arena", INSTALLED="aotr")
-    for app in ("launcher", "arena"):
-        assert ready(app, INSTALLED="launcher arena"), app
-    assert not ready("aotr", INSTALLED="launcher arena")
+    for app in ("aio-launcher", "arena"):
+        assert ready(app, INSTALLED="aio-launcher arena"), app
+    assert not ready("aotr", INSTALLED="aio-launcher arena")
 
 
 def test_an_entry_opens_the_wizard_when_the_game_environment_is_gone_or_the_status_cannot_be_read():
-    assert not ready("launcher", INSTALLED="launcher arena", PREFIX_STATE="missing")
-    assert not ready("launcher", INSTALLED="launcher arena", STATUS_EXIT="1")
-    assert not app_is_ready("/nonexistent/script", "launcher")
+    assert not ready("aio-launcher", INSTALLED="aio-launcher arena", PREFIX_STATE="missing")
+    assert not ready("aio-launcher", INSTALLED="aio-launcher arena", STATUS_EXIT="1")
+    assert not app_is_ready("/nonexistent/script", "aio-launcher")
 
 
 FLOW = r"""#!/usr/bin/env bash
@@ -397,9 +399,9 @@ def test_reset_is_refused_while_things_run(c):
     assert "setup is running" in c.blocked_reason()
     assert not c.reset(lambda ok: None)
     c.model.state = "done"
-    c.apps.state["launcher"] = "running"
+    c.apps.state["aio-launcher"] = "running"
     assert c.blocked_reason() == "A program is still running."
-    c.apps.state["launcher"] = "idle"
+    c.apps.state["aio-launcher"] = "idle"
     assert c.blocked_reason() is None
 
 
@@ -435,7 +437,7 @@ def test_the_row_offers_the_other_backend(gtk):
 # The home screen shows the programs that are installed, each with a button to open it. Installing and removing
 # programs is the Programs page's job, and the buttons for the other pages float in the corner of the window's page.
 
-ALL = {"launcher": "installed", "arena": "installed", "aotr": "installed"}
+ALL = {"aio-launcher": "installed", "arena": "installed", "aotr": "installed"}
 
 
 def home_page(installed):
@@ -454,14 +456,14 @@ def titles(Gtk, installed):
 
 def test_only_the_installed_programs_have_a_card(gtk):
     assert titles(gtk, ALL) == ["AIO Launcher", "Arena", "Age of the Ring"]
-    assert titles(gtk, {"launcher": "installed", "arena": "installed"}) == ["AIO Launcher", "Arena"]
+    assert titles(gtk, {"aio-launcher": "installed", "arena": "installed"}) == ["AIO Launcher", "Arena"]
     assert titles(gtk, {"aotr": "installed"}) == ["Age of the Ring"]
     assert titles(gtk, {"arena": "installed"}) == ["Arena"]
-    assert titles(gtk, {"launcher": "installed", "aotr": "installed"}) == ["AIO Launcher", "Age of the Ring"]
+    assert titles(gtk, {"aio-launcher": "installed", "aotr": "installed"}) == ["AIO Launcher", "Age of the Ring"]
 
 
 def test_a_program_that_is_not_there_leaves_no_trace_of_itself(gtk):
-    _c, page = home_page({"launcher": "installed"})
+    _c, page = home_page({"aio-launcher": "installed"})
     text = " ".join(labels(page.content, gtk))
     for word in ("Arena", "Age of the Ring", "Not installed", "Comes with"):
         assert word not in text
@@ -475,7 +477,7 @@ def test_every_card_has_one_open_button_and_it_starts_its_own_program(gtk):
     assert [b.get_label() for b in found] == ["Open"] * 3
     for button in found:
         button.emit("clicked")
-    assert opened == ["launcher", "arena", "aotr"]
+    assert opened == ["aio-launcher", "arena", "aotr"]
 
 
 def test_nothing_to_install_or_to_navigate_is_left_on_the_page(gtk):
@@ -486,7 +488,7 @@ def test_nothing_to_install_or_to_navigate_is_left_on_the_page(gtk):
 
 def test_a_running_program_shows_that_and_a_quick_exit_says_so_softly(gtk):
     c, page = home_page(ALL)
-    c.apps.state.update(launcher="running", arena="quick")
+    c.apps.state.update({"aio-launcher": "running", "arena": "quick"})
     page.refresh()
     assert [b.get_label() for b in buttons(page.content, gtk)] == ["Open", "Open"]   # not the running one
     text = labels(page.content, gtk)
@@ -576,15 +578,15 @@ def test_nothing_is_ticked_and_nothing_can_start_until_the_player_chooses(start)
     assert (page.selected, page.button.get_label(), page.button.get_sensitive()) == ((), "Install", False)
     page._checks["aotr"].set_active(True)
     assert (page.selected, page.button.get_sensitive()) == (("aotr",), True)
-    page._checks["launcher"].set_active(True)
-    assert page.selected == ("launcher", "aotr")   # install order, not tick order
+    page._checks["aio-launcher"].set_active(True)
+    assert page.selected == ("aio-launcher", "aotr")   # install order, not tick order
 
 
 def test_install_waits_while_the_script_is_busy_and_comes_back_after(start):
     # Pressed meanwhile it would do nothing, so the button says so by being inactive.
     c, page = start
     page.enter()
-    page._checks["launcher"].set_active(True)
+    page._checks["aio-launcher"].set_active(True)
     assert page.button.get_sensitive()
     assert c.run_checks()
     page.refresh()
@@ -604,21 +606,21 @@ def test_a_shortcut_ticks_its_program(start):
 def test_the_players_ticks_survive_a_refresh(start):
     c, page = start
     page.enter()
-    page._checks["launcher"].set_active(True)
+    page._checks["aio-launcher"].set_active(True)
     page.refresh()   # the window renders on every change; only enter() takes the choice from the model
-    assert page.selected == ("launcher",)
+    assert page.selected == ("aio-launcher",)
 
 
 def test_after_a_stop_the_same_choice_says_resume_and_another_says_install(start):
     c, page = start
     c.model.installed["prefix"] = "missing"
-    c.model.begin_plan(["launcher", "aotr"])
+    c.model.begin_plan(["aio-launcher", "aotr"])
     c.model.begin_job("environment")
     feed(c.model, "@bfme CANCELLED")
     c.model.finish_install(130)
     page.enter()
     assert (page.selected, page.button.get_label(), page.view.get_title()) == \
-        (("launcher", "aotr"), "Resume", "Setup paused")
+        (("aio-launcher", "aotr"), "Resume", "Setup paused")
     page._checks["aotr"].set_active(False)
     assert page.button.get_label() == "Install"
 
@@ -637,7 +639,7 @@ def test_the_button_installs_what_is_ticked(start):
     asked = []
     c.install = asked.append
     page.enter()
-    page._checks["launcher"].set_active(True)
+    page._checks["aio-launcher"].set_active(True)
     page._checks["aotr"].set_active(True)
     page.button.emit("clicked")
-    assert asked == [("launcher", "aotr")]
+    assert asked == [("aio-launcher", "aotr")]

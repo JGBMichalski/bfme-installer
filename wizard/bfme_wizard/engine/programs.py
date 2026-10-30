@@ -37,8 +37,7 @@ TOOLS = ("workshop", "mission-control")
 # Each game's program, under drive_c. A game counts as installed once it is there.
 GAME_EXES = {"bfme1": "BFME1/lotrbfme.exe", "bfme2": "BFME2/lotrbfme2.exe", "rotwk": "RotWK/lotrbfme2ep1.exe"}
 
-# The marker and log file names stay as the setup script named them, so existing installs keep working.
-AIO_LAUNCHER_INSTALLING = ".bfme-launcher-installing"
+AIO_LAUNCHER_INSTALLING = ".bfme-aio-launcher-installing"
 AOTR_INSTALLING = ".bfme-aotr-installing"
 POLL_SEC = 3
 AIO_LAUNCHER_WAIT_SEC = 180
@@ -148,7 +147,7 @@ def install_aio_launcher(paths: Paths, config: Config, proton_path: str, emit: E
     # The setup starts the AIO Launcher, and Proton does not return until every program in the session ends. Wait for the
     # installed file to appear and stop growing, then end the session. The first start of the setup must not use
     # runinprefix.
-    with open(paths.logs / "launcher-setup.log", "w", encoding="utf-8") as out:
+    with open(paths.logs / "aio-launcher-setup.log", "w", encoding="utf-8") as out:
         process = proton.start(paths, config, proton_path, [str(setup)], inprefix=False, output=out)
 
         try:
@@ -160,7 +159,7 @@ def install_aio_launcher(paths: Paths, config: Config, proton_path: str, emit: E
             process.wait()
 
     if not done:
-        raise SetupError(f"The AIO Launcher was not installed. See {paths.logs / 'launcher-setup.log'}")
+        raise SetupError(f"The AIO Launcher was not installed. See {paths.logs / 'aio-launcher-setup.log'}")
 
     (paths.prefix / AIO_LAUNCHER_INSTALLING).unlink()
     setup.unlink()

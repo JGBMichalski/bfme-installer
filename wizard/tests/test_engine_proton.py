@@ -233,7 +233,7 @@ def test_the_wine_session_ends_as_the_script_ends_it(tmp_path):
     (paths.prefix / "drive_c/windows").mkdir(parents=True)
     (paths.prefix / "drive_c/users/steamuser").mkdir(parents=True)
 
-    subprocess.run([str(SCRIPT), "remove", "launcher"], env=environ, capture_output=True, timeout=60)
+    subprocess.run([str(SCRIPT), "remove", "aio-launcher"], env=environ, capture_output=True, timeout=60)
     from_script = log.read_text()
     log.unlink()
     proton.end_wine_session(paths, load(paths.config, environ), environ)
