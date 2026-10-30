@@ -161,9 +161,9 @@ def start(paths: Paths, config: Config, proton: str, args: list[str], inprefix: 
 
 
 def run(paths: Paths, config: Config, proton: str, args: list[str], inprefix: bool, output: IO | None = None,
-        environ: dict[str, str] | None = None) -> int:
+        environ: dict[str, str] | None = None, cwd: Path | None = None) -> int:
     """Run a program in the game environment and wait for it. Returns its exit status."""
-    return start(paths, config, proton, args, inprefix, output, environ).wait()
+    return start(paths, config, proton, args, inprefix, output, environ, cwd).wait()
 
 
 def wineserver(proton: str, environ: dict[str, str] | None = None) -> Path | None:
