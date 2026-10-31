@@ -42,8 +42,8 @@ The first three are left out when the game environment is ready.
 ## Updating
 
 On start the app compares its version with the latest GitHub release. If newer, a banner offers **Update**, which asks
-Flatpak's update portal to install it. If the update adds permissions, the banner shows the `flatpak update` command
-instead. Development builds never check.
+Flatpak's update portal to install it. Then **Restart** starts the new version and closes this one. If the update adds
+permissions, the banner shows the `flatpak update` command instead. Development builds never check.
 
 The first start after an update shows the changelog notes since the last version seen (kept in `last-version` in the
 data folder), once. A first install and development builds show nothing.

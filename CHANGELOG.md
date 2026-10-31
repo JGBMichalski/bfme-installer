@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Troubleshoot's **Graphics** section can choose the graphics card on a computer with two, and show an FPS counter.
 - After an update, the app shows once what changed since the version you last used.
 - Troubleshoot can open the settings file, `config.env`, in your text editor.
+- After an update installs, the banner's **Restart** button starts the new version.
 
 ### Changed
 

@@ -5,7 +5,7 @@ import pytest
 from gi.repository import GLib
 
 from bfme_wizard.updater import (
-    Updater, installed_version, is_newer, parse_version, version_from_redirect,
+    Updater, installed_version, is_newer, parse_version, restart_command, version_from_redirect,
 )
 
 
@@ -178,3 +178,31 @@ def test_install_does_nothing_unless_an_update_is_available():
     assert (u.state, bus.calls) == ("idle", [])
     u.state = "updating"; u.install()
     assert bus.calls == []
+
+
+def test_the_restart_waits_for_this_instance_then_starts_the_newest_version():
+    argv = restart_command("x.Y")
+
+    assert argv[:4] == ["flatpak-spawn", "--latest-version", "sh", "-c"]
+    assert "NameHasOwner x.Y" in argv[4]
+    assert argv[4].endswith("exec bfme-installer")
+
+
+def test_the_restart_script_starts_the_app_once_the_name_is_free(tmp_path, monkeypatch):
+    # A fake gdbus that says the name is taken twice, then free, and a fake app that records it ran.
+    calls = tmp_path / "calls"
+    (tmp_path / "gdbus").write_text(f"""#!/bin/sh
+echo x >> {calls}
+[ $(wc -l < {calls}) -le 2 ] && echo '(true,)' || echo '(false,)'
+""")
+    (tmp_path / "app").write_text(f"#!/bin/sh\necho started > {tmp_path}/started\n")
+
+    for name in ("gdbus", "app"):
+        (tmp_path / name).chmod(0o755)
+
+    monkeypatch.setenv("PATH", f"{tmp_path}:{os.environ['PATH']}")
+    script = restart_command("x.Y", command="app")[4]
+
+    assert os.system(f"sh -c '{script}'") == 0
+    assert (tmp_path / "started").read_text() == "started\n"
+    assert calls.read_text().count("x") == 3

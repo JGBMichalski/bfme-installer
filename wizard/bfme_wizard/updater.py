@@ -165,6 +165,20 @@ class Updater:
         self._set(state)
 
 
+def restart_command(app_id: str, command: str = "bfme-installer") -> list[str]:
+    """Starts the newest installed version through Flatpak's portal. It waits for this instance to give up its D-Bus name
+    first (10 seconds at most); otherwise the new one would only bring this window forward, and then this one quits."""
+    wait = (
+        "for _ in $(seq 50); do "
+        "gdbus call --session --dest org.freedesktop.DBus --object-path /org/freedesktop/DBus "
+        f"--method org.freedesktop.DBus.NameHasOwner {app_id} | grep -q true || break; "
+        "sleep 0.2; "
+        "done; "
+        f"exec {command}"
+    )
+    return ["flatpak-spawn", "--latest-version", "sh", "-c", wait]
+
+
 def make_updater(on_change: Callable[[], None]) -> Updater:
     """BFME_UPDATE_URL overrides the check URL for tests."""
     return Updater(

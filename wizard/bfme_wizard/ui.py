@@ -19,7 +19,7 @@ from .home import GameFoldersPage, HomePage, TroubleshootPage
 from .model import description_of, speed_text, title_of
 from .programs import ProgramsPage
 from .start import StartPage
-from .updater import make_updater
+from .updater import make_updater, restart_command
 from .widgets import clear, first_icon, icon_button, pill
 
 # Flatpak builds under another ID run beside this one.
@@ -355,7 +355,7 @@ class WizardWindow(Adw.ApplicationWindow):
         title, button = {
             "available": (f"Version {u.remote} is available (you have {u.local}).", "Update"),
             "updating": ("Updating..." if u.progress is None else f"Updating... {u.progress}%", None),
-            "done": (f"Updated to {u.remote}. Close and reopen BFME Installer to use it.", "Close"),
+            "done": (f"Updated to {u.remote}. Restart BFME Installer to use it.", "Restart"),
             "empty": (f"Version {u.remote} is not ready to download yet. Try again in a few minutes.", "Try again"),
             "failed": (f"Could not update automatically. In a terminal, run: {u.manual_command}", "Copy command"),
         }[u.state]
@@ -368,9 +368,19 @@ class WizardWindow(Adw.ApplicationWindow):
         if state in ("available", "empty"):
             self.updater.install()
         elif state == "done":
-            self.close()
+            self.restart()
         elif state == "failed":
             self.copy(self.updater.manual_command, "Command copied")
+
+    def restart(self) -> None:
+        """Start the new version, then quit. If it cannot be started, close and let the player reopen it."""
+        try:
+            Gio.Subprocess.new(restart_command(self.updater.app_id), Gio.SubprocessFlags.NONE)
+        except GLib.Error:
+            self.close()
+            return
+
+        self.get_application().quit()
 
     def _render_corner(self) -> None:
         home = self.model.state == "done"
