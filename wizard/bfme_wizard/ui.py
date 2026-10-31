@@ -15,7 +15,7 @@ from .controller import PROGRAM_OF, Controller
 from .diagnostics import any_log, build_report
 from .engine.paths import data_dir
 from .home import GameFoldersPage, HomePage, TroubleshootPage
-from .model import description_of, title_of
+from .model import description_of, speed_text, title_of
 from .programs import ProgramsPage
 from .start import StartPage
 from .updater import make_updater
@@ -402,7 +402,14 @@ class WizardWindow(Adw.ApplicationWindow):
         self.run_desc.set_text(description_of(step_id))
         if m.progress is not None:
             self.run_bar.set_fraction(m.progress / 100)
-            self.run_note.set_text(f"{m.progress}%")
+            note = f"{m.progress}%"
+
+            if m.speed is not None:
+                note += f" · {speed_text(m.speed)}"
+
+            self.run_note.set_text(note)
+        elif m.speed is not None:
+            self.run_note.set_text(speed_text(m.speed))   # a download of unknown size
         else:
             self.run_note.set_text(m.last_check_message if step_id == "doctor" else "")
         self.run_cancel.set_label("Stopping after this step..." if m.cancel_requested else "Cancel")

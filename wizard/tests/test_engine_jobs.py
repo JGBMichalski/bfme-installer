@@ -6,7 +6,7 @@ import threading
 from pathlib import Path
 
 import pytest
-from bfme_wizard.engine import aotr, doctor, graphics, jobs, programs, shortcuts
+from bfme_wizard.engine import aotr, download, doctor, graphics, jobs, programs, shortcuts
 from bfme_wizard.engine.events import (
     Cancelled,
     Check,
@@ -15,6 +15,7 @@ from bfme_wizard.engine.events import (
     Fix,
     Log,
     Progress,
+    Speed,
     Status,
     Step,
     Warn,
@@ -88,6 +89,7 @@ class World:
         monkeypatch.setattr(graphics, "probe", lambda: ("vulkan", "Vulkan 1.4 on Test GPU"))
         monkeypatch.setattr(programs, "POLL_SEC", 0.05)
         monkeypatch.setattr(aotr, "WATCH_SEC", 0.05)
+        monkeypatch.setattr(download, "SPEED_INTERVAL_SEC", 0)
 
     def make_prefix(self):
         for folder in ("windows", "users/steamuser"):
@@ -325,6 +327,7 @@ def test_age_of_the_ring_downloaded_by_the_app(world, moddb):
     assert lines(events)[:2] == ["@bfme STEP aotr-download start", "@bfme STEP aotr-download done"]
     assert Status("aotr", "installed") in events
     assert not (world.paths.downloads / name).exists()        # deleted once unpacked
+    assert any(isinstance(event, Speed) for event in events)   # the download reported its speed
     assert Log("Age of the Ring is installed.") in events
 
 

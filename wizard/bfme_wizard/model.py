@@ -181,6 +181,7 @@ class SetupModel:
         """Forget what the last script run reported. Step results stay."""
         self.current: str | None = None
         self.progress: int | None = None
+        self.speed: int | None = None          # bytes per second of the download that is running
         if not keep_checks:
             self.checks: dict[str, events.Check] = {}
             self.fixes: dict[str, str] = {}
@@ -233,6 +234,7 @@ class SetupModel:
             if e.id not in self.steps:
                 return
             self.progress = None
+            self.speed = None
             if e.status == "start":
                 self.steps[e.id] = "running"
                 self.current = e.id
@@ -242,6 +244,8 @@ class SetupModel:
                     self.current = None
         elif isinstance(e, events.Progress):
             self.progress = e.percent
+        elif isinstance(e, events.Speed):
+            self.speed = e.bytes_per_second
         elif isinstance(e, events.Check):
             self.checks[e.id] = e
         elif isinstance(e, events.Fix):
@@ -388,3 +392,11 @@ def games_line(model: SetupModel) -> str:
     if model.just_finished:
         return "Setup is complete. Open the AIO Launcher to install your games."
     return "No games installed yet. Open the AIO Launcher to install them."
+
+
+def speed_text(bytes_per_second: int) -> str:
+    """"3.2 MB/s" or "640 KB/s"."""
+    if bytes_per_second >= 1_000_000:
+        return f"{bytes_per_second / 1_000_000:.1f} MB/s"
+
+    return f"{bytes_per_second // 1000} KB/s"

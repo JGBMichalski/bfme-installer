@@ -13,7 +13,7 @@ from . import proton
 from .config import Config
 from .download import USER_AGENT, download
 from .errors import JobCancelled, SetupError
-from .events import Emit, Log, Warn
+from .events import Emit, Log, Warn, report_speed
 from .paths import Paths
 from .prefix import prefix_ready
 
@@ -136,7 +136,7 @@ def install_aio_launcher(paths: Paths, config: Config, proton_path: str, emit: E
 
     if not setup.is_file():
         emit(Log(f"Downloading {setup.name}."))
-        download(url or AIO_LAUNCHER_URL, setup, cancel=cancel)
+        download(url or AIO_LAUNCHER_URL, setup, cancel=cancel, on_speed=report_speed(emit))
 
     emit(Log("Installing the AIO Launcher. It may open for a moment; the setup closes it again."))
 
@@ -218,7 +218,8 @@ def install_or_update_arena(paths: Paths, emit: Emit, cancel: threading.Event | 
     tmp.unlink(missing_ok=True)
     tmp.with_name(tmp.name + ".part").unlink(missing_ok=True)
     emit(Log(f"Downloading {tmp.name}."))
-    download(f"{files_host}/application-builds/online-arena-{ARENA_BRANCH}", tmp, cancel=cancel)
+    download(f"{files_host}/application-builds/online-arena-{ARENA_BRANCH}", tmp, cancel=cancel,
+             on_speed=report_speed(emit))
 
     if remote:
         got = _md5(tmp)
@@ -236,10 +237,13 @@ def install_tool(paths: Paths, tool: str, cancel: threading.Event | None = None,
     """Workshop Studio and Mission Control are single programs, so they are downloaded straight into a folder of their
     own."""
     exe = paths.tool_exe(tool)
+    on_speed = None
+
     if emit is not None:
         emit(Log(f"Downloading {exe.name}."))
+        on_speed = report_speed(emit)
 
-    download(url or TOOL_URLS[tool], exe, cancel=cancel)
+    download(url or TOOL_URLS[tool], exe, cancel=cancel, on_speed=on_speed)
     exe.chmod(0o755)
 
 

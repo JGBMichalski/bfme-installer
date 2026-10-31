@@ -517,3 +517,31 @@ def test_the_download_page_says_why_the_app_could_not(win, gtk):
     win.model.wait_for_file()
     win.render()
     assert not win.aotr.why.get_visible()
+
+
+# Download speed on the running page
+
+def test_a_download_shows_its_percent_and_speed(win):
+    from bfme_wizard.engine.events import Progress, Speed, Step
+
+    win.model.begin_plan(["aio-launcher"])
+    win.model.begin_job("aio-launcher")
+
+    for event in (Step("aio-launcher", "start"), Progress(42), Speed(3_200_000)):
+        win.model.feed_event(event)
+
+    win.render()
+    assert win.run_note.get_text() == "42% · 3.2 MB/s"
+
+
+def test_a_download_of_unknown_size_shows_its_speed_alone(win):
+    from bfme_wizard.engine.events import Speed, Step
+
+    win.model.begin_plan(["aio-launcher"])
+    win.model.begin_job("aio-launcher")
+
+    for event in (Step("aio-launcher", "start"), Speed(640_000)):
+        win.model.feed_event(event)
+
+    win.render()
+    assert win.run_note.get_text() == "640 KB/s"

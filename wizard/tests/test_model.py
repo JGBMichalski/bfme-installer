@@ -1,5 +1,7 @@
-from bfme_wizard.engine.events import Cancelled, Check, Done, Error, Fix, Log, Progress, Status, Step, Warn
-from bfme_wizard.model import SetupModel, plan_for
+import pytest
+
+from bfme_wizard.engine.events import Cancelled, Check, Done, Error, Fix, Log, Progress, Speed, Status, Step, Warn
+from bfme_wizard.model import SetupModel, plan_for, speed_text
 
 
 def feed(model, *events):
@@ -410,3 +412,20 @@ def test_log_is_bounded():
     assert len(m.log) == 2000
     assert m.log[-1] == "line 4999"
 
+
+
+def test_a_download_speed_is_shown_until_the_step_changes():
+    m = planned("aio-launcher", environment_ready=True)
+    run_next(m)
+    feed(m, Step("aio-launcher", "start"), Progress(40), Speed(3_200_000))
+    assert (m.progress, m.speed) == (40, 3_200_000)
+
+    feed(m, Step("aio-launcher", "done"))
+    assert (m.progress, m.speed) == (None, None)
+
+
+@pytest.mark.parametrize("bytes_per_second, text", [
+    (3_200_000, "3.2 MB/s"), (1_000_000, "1.0 MB/s"), (640_000, "640 KB/s"), (999, "0 KB/s"),
+])
+def test_speed_text(bytes_per_second, text):
+    assert speed_text(bytes_per_second) == text

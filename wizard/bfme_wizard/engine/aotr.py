@@ -19,7 +19,7 @@ from . import proton
 from .config import Config
 from .download import download, verify_md5
 from .errors import JobCancelled, SetupError
-from .events import Emit, Log, Progress
+from .events import Emit, Log, Progress, report_speed
 from .moddb import RemoteFile
 from .paths import Paths
 from .programs import AOTR_INSTALLING
@@ -187,7 +187,7 @@ def download_zip(paths: Paths, config: Config, remote: RemoteFile, emit: Emit,
     def progress(percent: int) -> None:
         emit(Progress(percent))
 
-    download(remote.url, zip_path, progress, cancel)
+    download(remote.url, zip_path, progress, cancel, report_speed(emit))
     emit(Log("Checking the download."))
     verify_md5(zip_path, remote.md5)
 

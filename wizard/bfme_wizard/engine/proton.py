@@ -12,7 +12,7 @@ from typing import IO
 from .config import DEFAULT_PROTONPATH, Config
 from .download import Progress, download, verify_sha256
 from .errors import SetupError
-from .events import Emit, Log
+from .events import Emit, Log, report_speed
 from .paths import Paths
 
 PROTON_URL = (f"https://github.com/Open-Wine-Components/umu-proton/releases/download/"
@@ -50,10 +50,13 @@ def ensure_proton(paths: Paths, config: Config, on_progress: Progress | None = N
         return str(target)
 
     tarball = paths.downloads / f"{DEFAULT_PROTONPATH}.tar.gz"
+    on_speed = None
+
     if emit is not None:
         emit(Log(f"Downloading {tarball.name}."))
+        on_speed = report_speed(emit)
 
-    download(url, tarball, on_progress, cancel)
+    download(url, tarball, on_progress, cancel, on_speed)
     verify_sha256(tarball, sha256)
 
     # Unpack beside the final place and rename when done, so an interrupted unpack cannot leave a Proton that looks

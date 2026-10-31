@@ -140,3 +140,45 @@ def test_every_request_names_the_app_not_python(file_server, tmp_path):
     download(file_server.url("/f.bin"), tmp_path / "f.bin")
 
     assert file_server.agents == ["bfme-installer"]
+
+
+class Clock:
+    """A clock that moves one second each time it is read, so a measured speed is the bytes of one look."""
+
+    def __init__(self):
+        self.now = 0.0
+
+    def __call__(self):
+        self.now += 1.0
+        return self.now
+
+
+def test_the_speed_is_reported_about_once_a_second(file_server, tmp_path, monkeypatch):
+    file_server.files["/f.bin"] = DATA
+    monkeypatch.setattr(download_module.time, "monotonic", Clock())
+    speeds = []
+
+    download(file_server.url("/f.bin"), tmp_path / "f.bin", on_speed=speeds.append)
+
+    # One chunk arrives between two readings of the clock, one second apart.
+    assert speeds
+    assert set(speeds) <= {download_module.CHUNK}
+
+
+def test_the_speed_counts_only_what_arrives_now(file_server, tmp_path, monkeypatch):
+    file_server.files["/f.bin"] = DATA
+    (tmp_path / "f.bin.part").write_bytes(DATA[:500_000])
+    monkeypatch.setattr(download_module.time, "monotonic", Clock())
+    speeds = []
+
+    download(file_server.url("/f.bin"), tmp_path / "f.bin", on_speed=speeds.append)
+
+    assert max(speeds) <= download_module.CHUNK          # not the 500 000 bytes already there
+
+
+def test_no_speed_is_measured_without_a_listener(file_server, tmp_path):
+    file_server.files["/f.bin"] = DATA
+
+    download(file_server.url("/f.bin"), tmp_path / "f.bin")
+
+    assert (tmp_path / "f.bin").read_bytes() == DATA
