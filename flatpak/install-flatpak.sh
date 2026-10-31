@@ -144,9 +144,8 @@ start_setup() {
     nohup flatpak run --user "$APP_ID" >/dev/null 2>&1 &
     disown || true
   else
-    # No window possible (SSH, text console). The app notices and runs the setup in place.
-    say "Step 4: no display found, so the setup runs in this terminal."
-    flatpak run --user "$APP_ID" || say "Setup did not finish. Run it again with: flatpak run --command=bfme-linux-setup $APP_ID install"
+    # No window possible (SSH, text console). The setup needs one.
+    say "Installed. No display found here: open 'BFME Installer' from your application menu on the desktop to finish the setup."
   fi
 }
 

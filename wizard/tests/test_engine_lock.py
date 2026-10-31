@@ -1,17 +1,13 @@
-"""engine.lock: one setup at a time, with the same lock file as the setup script."""
+"""engine.lock: one setup at a time, held with flock on .setup.lock."""
 import os
 import signal
 import subprocess
-from pathlib import Path
 
 import pytest
 
 from bfme_wizard.engine.errors import SetupError
 from bfme_wizard.engine.lock import setup_lock
 from bfme_wizard.engine.paths import Paths
-
-ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = ROOT / "scripts" / "bfme-linux-setup.sh"
 
 
 @pytest.fixture
@@ -42,18 +38,15 @@ def test_it_is_released_after_the_block_also_when_it_fails(paths):
         pass
 
 
-def test_the_script_is_kept_out_while_the_engine_holds_it(tmp_path, paths):
-    env = {"PATH": "/usr/bin:/bin", "HOME": str(tmp_path), "BFME_HOME": str(paths.base)}
-
+def test_flock_is_kept_out_while_the_engine_holds_it(paths):
     with setup_lock(paths, {}):
-        done = subprocess.run([str(SCRIPT), "remove", "aio-launcher"], env=env, capture_output=True, text=True, timeout=60)
+        done = subprocess.run(["flock", "-n", str(paths.base / ".setup.lock"), "true"], capture_output=True, timeout=60)
 
     assert done.returncode == 1
-    assert "Another setup is already running" in done.stderr
 
 
 def test_the_engine_is_kept_out_while_flock_holds_it(paths):
-    # The script took the lock with flock(1) on the same file.
+    # Another process holding the lock with flock(1) on the same file.
     paths.base.mkdir(parents=True)
     holder = subprocess.Popen(["flock", str(paths.base / ".setup.lock"), "sh", "-c", "echo held; sleep 30"],
                               stdout=subprocess.PIPE, text=True, start_new_session=True)

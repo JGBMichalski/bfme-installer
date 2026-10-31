@@ -131,29 +131,6 @@ Open **Troubleshoot** with the lifebuoy button in the top right corner, which is
 The graphics switch takes effect the next time you open a program, and nothing is reinstalled. If the games are slow or will
 not start on a card without working Vulkan, try OpenGL; if OpenGL is worse, switch back.
 
-## Without Flatpak
-
-Run the setup script in a terminal. It does the same setup without the wizard.
-
-```sh
-./scripts/bfme-linux-setup.sh doctor     # check requirements
-./scripts/bfme-linux-setup.sh install    # set up the runner, AIO Launcher, Arena and menu shortcuts
-```
-
-Then open **BFME All-in-One Launcher** from your menu and install the games. Start the Arena from its own
-**BFME Online Arena** shortcut.
-
-Only want Age of the Ring? Skip `install` and prepare the game environment on its own, then give it the file you downloaded from ModDB:
-
-```sh
-./scripts/bfme-linux-setup.sh prepare
-./scripts/bfme-linux-setup.sh aotr-install ~/Downloads/AotR_Standalone_9.3.0_Installer.zip
-```
-
-Other commands: `aio-launcher-install` (the AIO Launcher and the Arena, after `prepare`), `aio-launcher`, `arena`, `aotr`,
-`game bfme1|bfme2|rotwk`, `graphics opengl|vulkan`, `shortcuts`, `status`, `reset-prefix --yes`, `version`, `help`.
-Configuration variables (such as `BFME_HOME` and `BFME_RUNNER=wine`) are in [How it works](docs/how-it-works.md).
-
 ## Planned
 
 This is a direction, not a promise, and it has no dates.

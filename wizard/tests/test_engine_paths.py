@@ -1,13 +1,9 @@
-"""engine.paths: the same folders the setup script uses."""
-import subprocess
+"""engine.paths: where everything lives."""
 from pathlib import Path
 
 import pytest
 
 from bfme_wizard.engine.paths import data_dir, menu_dir, paths
-
-ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = ROOT / "scripts" / "bfme-linux-setup.sh"
 
 
 def test_data_dir():
@@ -92,45 +88,9 @@ def test_maps_target_falls_back(tmp_path):
     assert g.maps_target() == g.user_data / "Maps"
 
 
-# Parity with the setup script: a file at each path here is what its `status` looks for.
+@pytest.mark.parametrize("index,key,folder", [(0, "bfme1", "BFME1"), (1, "bfme2", "BFME2"), (2, "rotwk", "RotWK")])
+def test_each_game_folder(index, key, folder):
+    game = paths({"BFME_HOME": "/b"}).game_folders()[index]
 
-def script_status(base):
-    env = {"BFME_HOME": str(base), "PATH": "/usr/bin:/bin", "HOME": str(base)}
-    out = subprocess.run([str(SCRIPT), "--machine", "status"], env=env, capture_output=True, text=True, timeout=60).stdout
-    return dict(line.split(" ", 3)[2:] for line in out.splitlines() if line.startswith("@bfme STATUS "))
-
-
-@pytest.mark.parametrize("program", ["aio-launcher", "arena", "aotr", "workshop", "mission-control"])
-def test_the_script_finds_each_program_where_the_engine_puts_it(tmp_path, program):
-    p = paths({"BFME_HOME": str(tmp_path)})
-
-    if program == "aio-launcher":
-        exe = p.aio_launcher_exe
-    elif program == "arena":
-        exe = p.arena_exe
-    elif program == "aotr":
-        exe = p.aotr_exe
-    else:
-        exe = p.tool_exe(program)
-
-    assert script_status(tmp_path)[program] == "missing"
-    exe.parent.mkdir(parents=True)
-    exe.write_text("x")
-    assert script_status(tmp_path)[program] == "installed"
-
-
-@pytest.mark.parametrize("index,key,exe", [(0, "bfme1", "lotrbfme.exe"), (1, "bfme2", "lotrbfme2.exe"),
-                                           (2, "rotwk", "lotrbfme2ep1.exe")])
-def test_the_script_finds_each_game_in_the_engines_game_folder(tmp_path, index, key, exe):
-    game = paths({"BFME_HOME": str(tmp_path)}).game_folders()[index]
     assert game.key == key
-    game.game.mkdir(parents=True)
-    (game.game / exe).write_text("x")
-    assert script_status(tmp_path)[key] == "installed"
-
-
-def test_the_script_uses_the_engines_prefix(tmp_path):
-    p = paths({"BFME_HOME": str(tmp_path)})
-    for folder in ("drive_c/windows", "drive_c/users/steamuser"):
-        (p.prefix / folder).mkdir(parents=True)
-    assert script_status(tmp_path)["prefix"] == "ready"
+    assert game.game == Path("/b/prefix/drive_c") / folder

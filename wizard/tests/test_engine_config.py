@@ -1,13 +1,7 @@
-"""engine.config: reads and writes config.env the way the setup script does."""
-import subprocess
-from pathlib import Path
-
+"""engine.config: reads and writes config.env."""
 import pytest
 
 from bfme_wizard.engine.config import DEFAULT_PROTONPATH, Config, ConfigError, load, read_file, save
-
-ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = ROOT / "scripts" / "bfme-linux-setup.sh"
 
 
 @pytest.fixture
@@ -64,36 +58,31 @@ def test_save_makes_the_folder_and_file(tmp_path):
     assert path.read_text() == "BFME_GRAPHICS=opengl\n"
 
 
-# Parity with the setup script, while it still exists.
+# Saving and reading back
 
-def script(base, *args):
-    env = {"BFME_HOME": str(base), "PATH": "/usr/bin:/bin", "HOME": str(base)}
-    return subprocess.run([str(SCRIPT), "--machine", *args], env=env, capture_output=True, text=True, timeout=60)
+def test_a_saved_choice_is_read_back(path):
+    path.write_text("BFME_NVIDIA=1\n# keep me\n")
 
+    save(path, "BFME_GRAPHICS", "opengl")
 
-def script_graphics(base):
-    out = script(base, "status").stdout
-    return next(line.split()[3] for line in out.splitlines() if line.startswith("@bfme STATUS graphics "))
-
-
-def test_what_the_script_saves_the_engine_reads(tmp_path):
-    (tmp_path / "config.env").write_text("BFME_NVIDIA=1\n# keep me\n")
-    assert script(tmp_path, "graphics", "opengl").returncode == 0
-    config = load(tmp_path / "config.env", {})
+    assert path.read_text() == "BFME_NVIDIA=1\n# keep me\nBFME_GRAPHICS=opengl\n"
+    config = load(path, {})
     assert (config.graphics, config.graphics_chosen) == ("opengl", True)
-    assert read_file(tmp_path / "config.env")["BFME_NVIDIA"] == "1"
+    assert read_file(path)["BFME_NVIDIA"] == "1"
+
+    save(path, "BFME_GRAPHICS", "vulkan")
+
+    assert load(path, {}).graphics == "vulkan"
 
 
-def test_what_the_engine_saves_the_script_reads(tmp_path):
-    (tmp_path / "config.env").write_text("BFME_NVIDIA=1\n# keep me\n")
-    save(tmp_path / "config.env", "BFME_GRAPHICS", "opengl")
-    assert script_graphics(tmp_path) == "opengl"
-    save(tmp_path / "config.env", "BFME_GRAPHICS", "vulkan")
-    assert script_graphics(tmp_path) == "vulkan"
-
-
-@pytest.mark.parametrize("text", ["BFME_GRAPHICS=opengl\n", "export BFME_GRAPHICS=opengl\n", "BFME_GRAPHICS='opengl'\n",
-                                  'BFME_GRAPHICS="opengl"\n', "  BFME_GRAPHICS=opengl\n", "BFME_GRAPHICS=\n"])
-def test_both_read_the_same_backend(tmp_path, text):
-    (tmp_path / "config.env").write_text(text)
-    assert load(tmp_path / "config.env", {}).graphics == script_graphics(tmp_path)
+@pytest.mark.parametrize("text,expected", [
+    ("BFME_GRAPHICS=opengl\n", "opengl"),
+    ("export BFME_GRAPHICS=opengl\n", "opengl"),
+    ("BFME_GRAPHICS='opengl'\n", "opengl"),
+    ('BFME_GRAPHICS="opengl"\n', "opengl"),
+    ("  BFME_GRAPHICS=opengl\n", "opengl"),
+    ("BFME_GRAPHICS=\n", "vulkan"),
+])
+def test_the_backend_in_each_file_syntax(path, text, expected):
+    path.write_text(text)
+    assert load(path, {}).graphics == expected

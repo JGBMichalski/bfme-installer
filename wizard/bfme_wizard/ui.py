@@ -508,15 +508,23 @@ class WizardWindow(Adw.ApplicationWindow):
 
 
 class WizardApp(Adw.Application):
-    def __init__(self, runner, offer: str | None = None) -> None:
+    def __init__(self, runner, offer: str | None = None, jobs=None) -> None:
         super().__init__(application_id=APP_ID)
         self.runner = runner
         self.offer = offer   # the program a shortcut wanted to open, when it was not installed (any more)
+        self.jobs = jobs     # engine/jobs.py unless given; dev/screenshots.py gives a stand-in
         self.connect("activate", self._activate)
 
     def _activate(self, _app) -> None:
+        """Activate the application, creating and presenting the main window if it does not already exist."""
         window = self.props.active_window
         if window is None:
-            window = WizardWindow(self, lambda on_change: Controller(self.runner, on_change, offer=self.offer))
+            def controller(on_change):
+                if self.jobs is None:
+                    return Controller(self.runner, on_change, offer=self.offer)
+
+                return Controller(self.runner, on_change, offer=self.offer, jobs=self.jobs)
+
+            window = WizardWindow(self, controller)
             window.controller.start()
         window.present()

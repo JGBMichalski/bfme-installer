@@ -5,13 +5,13 @@ on:
     branches: [master, main]
     tags: ['v*']
     paths:
-      - 'scripts/**'
+      - 'dev/**'
       - 'flatpak/**'
       - 'wizard/**'
       - '.github/workflows/build-linux.yml'
   pull_request:
     paths:
-      - 'scripts/**'
+      - 'dev/**'
       - 'flatpak/**'
       - 'wizard/**'
       - '.github/workflows/build-linux.yml'
@@ -21,7 +21,6 @@ permissions:
   contents: read
 
 env:
-  SCRIPTS_DIR: scripts
   FLATPAK_DIR: flatpak
   APP_ID: com.jgbmichalski.BfmeInstaller
 
@@ -32,7 +31,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: shellcheck
-        run: shellcheck -x "$SCRIPTS_DIR/bfme-linux-setup.sh" "$FLATPAK_DIR/install-flatpak.sh"
+        run: shellcheck -x "$FLATPAK_DIR/install-flatpak.sh" dev/*.sh
 
   # The wizard's logic (protocol, state model, script runner, controller) runs without a display.
   wizard-tests:
@@ -66,7 +65,7 @@ jobs:
       - name: Stamp the version
         run: |
           if [ "${GITHUB_REF_TYPE}" = "tag" ]; then version="${GITHUB_REF_NAME#v}"; else version="dev"; fi
-          sed -i "s|@BFME_VERSION@|$version|" "$SCRIPTS_DIR/bfme-linux-setup.sh" "$FLATPAK_DIR/com.jgbmichalski.BfmeInstaller.metainfo.xml"
+          sed -i "s|@BFME_VERSION@|$version|" "$FLATPAK_DIR/com.jgbmichalski.BfmeInstaller.metainfo.xml"
           sed -i "s|@BFME_DATE@|$(date -u +%F)|" "$FLATPAK_DIR/com.jgbmichalski.BfmeInstaller.metainfo.xml"
           echo "Version: $version"
 
@@ -123,7 +122,7 @@ jobs:
       - name: Stamp the version
         run: |
           if [ "${GITHUB_REF_TYPE}" = "tag" ]; then version="${GITHUB_REF_NAME#v}"; else version="dev"; fi
-          sed -i "s|@BFME_VERSION@|$version|" "$SCRIPTS_DIR/bfme-linux-setup.sh" "$FLATPAK_DIR/com.jgbmichalski.BfmeInstaller.metainfo.xml"
+          sed -i "s|@BFME_VERSION@|$version|" "$FLATPAK_DIR/com.jgbmichalski.BfmeInstaller.metainfo.xml"
           sed -i "s|@BFME_DATE@|$(date -u +%F)|" "$FLATPAK_DIR/com.jgbmichalski.BfmeInstaller.metainfo.xml"
           echo "Version: $version"
 
@@ -137,7 +136,6 @@ jobs:
           FLATPAK_REPO_BASE_URL: ${{ vars.FLATPAK_REPO_BASE_URL }}
         run: |
           BASE_URL="${FLATPAK_REPO_BASE_URL:-https://${GITHUB_REPOSITORY_OWNER,,}.github.io/${GITHUB_REPOSITORY#*/}}"
-          cp "$SCRIPTS_DIR/bfme-linux-setup.sh" dist/
           KEY="$(base64 -w0 "$FLATPAK_DIR/signing-key.gpg")"
           sed -e "s|@BFME_DEFAULT_REPO@|$BASE_URL/repo|" -e "s|@BFME_SIGNING_KEY@|$KEY|" \
             "$FLATPAK_DIR/install-flatpak.sh" > dist/install-flatpak.sh

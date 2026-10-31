@@ -1,4 +1,4 @@
-"""engine.jobs: each job's events, compared with the status lines of the setup script's command."""
+"""engine.jobs: each job's events, written out as status lines."""
 import hashlib
 import shutil
 import subprocess
@@ -22,8 +22,6 @@ from bfme_wizard.engine.events import (
 from bfme_wizard.engine.lock import setup_lock
 from bfme_wizard.engine.paths import Paths
 
-ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = ROOT / "scripts" / "bfme-linux-setup.sh"
 SEVENZIP = shutil.which("7zz") or shutil.which("7z") or shutil.which("7za")
 needs_7zip = pytest.mark.skipif(SEVENZIP is None, reason="7-Zip is needed to read the Age of the Ring download")
 
@@ -40,24 +38,6 @@ esac
 echo "umu $*" >> "$UMU_LOG"
 exit 0
 """
-# What the setup script downloads with: the same files the engine's local server gives.
-FAKE_CURL = r"""#!/usr/bin/env bash
-out=""; url=""
-while [ $# -gt 0 ]; do
-  case "$1" in
-    -o) out="$2"; shift 2 ;;
-    -m|--retry|--retry-delay|--connect-timeout|--speed-limit|--speed-time|-C) shift 2 ;;
-    -*) shift ;;
-    *) url="$1"; shift ;;
-  esac
-done
-case "$url" in *versionHash*) printf '%s' "$(printf 'arena-binary' | md5sum | awk '{print $1}')"; exit 0 ;; esac
-[ -n "$out" ] || exit 0
-mkdir -p "$(dirname "$out")"
-case "$url" in *online-arena*) printf 'arena-binary' > "$out" ;; *) printf 'fake-download' > "$out" ;; esac
-"""
-
-
 def executable(path, text):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text)
@@ -65,22 +45,18 @@ def executable(path, text):
 
 
 class World:
-    """Everything a job needs, faked the same way for the script and the engine."""
+    """Everything a job needs, faked."""
 
     def __init__(self, tmp_path, monkeypatch, file_server):
         self.tmp = tmp_path
         self.paths = Paths(tmp_path / "data")
         bin_dir = tmp_path / "bin"
         executable(bin_dir / "umu-run", FAKE_UMU)
-        executable(bin_dir / "curl", FAKE_CURL)
-        executable(bin_dir / "bwrap", "#!/bin/sh\nexit 0\n")
         executable(bin_dir / "lspci", "#!/bin/sh\n")
-        executable(tmp_path / "probe", "#!/bin/sh\necho 'vulkan Vulkan 1.4 on Test GPU'\n")
         self.home = tmp_path / "home"
         self.env = {
             "PATH": f"{bin_dir}:/usr/bin:/bin", "HOME": str(self.home), "BFME_HOME": str(self.paths.base),
-            "XDG_DATA_HOME": str(tmp_path / "xdg"), "BFME_UMU_RUN": str(bin_dir / "umu-run"),
-            "BFME_PROTONPATH": "fake-proton", "BFME_VULKAN_PROBE": str(tmp_path / "probe"),
+            "XDG_DATA_HOME": str(tmp_path / "xdg"), "BFME_PROTONPATH": "fake-proton",
             "UMU_LOG": str(tmp_path / "umu.log"),
         }
 
@@ -89,7 +65,7 @@ class World:
 
         monkeypatch.delenv("FLATPAK_ID", raising=False)
 
-        # The engine's downloads come from the local server, with the same files the fake curl gives.
+        # The downloads come from the local server.
         file_server.files["/setup.exe"] = b"fake-download"
         file_server.files["/tool.exe"] = b"fake-download"
         file_server.files["/api/applications/versionHash?name=online-arena&version=main"] = \
@@ -117,29 +93,14 @@ class World:
         for folder in ("windows", "users/steamuser"):
             (self.paths.drive_c / folder).mkdir(parents=True, exist_ok=True)
 
-    def script(self, *args):
-        done = subprocess.run([str(SCRIPT), "--machine", *args], env=self.env, capture_output=True, text=True, timeout=120)
-        lines = []
-
-        for line in done.stdout.splitlines():
-            if line.startswith("@bfme ") and not line.startswith("@bfme PROGRESS"):
-                lines.append(line)
-
-        return done.returncode, lines
-
     def engine(self, job, *args, cancel=None):
         events = []
         code = job(*args, events.append, cancel)
         return code, events
 
-    def reset(self):
-        shutil.rmtree(self.paths.base, ignore_errors=True)
-        shutil.rmtree(self.home, ignore_errors=True)
-        Path(self.env["UMU_LOG"]).unlink(missing_ok=True)
-
 
 def lines(events):
-    """The events as the setup script's status lines, without PROGRESS."""
+    """The events as status lines, without PROGRESS."""
     out = []
 
     for event in events:
@@ -164,8 +125,7 @@ def lines(events):
 
 
 def without_checks(found):
-    """The script outside the Flatpak checks other things than the engine in it; the checks are compared in
-    test_engine_doctor."""
+    """The checks depend on the computer (free disk space); they are tested in test_engine_doctor."""
     out = []
 
     for line in found:
@@ -180,37 +140,46 @@ def world(tmp_path, monkeypatch, file_server):
     return World(tmp_path, monkeypatch, file_server)
 
 
-def same(world, setup, script_args, job, *job_args, compare=lambda found: found):
-    """Run the script's command and the engine's job from the same start; both must report the same."""
-    setup()
-    script_code, from_script = world.script(*script_args)
-    world.reset()
-    setup()
-    code, events = world.engine(job, *job_args)
+def status_lines(**changed):
+    """The STATUS lines every job ends with: nothing installed, unless changed (use _ for -)."""
+    values = {
+        "runner": "proton", "graphics": "vulkan", "prefix": "ready", "aio-launcher": "missing",
+        "arena": "missing", "aotr": "missing", "workshop": "missing", "mission-control": "missing",
+        "bfme1": "missing", "bfme2": "missing", "rotwk": "missing", "complete": "no",
+    }
 
-    assert compare(lines(events)) == compare(from_script)
-    assert code == script_code
+    for key, value in changed.items():
+        values[key.replace("_", "-")] = value
 
-    return events
+    out = []
+
+    for key, value in values.items():
+        out.append(f"@bfme STATUS {key} {value}")
+
+    return out
 
 
-def nothing():
-    pass
+NO_WINE_SERVER = "@bfme WARN Could not find the Wine server. Close the AIO Launcher window to let the setup carry on."
 
 
 # What is there
 
 def test_status_of_nothing(world):
-    same(world, nothing, ["status"], jobs.status)
+    code, events = world.engine(jobs.status)
+
+    assert code == jobs.OK
+    assert lines(events) == status_lines(prefix="missing")
 
 
 def test_status_of_a_ready_environment(world):
-    def setup():
-        world.make_prefix()
-        (world.paths.aotr_exe.parent).mkdir(parents=True)
-        world.paths.aotr_exe.write_text("x")
+    world.make_prefix()
+    world.paths.aotr_exe.parent.mkdir(parents=True)
+    world.paths.aotr_exe.write_text("x")
 
-    same(world, setup, ["status"], jobs.status)
+    code, events = world.engine(jobs.status)
+
+    assert code == jobs.OK
+    assert lines(events) == status_lines(aotr="installed", complete="yes")
 
 
 def test_setup_complete_and_ready_to_open(world):
@@ -228,7 +197,19 @@ def test_setup_complete_and_ready_to_open(world):
 # Installing
 
 def test_prepare(world):
-    events = same(world, nothing, ["prepare"], jobs.prepare, compare=without_checks)
+    code, events = world.engine(jobs.prepare)
+
+    assert code == jobs.OK
+    assert without_checks(lines(events)) == [
+        "@bfme STEP doctor start",
+        "@bfme STEP doctor done",
+        "@bfme STEP runner start",
+        "@bfme STEP runner done",
+        "@bfme STEP prefix start",
+        "@bfme STEP prefix done",
+        *status_lines(),
+        "@bfme DONE",
+    ]
 
     assert Status("prefix", "ready") in events
     assert Log("The game environment is ready.") in events
@@ -244,7 +225,22 @@ def test_prepare_stops_at_a_failed_check(world, monkeypatch):
 
 
 def test_the_aio_launcher_and_the_arena(world):
-    events = same(world, world.make_prefix, ["aio-launcher-install"], jobs.aio_launcher_install)
+    world.make_prefix()
+
+    code, events = world.engine(jobs.aio_launcher_install)
+
+    assert code == jobs.OK
+    assert lines(events) == [
+        "@bfme STEP aio-launcher start",
+        NO_WINE_SERVER,
+        "@bfme STEP aio-launcher done",
+        "@bfme STEP arena start",
+        "@bfme STEP arena done",
+        "@bfme STEP shortcuts start",
+        "@bfme STEP shortcuts done",
+        *status_lines(aio_launcher="installed", arena="installed", complete="yes"),
+        "@bfme DONE",
+    ]
 
     assert Status("aio-launcher", "installed") in events
     assert Status("arena", "installed") in events
@@ -252,16 +248,34 @@ def test_the_aio_launcher_and_the_arena(world):
 
 
 def test_the_aio_launcher_needs_the_game_environment(world):
-    same(world, nothing, ["aio-launcher-install"], jobs.aio_launcher_install)
+    code, events = world.engine(jobs.aio_launcher_install)
+
+    assert code == jobs.FAILED
+    assert lines(events) == ["@bfme ERROR - Set up the game environment first. Run: prepare"]
 
 
 @pytest.mark.parametrize("tool", programs.TOOLS)
 def test_a_tool(world, tool):
-    same(world, world.make_prefix, ["tool-install", tool], jobs.tool_install, tool)
+    world.make_prefix()
+
+    code, events = world.engine(jobs.tool_install, tool)
+
+    assert code == jobs.OK
+    assert lines(events) == [
+        f"@bfme STEP {tool} start",
+        f"@bfme STEP {tool} done",
+        *status_lines(**{tool: "installed"}),
+        "@bfme DONE",
+    ]
 
 
 def test_an_unknown_tool(world):
-    same(world, world.make_prefix, ["tool-install", "bogus"], jobs.tool_install, "bogus")
+    world.make_prefix()
+
+    code, events = world.engine(jobs.tool_install, "bogus")
+
+    assert code == jobs.FAILED
+    assert lines(events) == ["@bfme ERROR - Use: tool-install workshop|mission-control"]
 
 
 def aotr_zip(world, version="10.0.0"):
@@ -275,26 +289,28 @@ def aotr_zip(world, version="10.0.0"):
     return zip_path
 
 
-def without_the_download_step(found):
-    """The setup script has no download step: the player always chose the file."""
-    out = []
-
-    for line in found:
-        if line != "@bfme STEP aotr-download done":
-            out.append(line)
-
-    return out
-
-
 @needs_7zip
 def test_age_of_the_ring_from_the_players_file(world):
     zip_path = aotr_zip(world)
 
-    events = same(world, world.make_prefix, ["aotr-install", str(zip_path)], jobs.aotr_install, str(zip_path),
-                  compare=without_the_download_step)
+    world.make_prefix()
 
-    assert Status("aotr", "installed") in events
-    assert Step("aotr-download", "done") in events
+    code, events = world.engine(jobs.aotr_install, str(zip_path))
+
+    assert code == jobs.OK
+    assert lines(events) == [
+        "@bfme STEP aotr-download done",
+        "@bfme STEP aotr-check start",
+        "@bfme STEP aotr-check done",
+        "@bfme STEP aotr-unpack start",
+        "@bfme STEP aotr-unpack done",
+        "@bfme STEP aotr-install start",
+        "@bfme STEP aotr-install done",
+        "@bfme STEP aotr-settings start",
+        "@bfme STEP aotr-settings done",
+        *status_lines(aotr="installed", complete="yes"),
+        "@bfme DONE",
+    ]
     assert zip_path.exists()                    # the player's own file is never deleted
 
 
@@ -361,31 +377,48 @@ def test_a_retry_after_a_failed_install_does_not_download_again(world, moddb, mo
 
 @pytest.mark.parametrize("program", ["aio-launcher", "arena", "aotr", "workshop", "mission-control"])
 def test_remove(world, program):
-    def setup():
-        world.make_prefix()
+    world.make_prefix()
 
-        for exe in (world.paths.aio_launcher_exe, world.paths.arena_exe, world.paths.aotr_exe,
-                    world.paths.tool_exe("workshop"), world.paths.tool_exe("mission-control")):
-            exe.parent.mkdir(parents=True, exist_ok=True)
-            exe.write_text("x")
+    for exe in (world.paths.aio_launcher_exe, world.paths.arena_exe, world.paths.aotr_exe,
+                world.paths.tool_exe("workshop"), world.paths.tool_exe("mission-control")):
+        exe.parent.mkdir(parents=True, exist_ok=True)
+        exe.write_text("x")
 
-    events = same(world, setup, ["remove", program], jobs.remove, program)
+    code, events = world.engine(jobs.remove, program)
 
-    assert Status(program, "missing") in events
+    everything_but_this = {
+        "aio_launcher": "installed", "arena": "installed", "aotr": "installed", "workshop": "installed",
+        "mission_control": "installed", "complete": "yes",
+    }
+    everything_but_this[program.replace("-", "_")] = "missing"
+
+    assert code == jobs.OK
+    assert lines(events) == [
+        NO_WINE_SERVER,
+        *status_lines(**everything_but_this),
+        "@bfme DONE",
+    ]
 
 
 @pytest.mark.parametrize("backend", ["vulkan", "opengl"])
 def test_switching_graphics(world, backend):
-    same(world, world.make_prefix, ["graphics", backend], jobs.switch_graphics, backend)
+    world.make_prefix()
+
+    code, events = world.engine(jobs.switch_graphics, backend)
+
+    assert code == jobs.OK
+    assert lines(events) == [f"@bfme STATUS graphics {backend}", "@bfme DONE"]
 
 
 def test_reset(world):
-    def setup():
-        world.make_prefix()
-        world.paths.aotr_exe.parent.mkdir(parents=True)
-        world.paths.aotr_exe.write_text("x")
+    world.make_prefix()
+    world.paths.aotr_exe.parent.mkdir(parents=True)
+    world.paths.aotr_exe.write_text("x")
 
-    same(world, setup, ["reset-prefix", "--yes"], jobs.reset)
+    code, events = world.engine(jobs.reset)
+
+    assert code == jobs.OK
+    assert lines(events) == [NO_WINE_SERVER]
 
     assert not world.paths.prefix.exists()
 

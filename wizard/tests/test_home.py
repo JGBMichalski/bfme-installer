@@ -474,7 +474,7 @@ def test_the_version_is_at_the_bottom(gtk):
 
 def folders_page(home, opened):
     from bfme_wizard.home import GameFoldersPage
-    with mock.patch.dict(os.environ, {"BFME_HOME": str(home), "BFME_RUNNER": "proton"}):
+    with mock.patch.dict(os.environ, {"BFME_HOME": str(home)}):
         return GameFoldersPage(opened.append)
 
 

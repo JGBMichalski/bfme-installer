@@ -1,7 +1,7 @@
 """One name for the AIO Launcher.
 
 Age of the Ring has a launcher of its own, so "the Launcher" on its own could mean either program. Everything a person reads (the
-wizard's words, the setup script's messages and help, the docs, the install page) says "AIO Launcher" for the community
+wizard's words, the setup's messages, the docs, the install page) says "AIO Launcher" for the community
 All-in-One Launcher; CONTEXT.md has the term. This test reads those files as text and fails on a bare mention.
 
 It leaves alone what is not a word of the language: the `aio-launcher` command, key, step and file names, `.AioLauncher` at the end
@@ -16,7 +16,7 @@ from tests.helpers import ROOT
 
 # What a person reads, as paths from the top of the repository.
 READ = (
-    "wizard/bfme_wizard/*.py", "wizard/bfme_wizard/icons/*.md", "scripts/*.sh", "dev/*.py",
+    "wizard/bfme_wizard/*.py", "wizard/bfme_wizard/engine/*.py", "wizard/bfme_wizard/icons/*.md", "dev/*.py",
     "README.md", "CONTEXT.md", "CONTRIBUTING.md", "CHANGELOG.md", "docs/*.md",
     "flatpak/*.html", "flatpak/*.xml", "flatpak/*.flatpakrepo", "flatpak/*.desktop", "flatpak/*.sh", ".github/ISSUE_TEMPLATE/*.yml",
 )
@@ -24,6 +24,7 @@ READ = (
 # from before it was called AioLauncher.
 NOT_A_WORD = (
     ("flatpak/install-flatpak.sh", "for program in AioLauncher Launcher Arena Aotr"),
+    ("wizard/bfme_wizard/engine/shortcuts.py", 'OLD_SUFFIXES = ("Launcher",)'),
     ("flatpak/install-flatpak.sh", "# Launcher: the AIO Launcher's shortcut before it was called AioLauncher."),
     # The glossary names the phrase it forbids, in quotes.
     ("CONTEXT.md", 'Never shortened to "the Launcher"'),
@@ -127,4 +128,4 @@ def test_an_allowed_phrase_is_allowed_only_where_it_is_listed_and_only_that_phra
     assert bare_mention(without_allowed("README.md", phrase))                          # another file: not allowed
     assert bare_mention(without_allowed("CONTEXT.md", phrase + ", but open the Launcher"))   # a second mention: found
     assert not bare_mention(without_allowed("flatpak/install-flatpak.sh", "  for program in AioLauncher Launcher Arena Aotr; do"))
-    assert bare_mention(without_allowed("scripts/bfme-linux-setup.sh", "say 'Open the Launcher'"))
+    assert bare_mention(without_allowed("wizard/bfme_wizard/engine/jobs.py", "Log('Open the Launcher')"))

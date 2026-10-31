@@ -1,4 +1,4 @@
-"""engine.aotr: the Age of the Ring download, unpacking and installer, compared with the setup script."""
+"""engine.aotr: the Age of the Ring download, unpacking and installer."""
 import os
 import shutil
 import subprocess
@@ -15,8 +15,6 @@ from bfme_wizard.engine.errors import JobCancelled, SetupError
 from bfme_wizard.engine.events import Progress
 from bfme_wizard.engine.paths import Paths
 
-ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = ROOT / "scripts" / "bfme-linux-setup.sh"
 SEVENZIP = shutil.which("7zz") or shutil.which("7z") or shutil.which("7za")
 needs_7zip = pytest.mark.skipif(SEVENZIP is None, reason="7-Zip is needed to read the Age of the Ring download")
 Usage = namedtuple("Usage", "total used free")
@@ -56,12 +54,12 @@ def fast(monkeypatch):
 
 @pytest.fixture
 def env(tmp_path, monkeypatch):
-    """A fake umu-run and lspci first on PATH, for both the engine and the script."""
+    """A fake umu-run and lspci first on PATH."""
     executable(tmp_path / "bin" / "umu-run", FAKE_UMU)
     executable(tmp_path / "bin" / "lspci", "#!/bin/sh\n")
     values = {
         "PATH": f"{tmp_path / 'bin'}:/usr/bin:/bin", "HOME": str(tmp_path), "BFME_HOME": str(tmp_path / "data"),
-        "BFME_UMU_RUN": str(tmp_path / "bin" / "umu-run"), "BFME_PROTONPATH": "fake-proton",
+        "BFME_PROTONPATH": "fake-proton",
         "UMU_LOG": str(tmp_path / "umu.log"), "SESSION_PID": str(tmp_path / "session.pid"),
         "XDG_DATA_HOME": str(tmp_path / "xdg"),
     }
@@ -104,10 +102,23 @@ def progress(events):
     return out
 
 
-# Checking the download, compared with the script
+# Checking the download
+
+BAD_DOWNLOAD_MESSAGES = {
+    "unfinished": "This download is not finished yet. Wait until your browser has finished, then choose the file again.",
+    "wrong name": "This is not the Age of the Ring installer. Choose the file named like AotR_Standalone_9.3.0_Installer.zip.",
+    "damaged": "This file is incomplete or damaged. Download it again from ModDB.",
+    "no installer": "The installer program is missing from this file. Download it again from ModDB.",
+    "no data files": "The installer's data files are missing from this file. Download it again from ModDB.",
+    "another installer's data files": "The installer's data files are missing from this file. Download it again from ModDB.",
+}
+
 
 def bad_downloads(tmp_path):
     """{case: zip path} for each way a download can be wrong."""
+    for folder in "abc":
+        (tmp_path / folder).mkdir()
+
     garbage = tmp_path / "garbage" / ZIP
     garbage.parent.mkdir()
     garbage.write_bytes(b"PK\x03\x04 not really a zip")
@@ -128,25 +139,16 @@ def bad_downloads(tmp_path):
 
 
 @needs_7zip
-def test_a_bad_download_gets_the_scripts_message(tmp_path, env, paths):
-    for folder in "abc":
-        (tmp_path / folder).mkdir()
+def test_a_bad_download_says_what_is_wrong(tmp_path):
+    zips = bad_downloads(tmp_path)
+    expected = dict(BAD_DOWNLOAD_MESSAGES)
+    expected["missing"] = f"The file '{zips['missing']}' was not found."
 
-    make_prefix(paths)
-
-    for case, zip_path in bad_downloads(tmp_path).items():
-        done = subprocess.run([str(SCRIPT), "--machine", "aotr-install", str(zip_path)], env=env, capture_output=True,
-                              text=True, timeout=60)
-        script_error = ""
-
-        for line in done.stdout.splitlines():
-            if line.startswith("@bfme ERROR aotr-check "):
-                script_error = line[len("@bfme ERROR aotr-check "):]
-
+    for case, zip_path in zips.items():
         with pytest.raises(SetupError) as raised:
             aotr.check_zip(zip_path)
 
-        assert str(raised.value) == script_error, case
+        assert str(raised.value) == expected[case], case
 
 
 @needs_7zip
@@ -323,7 +325,7 @@ def test_cancelling_the_installer_ends_the_wine_session(tmp_path, env, paths, mo
     assert not programs.aotr_installed(paths)
 
 
-# The whole install, compared with the script's
+# The whole install
 
 def tree(paths):
     found = set()
@@ -337,19 +339,38 @@ def tree(paths):
     return found
 
 
+# The game is installed, and the unpacked installer and the unfinished-install marker are gone.
+WHOLE_INSTALL_TREE = {
+    "downloads",
+    "prefix",
+    "prefix/.bfme-settings-v4",
+    "prefix/drive_c",
+    "prefix/drive_c/AgeoftheRing",
+    "prefix/drive_c/AgeoftheRing/AotR_Launcher.exe",
+    "prefix/drive_c/users",
+    "prefix/drive_c/users/steamuser",
+    "prefix/drive_c/windows",
+}
+
+PREFIX_SETTINGS = [
+    "reg add HKCU\\Software\\Wine\\DllOverrides /v mfc71 /t REG_SZ /d native,builtin /f",
+    "reg add HKCU\\Software\\Wine\\DllOverrides /v msvcp71 /t REG_SZ /d native,builtin /f",
+    "reg add HKCU\\Software\\Wine\\DllOverrides /v msvcr71 /t REG_SZ /d native,builtin /f",
+    "reg add HKCU\\Software\\Wine\\DllOverrides /v dinput8 /t REG_SZ /d native,builtin /f",
+    "reg add HKCU\\Software\\Microsoft\\Avalon.Graphics /v DisableHWAcceleration /t REG_DWORD /d 1 /f",
+    "reg add HKCU\\Software\\Wine\\DllOverrides /v d3d8 /t REG_SZ /d native,builtin /f",
+    "reg add HKCU\\Software\\Wine\\DllOverrides /v d3d9 /t REG_SZ /d native,builtin /f",
+    "reg add HKCU\\Software\\Wine\\DllOverrides /v d3d10core /t REG_SZ /d native,builtin /f",
+    "reg add HKCU\\Software\\Wine\\DllOverrides /v d3d11 /t REG_SZ /d native,builtin /f",
+    "reg add HKCU\\Software\\Wine\\DllOverrides /v dxgi /t REG_SZ /d native,builtin /f",
+]
+
+
 @needs_7zip
-def test_a_whole_install_leaves_what_the_script_leaves(tmp_path, env, paths):
+def test_a_whole_install_leaves_the_game_and_cleans_up(tmp_path, env, paths):
     zip_path = make_zip(tmp_path, GOOD)
     make_prefix(paths)
-    done = subprocess.run([str(SCRIPT), "--machine", "aotr-install", str(zip_path)], env=env, capture_output=True,
-                          text=True, timeout=120)
-    assert done.returncode == 0, done.stdout + done.stderr
-    from_script = tree(paths)
-    script_calls = Path(env["UMU_LOG"]).read_text().splitlines()
 
-    shutil.rmtree(paths.base)
-    os.remove(env["UMU_LOG"])
-    make_prefix(paths)
     aotr_zip = aotr.check_zip(zip_path)
     aotr.check_space(paths, aotr_zip)
     prefix.prepare_prefix(paths, Config(), "fake-proton", [].append)
@@ -357,9 +378,16 @@ def test_a_whole_install_leaves_what_the_script_leaves(tmp_path, env, paths):
     aotr.run_installer(paths, Config(), "fake-proton", aotr_zip, [].append)
     aotr.clean_up(paths)
 
-    engine_calls = Path(env["UMU_LOG"]).read_text().splitlines()
-    assert tree(paths) == from_script
-    assert engine_calls == script_calls
+    # Each call is logged as "arguments|working folder".
+    expected_calls = []
+
+    for setting in PREFIX_SETTINGS:
+        expected_calls.append(f"{setting}|{os.getcwd()}")
+
+    expected_calls.append(f"./{EXE} /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /LOG=C:\\aotr-install.log|{paths.aotr_unpack}")
+
+    assert tree(paths) == WHOLE_INSTALL_TREE
+    assert Path(env["UMU_LOG"]).read_text().splitlines() == expected_calls
 
 
 # Downloading it from ModDB

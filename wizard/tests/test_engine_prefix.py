@@ -1,5 +1,4 @@
-"""engine.prefix: the game environment, its settings and the graphics backend, compared with the setup script."""
-import subprocess
+"""engine.prefix: the game environment, its settings and the graphics backend."""
 from pathlib import Path
 
 import pytest
@@ -9,9 +8,6 @@ from bfme_wizard.engine.config import Config, load
 from bfme_wizard.engine.errors import SetupError
 from bfme_wizard.engine.events import Log, Warn
 from bfme_wizard.engine.paths import Paths
-
-ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = ROOT / "scripts" / "bfme-linux-setup.sh"
 
 # Logs each call's arguments. Called with "" (the first start) it makes the prefix as umu would. REG_FAIL makes `reg add`
 # fail for that value name.
@@ -35,12 +31,12 @@ def executable(path, text):
 
 @pytest.fixture
 def env(tmp_path, monkeypatch):
-    """The environment for both the engine and the script: the fake umu-run first on PATH, its log, and the data folder."""
+    """The environment for the engine: the fake umu-run first on PATH, its log, and the data folder."""
     executable(tmp_path / "bin" / "umu-run", FAKE_UMU)
     executable(tmp_path / "bin" / "lspci", "#!/bin/sh\n")
     values = {
         "PATH": f"{tmp_path / 'bin'}:/usr/bin:/bin", "HOME": str(tmp_path), "BFME_HOME": str(tmp_path / "data"),
-        "BFME_UMU_RUN": str(tmp_path / "bin" / "umu-run"), "BFME_PROTONPATH": "fake-proton",
+        "BFME_PROTONPATH": "fake-proton",
         "UMU_LOG": str(tmp_path / "umu.log"),
     }
 
@@ -67,10 +63,6 @@ def umu_calls(env):
     return calls
 
 
-def script(env, *args):
-    return subprocess.run([str(SCRIPT), *args], env=env, capture_output=True, text=True, timeout=60)
-
-
 def logs(events):
     out = []
 
@@ -91,23 +83,6 @@ def test_ready_needs_both_folders_and_no_creation_marker(paths):
     assert prefix.prefix_ready(paths)
     (paths.prefix / ".bfme-creating").touch()
     assert not prefix.prefix_ready(paths)
-
-
-@pytest.mark.parametrize("state", ["missing", "half", "creating", "ready"])
-def test_the_script_agrees_on_ready(env, paths, state):
-    if state in ("half", "creating", "ready"):
-        (paths.drive_c / "windows").mkdir(parents=True)
-
-    if state in ("creating", "ready"):
-        (paths.drive_c / "users/steamuser").mkdir(parents=True)
-
-    if state == "creating":
-        (paths.prefix / ".bfme-creating").touch()
-
-    out = script(env, "--machine", "status").stdout
-    from_script = "@bfme STATUS prefix ready" in out
-
-    assert prefix.prefix_ready(paths) == from_script
 
 
 # Creating it
@@ -136,22 +111,39 @@ def test_a_failed_creation_says_where_to_look_and_stays_unfinished(env, paths, m
 
 # The settings
 
-@pytest.mark.parametrize("backend", ["vulkan", "opengl"])
-def test_the_settings_are_the_scripts(env, paths, backend):
-    make_prefix(paths)
-    done = script(env, "graphics", backend)
-    assert done.returncode == 0, done.stderr
-    from_script = umu_calls(env)
-    script_markers = sorted(p.name for p in paths.prefix.glob(".bfme-settings-v*"))
+DLL_OVERRIDES = "HKCU\\Software\\Wine\\DllOverrides"
+SETTINGS_ALWAYS = [
+    f"reg add {DLL_OVERRIDES} /v mfc71 /t REG_SZ /d native,builtin /f",
+    f"reg add {DLL_OVERRIDES} /v msvcp71 /t REG_SZ /d native,builtin /f",
+    f"reg add {DLL_OVERRIDES} /v msvcr71 /t REG_SZ /d native,builtin /f",
+    f"reg add {DLL_OVERRIDES} /v dinput8 /t REG_SZ /d native,builtin /f",
+    "reg add HKCU\\Software\\Microsoft\\Avalon.Graphics /v DisableHWAcceleration /t REG_DWORD /d 1 /f",
+]
+SETTINGS_VULKAN = SETTINGS_ALWAYS + [
+    f"reg add {DLL_OVERRIDES} /v d3d8 /t REG_SZ /d native,builtin /f",
+    f"reg add {DLL_OVERRIDES} /v d3d9 /t REG_SZ /d native,builtin /f",
+    f"reg add {DLL_OVERRIDES} /v d3d10core /t REG_SZ /d native,builtin /f",
+    f"reg add {DLL_OVERRIDES} /v d3d11 /t REG_SZ /d native,builtin /f",
+    f"reg add {DLL_OVERRIDES} /v dxgi /t REG_SZ /d native,builtin /f",
+]
+SETTINGS_OPENGL = SETTINGS_ALWAYS + [
+    f"reg add {DLL_OVERRIDES} /v d3d8 /t REG_SZ /d builtin /f",
+    f"reg add {DLL_OVERRIDES} /v d3d9 /t REG_SZ /d builtin /f",
+    f"reg add {DLL_OVERRIDES} /v d3d10core /t REG_SZ /d builtin /f",
+    f"reg add {DLL_OVERRIDES} /v d3d11 /t REG_SZ /d builtin /f",
+    f"reg add {DLL_OVERRIDES} /v dxgi /t REG_SZ /d builtin /f",
+]
+SETTINGS = {"vulkan": SETTINGS_VULKAN, "opengl": SETTINGS_OPENGL}
 
-    for marker in paths.prefix.glob(".bfme-settings-v*"):
-        marker.unlink()
+
+@pytest.mark.parametrize("backend", ["vulkan", "opengl"])
+def test_the_settings_for_each_backend(env, paths, backend):
+    make_prefix(paths)
 
     prefix.apply_settings(paths, Config(graphics=backend), "fake-proton", [].append, force=True)
 
-    assert umu_calls(env) == from_script
-    assert len(from_script) == 10
-    assert sorted(p.name for p in paths.prefix.glob(".bfme-settings-v*")) == script_markers
+    assert umu_calls(env) == SETTINGS[backend]
+    assert sorted(p.name for p in paths.prefix.glob(".bfme-settings-v*")) == [".bfme-settings-v4"]
 
 
 def test_the_settings_are_applied_once_per_version(env, paths):
@@ -232,44 +224,52 @@ def test_a_probe_that_fails_changes_nothing(paths, probe):
     assert not paths.config.exists()
 
 
-# The player's switch, compared with the script's `graphics`
+# The player's switch
 
-def script_says(done):
-    lines = []
+SAVED_NEW = "Saved for this game environment."
+LATER = "The game environment will be created with it."
+APPLYING = "Applying prefix settings."
+AGAIN = "The settings were applied again."
+NEXT_TIME = "The change applies the next time you open a program."
 
-    for line in done.stdout.splitlines():
-        if line and not line.startswith("@bfme "):
-            lines.append(line)
+# (ready, saved, wanted): what the switch says. Without a game environment nothing runs; with one the settings for the
+# wanted backend are applied again.
+SWITCHES = {
+    (False, None, "vulkan"): ["Already using Vulkan (DXVK).", LATER],
+    (False, None, "opengl"): [f"Graphics: OpenGL (WineD3D). {SAVED_NEW}", LATER],
+    (False, "vulkan", "vulkan"): ["Already using Vulkan (DXVK).", LATER],
+    (False, "vulkan", "opengl"): [f"Graphics: OpenGL (WineD3D). {SAVED_NEW}", LATER],
+    (False, "opengl", "vulkan"): [f"Graphics: Vulkan (DXVK). {SAVED_NEW}", LATER],
+    (False, "opengl", "opengl"): ["Already using OpenGL (WineD3D).", LATER],
+    (True, None, "vulkan"): ["Already using Vulkan (DXVK).", APPLYING, AGAIN],
+    (True, None, "opengl"): [f"Graphics: OpenGL (WineD3D). {SAVED_NEW}", APPLYING, NEXT_TIME],
+    (True, "vulkan", "vulkan"): ["Already using Vulkan (DXVK).", APPLYING, AGAIN],
+    (True, "vulkan", "opengl"): [f"Graphics: OpenGL (WineD3D). {SAVED_NEW}", APPLYING, NEXT_TIME],
+    (True, "opengl", "vulkan"): [f"Graphics: Vulkan (DXVK). {SAVED_NEW}", APPLYING, NEXT_TIME],
+    (True, "opengl", "opengl"): ["Already using OpenGL (WineD3D).", APPLYING, AGAIN],
+}
 
-    return lines
 
-
-@pytest.mark.parametrize("ready", [False, True])
-@pytest.mark.parametrize("saved", [None, "vulkan", "opengl"])
-@pytest.mark.parametrize("wanted", ["vulkan", "opengl"])
-def test_switching_is_the_scripts(env, paths, ready, saved, wanted):
+@pytest.mark.parametrize("ready,saved,wanted", list(SWITCHES))
+def test_switching(env, paths, ready, saved, wanted):
     if ready:
         make_prefix(paths)
 
     paths.base.mkdir(parents=True, exist_ok=True)
     start = f"BFME_NVIDIA=1\n# keep me\nBFME_GRAPHICS={saved}\n" if saved else "BFME_NVIDIA=1\n# keep me\n"
     paths.config.write_text(start)
-    done = script(env, "graphics", wanted)
-    assert done.returncode == 0, done.stderr
-    script_config = paths.config.read_text()
-    script_calls = umu_calls(env)
-
-    paths.config.write_text(start)
-
-    for marker in paths.prefix.glob(".bfme-settings-v*"):
-        marker.unlink()
-
     events = []
+
     config = prefix.set_graphics(paths, load(paths.config, {}), wanted, events.append)
 
-    assert logs(events) == script_says(done)
-    assert paths.config.read_text() == script_config
-    assert umu_calls(env) == script_calls
+    assert logs(events) == SWITCHES[(ready, saved, wanted)]
+    assert paths.config.read_text() == f"BFME_NVIDIA=1\n# keep me\nBFME_GRAPHICS={wanted}\n"
+
+    if ready:
+        assert umu_calls(env) == SETTINGS[wanted]
+    else:
+        assert umu_calls(env) == []
+
     assert (config.graphics, config.graphics_chosen) == (wanted, True)
 
 

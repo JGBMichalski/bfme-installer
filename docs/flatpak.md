@@ -1,8 +1,8 @@
 # Flatpak
 
-`flatpak/` packages the script and the [wizard](wizard.md) as `com.jgbmichalski.BfmeInstaller`. It adds one menu entry, **BFME Installer**, which opens the wizard. Inside the sandbox the script uses Proton only, with graphics and 32-bit libraries from the runtime. The OpenGL backend works there too: Proton runs WineD3D, and the GL libraries come from the same runtime and 32-bit GL extensions.
+`flatpak/` packages the [app](wizard.md) as `com.jgbmichalski.BfmeInstaller`, with one menu entry, **BFME Installer**. It bundles `umu-run` and `7zz`, and uses Proton with graphics and 32-bit libraries from the runtime, for Vulkan and OpenGL alike.
 
-The app runs on the GNOME runtime (`org.gnome.Platform` 49) for GTK4, libadwaita and PyGObject. It is based on freedesktop 25.08, which fixes the 32-bit extension versions below. Run the script directly with `flatpak run --command=bfme-linux-setup com.jgbmichalski.BfmeInstaller <command>`.
+The app runs on the GNOME runtime (`org.gnome.Platform` 49) for GTK4, libadwaita and PyGObject. It is based on freedesktop 25.08, which fixes the 32-bit extension versions below.
 
 ## Build locally
 
@@ -19,9 +19,9 @@ flatpak-builder --user --install --install-deps-from=flathub --force-clean build
 `flatpak/install-flatpak.sh` is what the README's one-line install runs. The copy attached to each release has the Pages repository address and the public signing key filled in. It:
 
 1. Adds the Flathub remote.
-2. Installs the 32-bit extensions, picking the 32-bit NVIDIA driver that matches your card. Flatpak does not install them for apps outside Flathub, whatever the install method. Without them `doctor` fails and every start command exits with the fix.
+2. Installs the 32-bit extensions, picking the 32-bit NVIDIA driver that matches your card. Flatpak does not install them for apps outside Flathub, whatever the install method. Without them the system check fails and shows the fix.
 3. Installs the app from the Pages repository, accepting only software signed with the project's key.
-4. Opens the wizard, or runs the terminal setup when there is no display.
+4. Opens the wizard. Without a display it says to open it from the desktop.
 
 If Flatpak is missing, it prints the install command for your distribution (apt, dnf, pacman or zypper) and stops. It never runs `sudo` and is safe to rerun.
 
@@ -48,7 +48,7 @@ The git tag is the only place the version lives.
 1. In `CHANGELOG.md`, rename `## [Unreleased]` to `## [x.y.z]`. That section becomes the release notes.
 2. Tag and push: `git tag vx.y.z && git push origin vx.y.z`.
 
-The build stamps `x.y.z` into the script and the Flatpak metainfo, and fails if the changelog has no `## [x.y.z]` section.
+The build stamps `x.y.z` into the Flatpak metainfo, and fails if the changelog has no `## [x.y.z]` section.
 
 ## Repository and updates
 

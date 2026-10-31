@@ -1,7 +1,5 @@
-"""engine.doctor: the system check, compared with the setup script's in the Flatpak."""
-import subprocess
+"""engine.doctor: the system check."""
 from collections import namedtuple
-from pathlib import Path
 
 import pytest
 
@@ -10,8 +8,6 @@ from bfme_wizard.engine.config import Config, load
 from bfme_wizard.engine.events import Check, Fix, Log
 from bfme_wizard.engine.paths import Paths
 
-ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = ROOT / "scripts" / "bfme-linux-setup.sh"
 Usage = namedtuple("Usage", "total used free")
 KEPT = ("cpu", "flatpak-32bit", "graphics", "disk", "firewall")
 
@@ -64,6 +60,28 @@ GL32 = "i386-linux-gnu/GL/default/"
 
 # The 32-bit extensions
 
+MISSING_32BIT_HELP = [
+    "         The 32-bit parts of the Flatpak runtime are not installed, so the games and apps cannot start.",
+    "         Easiest fix: run the installer again (it also picks the 32-bit driver that matches your graphics card):",
+    "           curl -fLO <repository address>/install-flatpak.sh && bash install-flatpak.sh",
+    "         Or by hand, then start the app again:",
+    "           flatpak install flathub org.freedesktop.Platform.Compat.i386//25.08 org.freedesktop.Platform.GL32.default//25.08",
+    "         With an NVIDIA graphics card also install the matching 32-bit driver. Find its name with:",
+    "           flatpak list | grep nvidia",
+    "         and install the same name with GL32 in place of GL, for example org.freedesktop.Platform.GL32.nvidia-<version>.",
+]
+
+
+def help_lines(events):
+    out = []
+
+    for line in logs(events):
+        if line.startswith("         "):
+            out.append(line)
+
+    return out
+
+
 @pytest.mark.parametrize("files,missing", [
     ((), True),
     ((LD,), True),
@@ -91,7 +109,7 @@ def test_missing_extensions_fail_the_check_with_help_and_a_fix(tmp_path, paths, 
     assert ok is False
     assert Check("flatpak-32bit", "fail", "the 32-bit Flatpak extensions are not installed") in events
     assert Fix("flatpak-32bit", doctor.flatpak_32bit_fix(lib_root(tmp_path))) in events
-    assert "         The 32-bit parts of the Flatpak runtime are not installed, so the games and apps cannot start." in logs(events)
+    assert help_lines(events) == MISSING_32BIT_HELP
     assert logs(events)[-1] == "1 problem(s) must be fixed first."
 
 
@@ -140,67 +158,52 @@ def test_disk_space_is_measured_where_the_data_will_go(tmp_path, paths, probe, m
     assert asked == [tmp_path]
 
 
-# Parity with the script's system check in the Flatpak
+# The graphics check, for each probe answer and saved backend
 
-def script_checks(tmp_path, paths, probe_output, config_text):
-    probe_file = tmp_path / "probe"
-    probe_file.write_text(f"#!/bin/sh\necho '{probe_output}'\n")
-    probe_file.chmod(0o755)
+VULKAN = ("vulkan", "Vulkan 1.4 on Test GPU")
+OPENGL = ("opengl", "no graphics card with Vulkan was found")
+UNKNOWN = ("unknown", "could not check Vulkan (boom)")
+NO_VULKAN = "Graphics: no graphics card with Vulkan was found."
+NOT_CHECKED = "Graphics: could not check Vulkan (boom)."
+
+# (probe answer, saved backend): the graphics check's level and message.
+GRAPHICS_CHECKS = [
+    (VULKAN, None, "ok", "Graphics: Vulkan 1.4 on Test GPU. Using Vulkan (DXVK)."),
+    (VULKAN, "vulkan", "ok", "Graphics: Vulkan 1.4 on Test GPU. Using Vulkan (DXVK)."),
+    (VULKAN, "opengl", "ok", "Graphics: Vulkan 1.4 on Test GPU. Using OpenGL (WineD3D), as you chose."),
+    (OPENGL, None, "ok", f"{NO_VULKAN} The setup will use OpenGL (WineD3D)."),
+    (OPENGL, "vulkan", "warn", f"{NO_VULKAN} OpenGL is recommended: switch it under Troubleshoot, Graphics."),
+    (OPENGL, "opengl", "ok", f"{NO_VULKAN} Using OpenGL (WineD3D)."),
+    (UNKNOWN, None, "warn", f"{NOT_CHECKED} Using Vulkan (DXVK)."),
+    (UNKNOWN, "vulkan", "warn", f"{NOT_CHECKED} Using Vulkan (DXVK)."),
+    (UNKNOWN, "opengl", "warn", f"{NOT_CHECKED} Using OpenGL (WineD3D)."),
+]
+
+
+@pytest.mark.parametrize("answer,saved,level,message", GRAPHICS_CHECKS)
+def test_the_checks_for_each_graphics_answer(tmp_path, paths, probe, monkeypatch, answer, saved, level, message):
+    monkeypatch.setattr(doctor.shutil, "disk_usage", lambda path: Usage(0, 0, 100 * 1024 ** 3))
+    probe["value"] = answer
     paths.base.mkdir(parents=True, exist_ok=True)
-    paths.config.write_text(config_text)
-    env = {"PATH": "/usr/bin:/bin", "HOME": str(tmp_path), "BFME_HOME": str(paths.base), "FLATPAK_ID": "com.example.App",
-           "BFME_VULKAN_PROBE": str(probe_file)}
-    out = subprocess.run([str(SCRIPT), "--machine", "doctor"], env=env, capture_output=True, text=True, timeout=60).stdout
-    found = []
 
-    for line in out.splitlines():
-        parts = line.split(" ", 3)
+    if saved:
+        paths.config.write_text(f"BFME_GRAPHICS={saved}\n")
+    else:
+        paths.config.write_text("")
 
-        if line.startswith("@bfme CHECK ") and parts[2] in KEPT:
-            found.append(line)
+    _, events = run(paths, load(paths.config, {}), lib_root(tmp_path, LD, GL32))
 
-        if line.startswith("@bfme FIX "):
-            found.append(line)
-
-    return found
-
-
-def engine_checks(events):
-    found = []
+    checks = []
 
     for event in events:
-        if isinstance(event, Check):
-            found.append(f"@bfme CHECK {event.id} {event.level} {event.message}")
+        if isinstance(event, (Check, Fix)):
+            checks.append(event)
 
-        if isinstance(event, Fix):
-            found.append(f"@bfme FIX {event.check_id} {event.command}")
-
-    return found
-
-
-@pytest.mark.parametrize("probe_output", ["vulkan Vulkan 1.4 on Test GPU", "opengl no graphics card with Vulkan was found",
-                                          "unknown could not check Vulkan (boom)"])
-@pytest.mark.parametrize("config_text", ["", "BFME_GRAPHICS=vulkan\n", "BFME_GRAPHICS=opengl\n"])
-def test_the_checks_are_the_scripts(tmp_path, paths, probe, probe_output, config_text):
-    from_script = script_checks(tmp_path, paths, probe_output, config_text)
-    backend, _, why = probe_output.partition(" ")
-    probe["value"] = (backend, why)
-
-    _, events = run(paths, load(paths.config, {}), doctor.LIB_ROOT)
-
-    assert engine_checks(events) == from_script
-
-
-def test_the_help_for_missing_extensions_is_the_scripts(tmp_path, paths, probe):
-    env = {"PATH": "/usr/bin:/bin", "HOME": str(tmp_path), "BFME_HOME": str(paths.base), "FLATPAK_ID": "com.example.App",
-           "BFME_VULKAN_PROBE": "/bin/false"}
-    out = subprocess.run([str(SCRIPT), "doctor"], env=env, capture_output=True, text=True, timeout=60).stdout
-    from_script = [line for line in out.splitlines() if line.startswith("         ")]
-
-    _, events = run(paths, Config(), lib_root(tmp_path))
-    from_engine = [line for line in logs(events) if line.startswith("         ")]
-
-    if not doctor.flatpak_32bit_missing():
-        pytest.skip("this computer has the 32-bit libraries, so the script prints no help")
-
-    assert from_engine == from_script
+    assert checks == [
+        Check("cpu", "ok", "x86_64 processor"),
+        Check("flatpak-32bit", "ok", "32-bit Flatpak extensions installed"),
+        Check("graphics", level, message),
+        Check("disk", "ok", "free disk space: 100 GB (need about 30 GB)"),
+        Check("firewall", "ok", "firewall: not checked from inside a Flatpak. "
+                                "If you cannot host or join games, check ufw or firewalld on your system."),
+    ]

@@ -1,9 +1,7 @@
 """engine.proton: getting Proton, the environment umu runs programs with, and ending the Wine session."""
 import hashlib
 import io
-import subprocess
 import tarfile
-from pathlib import Path
 
 import pytest
 
@@ -13,8 +11,6 @@ from bfme_wizard.engine.config import DEFAULT_PROTONPATH, Config, load
 from bfme_wizard.engine.errors import SetupError
 from bfme_wizard.engine.paths import Paths
 
-ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = ROOT / "scripts" / "bfme-linux-setup.sh"
 LSPCI_TWO_CARDS = ("00:02.0 VGA compatible controller: Intel Corporation CometLake-H GT2\n"
                    "01:00.0 3D controller: NVIDIA Corporation TU106GLM [Quadro RTX 3000 Mobile]\n")
 LSPCI_ONE_CARD = "01:00.0 VGA compatible controller: NVIDIA Corporation GA104 [GeForce RTX 3070]\n"
@@ -133,61 +129,62 @@ def test_no_lspci_means_no_offload(tmp_path, monkeypatch):
     assert proton.use_nvidia() is False
 
 
-# The environment, compared with the setup script's
+# The environment
 
-def script_runner_env(tmp_path, graphics, config_text, environ):
-    """The environment the setup script gives umu when it sets the registry, as {name: value}."""
-    dump = tmp_path / "env.txt"
-    executable(tmp_path / "bin" / "umu-run", f"#!/bin/sh\nenv > '{dump}'\n")
-    base = Path(environ["BFME_HOME"])
-
-    for folder in ("prefix/drive_c/windows", "prefix/drive_c/users/steamuser"):
-        (base / folder).mkdir(parents=True, exist_ok=True)
-
-    (base / "config.env").write_text(config_text)
-    env = dict(environ, BFME_UMU_RUN=str(tmp_path / "bin" / "umu-run"))
-    done = subprocess.run([str(SCRIPT), "graphics", graphics], env=env, capture_output=True, text=True, timeout=60)
-    assert done.returncode == 0, done.stderr
-
-    values = {}
-
-    for line in dump.read_text().splitlines():
-        name, _, value = line.partition("=")
-        values[name] = value
-
-    return values
+WINE_OVERRIDES = {"WINEDLLOVERRIDES": "winemenubuilder.exe=d", "WINE_D3D_CONFIG": "csmt=0x1"}
+NVIDIA_OFFLOAD = {"__GLX_VENDOR_LIBRARY_NAME": "nvidia", "__NV_PRIME_RENDER_OFFLOAD": "1", "__VK_LAYER_NV_optimus": "NVIDIA_only"}
+OPENGL = {"PROTON_USE_WINED3D": "1", "WINEDLLOVERRIDES": "d3d8,d3d9,d3d10core,d3d11,dxgi=b"}
 
 
 def changed(env, base):
-    """What env sets that base does not have, without the variables every shell sets."""
-    shell_own = {"PWD", "OLDPWD", "SHLVL", "_", "BFME_UMU_RUN"}
+    """What env sets that base does not have."""
     out = {}
 
     for name, value in env.items():
-        if name not in shell_own and base.get(name) != value:
+        if base.get(name) != value:
             out[name] = value
 
     return out
 
 
-@pytest.mark.parametrize("graphics", ["vulkan", "opengl"])
-@pytest.mark.parametrize("lspci", [LSPCI_TWO_CARDS, LSPCI_ONE_CARD])
-@pytest.mark.parametrize("extra_environ", [{}, {"WINEDLLOVERRIDES": "winemenubuilder.exe=d", "WINE_D3D_CONFIG": "csmt=0x1"}])
-def test_the_environment_is_the_scripts(tmp_path, monkeypatch, graphics, lspci, extra_environ):
+# What runner_env adds besides the variables every run gets. With WINE_D3D_CONFIG already set, OpenGL keeps it;
+# an existing WINEDLLOVERRIDES is appended to.
+@pytest.mark.parametrize("graphics,lspci,extra_environ,expected", [
+    ("vulkan", LSPCI_TWO_CARDS, {}, NVIDIA_OFFLOAD),
+    ("vulkan", LSPCI_TWO_CARDS, WINE_OVERRIDES, NVIDIA_OFFLOAD),
+    ("vulkan", LSPCI_ONE_CARD, {}, {}),
+    ("vulkan", LSPCI_ONE_CARD, WINE_OVERRIDES, {}),
+    ("opengl", LSPCI_TWO_CARDS, {}, {**OPENGL, "WINE_D3D_CONFIG": "renderer=gl", **NVIDIA_OFFLOAD}),
+    ("opengl", LSPCI_TWO_CARDS, WINE_OVERRIDES,
+     {**OPENGL, "WINEDLLOVERRIDES": "d3d8,d3d9,d3d10core,d3d11,dxgi=b,winemenubuilder.exe=d", **NVIDIA_OFFLOAD}),
+    ("opengl", LSPCI_ONE_CARD, {}, {**OPENGL, "WINE_D3D_CONFIG": "renderer=gl"}),
+    ("opengl", LSPCI_ONE_CARD, WINE_OVERRIDES,
+     {**OPENGL, "WINEDLLOVERRIDES": "d3d8,d3d9,d3d10core,d3d11,dxgi=b,winemenubuilder.exe=d"}),
+])
+def test_the_environment(tmp_path, monkeypatch, graphics, lspci, extra_environ, expected):
     executable(tmp_path / "bin" / "lspci", f"#!/bin/sh\nprintf '%s' '{lspci}'\n")
     environ = {
         "PATH": f"{tmp_path / 'bin'}:/usr/bin:/bin", "HOME": str(tmp_path), "BFME_HOME": str(tmp_path / "data"),
         "BFME_PROTONPATH": "fake-proton", **extra_environ,
     }
-    config_text = f'BFME_GRAPHICS={graphics}\nBFME_EXTRA_ENV="DXVK_HUD=fps WINEDEBUG=-all"\n'
-    from_script = changed(script_runner_env(tmp_path, graphics, config_text, environ), environ)
-
     monkeypatch.setenv("PATH", environ["PATH"])
     paths = Paths(tmp_path / "data")
-    config = load(paths.config, environ)
-    from_engine = changed(proton.runner_env(paths, config, "fake-proton", inprefix=True, environ=environ), environ)
+    paths.base.mkdir()
+    paths.config.write_text(f'BFME_GRAPHICS={graphics}\nBFME_EXTRA_ENV="DXVK_HUD=fps WINEDEBUG=-all"\n')
 
-    assert from_engine == from_script
+    config = load(paths.config, environ)
+    env = proton.runner_env(paths, config, "fake-proton", inprefix=True, environ=environ)
+
+    every_run = {
+        "DXVK_HUD": "fps",
+        "DXVK_STATE_CACHE_PATH": str(paths.base / "dxvk-cache"),
+        "GAMEID": "0",
+        "PROTONPATH": "fake-proton",
+        "PROTON_VERB": "runinprefix",
+        "WINEDEBUG": "-all",
+        "WINEPREFIX": str(paths.prefix),
+    }
+    assert changed(env, environ) == {**every_run, **expected}
 
 
 def test_the_first_start_is_not_runinprefix(paths):
@@ -217,13 +214,13 @@ def test_without_umu_run_it_says_so(tmp_path, monkeypatch, paths):
         proton.run(paths, Config(), "p", ["x"], inprefix=True)
 
 
-# Ending the Wine session, compared with the setup script's
+# Ending the Wine session
 
 def fake_wineserver(path, log):
     executable(path, f'#!/bin/sh\necho "$WINEPREFIX $*" >> \'{log}\'\n')
 
 
-def test_the_wine_session_ends_as_the_script_ends_it(tmp_path):
+def test_the_wine_session_is_killed_and_waited_for(tmp_path):
     proton_folder = tmp_path / "my-proton"
     log = tmp_path / "wineserver.log"
     fake_wineserver(proton_folder / "files/bin/wineserver", log)
@@ -233,12 +230,9 @@ def test_the_wine_session_ends_as_the_script_ends_it(tmp_path):
     (paths.prefix / "drive_c/windows").mkdir(parents=True)
     (paths.prefix / "drive_c/users/steamuser").mkdir(parents=True)
 
-    subprocess.run([str(SCRIPT), "remove", "aio-launcher"], env=environ, capture_output=True, timeout=60)
-    from_script = log.read_text()
-    log.unlink()
     proton.end_wine_session(paths, load(paths.config, environ), environ)
 
-    assert log.read_text() == from_script == f"{paths.prefix} -k\n{paths.prefix} -w\n"
+    assert log.read_text() == f"{paths.prefix} -k\n{paths.prefix} -w\n"
 
 
 def test_umus_own_protons_are_found_too(tmp_path, paths):

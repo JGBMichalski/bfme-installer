@@ -1,131 +1,70 @@
 # Setup wizard
 
-`wizard/` is a GTK4/libadwaita app (Python) that runs `scripts/bfme-linux-setup.sh --machine` and shows its progress. It is meant to run inside the Flatpak. Without a display it runs the terminal setup instead.
+`wizard/` is the app: a GTK4/libadwaita window (Python) over the setup in `bfme_wizard/engine/`. It runs inside the Flatpak
+and needs a display.
 
 ## Screens
 
-1. **Checking your setup**: asks the script what is installed (`status`).
-2. **Start page**: choose what to install. Nothing is ticked at first and **Install** stays inactive until something is.
-   - **All-in-One Launcher**, the AIO Launcher for short, comes with the Arena. The Arena only plays games the AIO Launcher installs, so it is not a choice of its own.
-   - **Age of the Ring** needs neither the AIO Launcher nor the Arena.
-   - After a stop the page reads **Setup paused** and offers **Resume**. Choosing something else starts a new plan.
-3. **Running**: step *n* of *N* for the whole plan, and a progress bar. Cancel stops after the current step.
-4. **Download Age of the Ring**: only when chosen. The setup waits here.
-5. **Your system needs a change**: a failed system check, with a copyable fix and **Recheck**. A passing recheck continues the setup.
+1. **Checking your setup**: what is installed.
+2. **Start page**: choose what to install. The **AIO Launcher** comes with the Arena; **Age of the Ring** needs neither.
+   After a stop it offers **Resume**.
+3. **Running**: step *n* of *N* for the whole plan, with progress. **Cancel** stops after the current step, or at once
+   during a download or an install.
+4. **Download Age of the Ring**: only when the app cannot download it itself. Says why, then offers **Open ModDB** and
+   **Choose file...**.
+5. **Your system needs a change**: a failed system check, with a fix to copy and **Recheck**.
 6. **Something went wrong**: a failed step, with **Retry** and **Copy log**.
-7. **Home screen**: once the setup is complete, and the first screen when something is already installed.
-8. **Programs**: install a program that is missing or remove one that is installed. Reached from the home screen.
+7. **Home screen**: a card with **Open** for each installed program.
+8. **Programs**: install or remove a program or tool.
 
 ## The plan
 
 | Chosen | Steps |
 | --- | --- |
-| AIO Launcher | Check your system, Get Proton, Create the game environment, Download the AIO Launcher, Download the Arena, Add menu shortcuts (6) |
-| Age of the Ring | The first three above, then Download Age of the Ring, Check the download, Unpack the download, Install Age of the Ring, Finish up (8) |
-| Both | All of the above (11) |
+| AIO Launcher | Check your system, Get Proton, Create the game environment, Download the AIO Launcher, Download the Arena, Add menu shortcuts |
+| Age of the Ring | The first three, then Download Age of the Ring, Check the download, Unpack the download, Install Age of the Ring, Finish up |
 
-## Age of the Ring
+The first three are left out when the game environment is ready.
 
-The app downloads the file from ModDB itself (about 19 GB). The download page appears only when it cannot (no connection, a bot check, a changed page), or when the player picks **Choose a file instead** after a failed download. It says why, then offers **Open ModDB** in the player's browser and **Choose file...**, which opens the file chooser in Downloads. It asks for about 47 GB of free space.
+## Pages
 
-## Home screen
+- **Home screen:** the window stays open while programs run. A program that closes within 15 seconds gets a note pointing
+  to Troubleshoot. A failed background system check shows a banner.
+- **Programs:** **Install** on the AIO Launcher or the Arena installs both. **Remove** asks first, ends the Wine session,
+  and deletes only that program and its shortcut. It is inactive while a program runs. **Workshop Studio** and **Mission
+  Control** are under **Tools**, with **Open**; they have no card and no shortcut.
+- **Troubleshoot** (lifebuoy, on every page): system checks, the **Vulkan**/**OpenGL** switch, **Copy diagnostics** (can
+  contain your home folder name), **Open logs folder**, and **Reset game environment**.
+- **Shortcuts** run `bfme-installer --open aio-launcher|arena|aotr` and exist only while the program is installed. A
+  shortcut whose program is ready opens it without the window.
 
-A card for each program that is **installed**, with its picture and an **Open** button, and nothing for the others. A line above the cards names the installed games, and is omitted when the AIO Launcher is not installed. Everything else is a button in the top right corner of the page, under the header bar. The buttons float over the page and not above it, so the page keeps all its room, and the cards keep clear of them: that is why the window cannot be made shorter than about 445 pixels.
+## Updating
 
-| Icon | Tooltip | Opens | Where it shows |
-| --- | --- | --- | --- |
-| download arrow | Install or remove programs | Programs | Home screen only |
-| folder | Game folders | Game folders | Home screen only |
-| lifebuoy | Troubleshoot | Troubleshoot | Every page |
-
-The lifebuoy is Troubleshoot's icon because it says "help when something goes wrong". A gear would read as Settings, and a warning sign would read as an alarm. The old three-dot menu is gone: it only held Troubleshoot. The icons are chosen from the ones the Flatpak's GNOME runtime has, and a test checks that.
-
-- The window stays open when a program starts. The card shows "Running" until it ends, and programs can run at once. A program that ends within 15 seconds gets a note pointing to Troubleshoot, because the script returns 0 either way.
-- When the window opens with the setup complete, the system checks run in the background. A **failed** check (not a warning) shows a banner linking to Troubleshoot.
-- Each installed program has a shortcut running `bfme-installer --open aio-launcher|arena|aotr`, with the program's own picture as its icon. It exists only while the program is installed.
-
-## Programs
-
-One row for each program, **AIO Launcher**, **Arena** and **Age of the Ring**, each with its picture. A row says whether the program is installed. It has **Install** when it is not and **Remove** when it is.
-
-Under a **Tools** heading come **Workshop Studio** and **Mission Control** (downloaded from [bfmeladder.com/download](https://bfmeladder.com/download)). An installed tool has **Open** as well as **Remove**. Install runs `bfme-linux-setup tool-install <tool>` as a job on the main page. Open runs `bfme-linux-setup tool <tool>`. The tools have no home screen card and no menu shortcut.
-
-- **Install** goes back to the main page and runs the setup for that program. **Install** on the AIO Launcher or the Arena installs both, because the Arena only plays what the AIO Launcher installs, and the row says so. On Age of the Ring it ends at the download step.
-- **Remove** asks first. The dialog says what is deleted and what is not touched, and defaults to **Cancel**. Confirming runs `bfme-linux-setup remove <program>`, which ends the Wine session, deletes the program's folder and its shortcut, and leaves the games, the other programs and the settings Age of the Ring keeps in the player's own folder. The window shows "Removing..." and cannot be closed or left meanwhile, then looks at the setup again and says "The AIO Launcher was removed." If it was the last program, the start page comes back with the game environment still ready.
-- **Remove** is inactive while any program is running, because ending the Wine session closes them all, and the rows name what to close. Install is not affected.
-- Both buttons are inactive while the script is busy, because it would ignore a click.
-
-## Program pictures
-
-The AIO Launcher, the Arena and Age of the Ring each have a picture: a PNG in `bfme_wizard/icons/` that ships with the wizard, so nothing is downloaded and it shows with no network. The pictures are not this project's: they belong to their owners.
-
-- **In the window**, the home screen cards (64 px) and the Programs rows (40 px) draw each one as a circle with `Adw.Avatar`, so the square Age of the Ring picture sits well beside the two round ones. If a file is missing or damaged the circle shows the program's initials, never a broken image.
-- **In the menu**, each shortcut uses its program's picture as its icon, unchanged. In the Flatpak, the manifest exports each one as an icon of the app, named `<app id>.AioLauncher`, `<app id>.Arena` and `<app id>.Aotr` (an icon, not a menu entry), and the shortcut's `Icon=` is that name, so the pictures go when the app is uninstalled. Without the Flatpak the script copies them to `<data dir>/icons` and the shortcuts point at the copies, so they keep working if the checkout moves.
-
-## Troubleshoot
-
-Reachable with the lifebuoy button in the top right corner of every page, even while the setup runs.
-
-- **System checks:** failures and warnings first, passing checks folded into one row. The firewall check is left out because the sandbox cannot see it.
-- **Graphics:** shows the backend and switches between **Vulkan** (the default) and **OpenGL**, which older graphics cards may handle better. The switch is inactive while the setup or a program runs, because it rewrites settings in the game environment. It takes effect the next time a program opens.
-- **Can't be checked from here:** the firewall and graphics drivers, with advice and a command to copy. The graphics advice and command follow the chosen backend (`vulkaninfo --summary` or `glxinfo -B`).
-- **Copy diagnostics:** version, runner, graphics backend, your system (distribution, desktop, X11 or Wayland session, graphics card, NVIDIA driver), setup state, check results, and the end of the latest logs. It can contain your home folder and user name.
-- **Open logs folder**
-- **Reset game environment:** deletes the game environment and every installed game after a confirmation, removes every shortcut, then shows the start page. Disabled while the setup or a program is running.
-
-## Updating the app
-
-On start the wizard reads the latest release tag from `github.com/.../releases/latest` and compares it with the installed version. If it is newer, a banner offers **Update**, hidden while a setup runs. Pressing it asks Flatpak's update portal (`org.freedesktop.portal.Flatpak`) to install from the app's own repository, keeping the signature check. The new version is used after a restart.
-
-- The portal cannot say whether an update exists, so the release check is separate.
-- If the release exists on GitHub but not yet on Pages, the banner says to try again later.
-- The portal refuses updates that add permissions. The banner then shows `flatpak update --user com.jgbmichalski.BfmeInstaller` to copy.
-- Development builds (version `dev`) and runs outside a Flatpak never check.
-
-Closing the window during an install asks first. Stopping keeps what was done, and the next start offers Resume.
+On start the app compares its version with the latest GitHub release. If newer, a banner offers **Update**, which asks
+Flatpak's update portal to install it. If the update adds permissions, the banner shows the `flatpak update` command
+instead. Development builds never check.
 
 ## Code
 
 | File | Job |
 | --- | --- |
-| `bfme_wizard/protocol.py` | Parses the [status lines](status-lines.md). |
-| `bfme_wizard/model.py` | Setup state and the plan. |
-| `bfme_wizard/runner.py` | Starts the script, streams output, sends the cancel signal. |
-| `bfme_wizard/controller.py` | Runs the plan one job at a time: retry, resume, recheck, cancel. Removes programs. |
-| `bfme_wizard/updater.py` | Release check and portal update. |
-| `bfme_wizard/apps.py` | Starts programs and watches whether they still run. |
-| `bfme_wizard/diagnostics.py` | The diagnostics report and logs folder. |
-| `bfme_wizard/catalog.py` | The programs, with their names, pictures and what removing each deletes. |
-| `bfme_wizard/icons/` | The programs' pictures, and where each came from. |
-| `bfme_wizard/start.py` | Start page. |
-| `bfme_wizard/home.py` | Home screen, Game folders page, Troubleshoot page. |
-| `bfme_wizard/programs.py` | The Programs page. |
-| `bfme_wizard/aotr.py` | Age of the Ring download step. |
-| `bfme_wizard/widgets.py` | Shared GTK helpers. |
-| `bfme_wizard/ui.py` | The window. Renders the model and calls the controller. |
-| `bfme_wizard/__main__.py` | Entry point, script lookup, no-display fallback. |
+| `engine/` | The setup, without GTK. See [How it works](how-it-works.md). |
+| `runner.py` | Runs one job at a time on a worker thread. |
+| `controller.py` | Runs the plan: retry, resume, recheck, cancel, remove. |
+| `model.py` | The setup's state and the plan. |
+| `apps.py` | Opens programs and watches whether they still run. |
+| `catalog.py` | The programs: names, pictures, what removing each deletes. |
+| `diagnostics.py`, `updater.py` | Copy diagnostics; the release check and portal update. |
+| `ui.py`, `start.py`, `home.py`, `programs.py`, `aotr.py`, `widgets.py` | The window and its pages (need GTK). |
+| `__main__.py` | Entry point and `--open`. |
 
-The pages and window (`ui.py`, `start.py`, `home.py`, `programs.py`, `aotr.py`, `widgets.py`) need GTK. The rest runs without a display, and page tests skip themselves where GTK is missing. `tests/test_script.py` runs the real setup script against a fake `curl` and `umu-run`.
-
-## Build a local copy
-
-To test the whole app without a release, build it under a different app ID. It installs beside a release install with its own data, Proton download, and "(Dev)" shortcuts.
+## Build, run and test
 
 ```
-dev/install-local.sh --run      # build from this checkout, install, start (--run is optional)
+dev/install-local.sh --run      # build this checkout as a Flatpak with its own app ID and data, and start it
 dev/uninstall-local.sh          # remove it and its data
+cd wizard && python3 -m pytest  # needs PyGObject; page tests skip without GTK
 ```
 
-The 32-bit extensions are shared with the release app, so only a first-ever install needs `install-flatpak.sh`. Dev builds never show the update banner.
-
-## Run and test
-
-```
-cd wizard
-BFME_SETUP_SCRIPT=../scripts/bfme-linux-setup.sh python3 -m bfme_wizard    # needs PyGObject, GTK 4, libadwaita
-python3 -m pytest                                                           # needs PyGObject
-```
-
-The script is found through `BFME_SETUP_SCRIPT`, then the `bfme-linux-setup` command, then `../scripts/`.
-
-To avoid a real install, put a fake `curl` and `umu-run` first on `PATH`, set `BFME_UMU_RUN` to the fake, and set `BFME_HOME` and `XDG_DATA_HOME` away from your real setup.
+The tests never touch the network: downloads come from a local test server, and Proton and the Wine server are faked.
+The Age of the Ring tests use the real 7-Zip and skip without it.

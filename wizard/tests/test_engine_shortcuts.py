@@ -1,6 +1,5 @@
-"""engine.shortcuts and engine.launch, compared with the setup script in the Flatpak."""
+"""engine.shortcuts and engine.launch, in a stand-in for the Flatpak sandbox."""
 import os
-import subprocess
 import time
 from pathlib import Path
 
@@ -12,8 +11,6 @@ from bfme_wizard.engine.paths import Paths
 
 from tests.helpers import manifest_app_id, manifest_icon_exports
 
-ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = ROOT / "scripts" / "bfme-linux-setup.sh"
 DEV_ID = "com.example.Dev"
 
 
@@ -71,12 +68,6 @@ class Sandbox:
         self.mountinfo.write_text("\n".join(lines) + "\n")
         self.environ = {"FLATPAK_ID": app_id, "HOME": str(self.home)}
 
-    def script(self, paths):
-        """Run the script with the sandbox environment and return the completed process."""
-        env = dict(self.environ, PATH="/usr/bin:/bin", BFME_HOME=str(paths.base), BFME_MOUNTINFO=str(self.mountinfo),
-                   BFME_FLATPAK_INFO=str(self.info))
-        return subprocess.run([str(SCRIPT), "--machine", "shortcuts"], env=env, capture_output=True, text=True, timeout=60)
-
     def engine(self, paths):
         """Run the engine's shortcut synchronization with the sandbox environment and return the result and events."""
         events = []
@@ -94,39 +85,43 @@ class Sandbox:
         return found
 
 
-def compare(tmp_path, paths, sandbox, before=None):
-    """Run the script's shortcuts, then the engine's, from the same start. Both must leave the same files and say the same
-    thing. Returns the files after running the script."""
-    start = before or {}
+RELEASE_ID = shortcuts.RELEASE_APP_ID
 
-    for name, text in start.items():
-        put(sandbox.apps / name, text)
+# Per program: the shortcut's file suffix, name, comment and what it opens.
+PROGRAM_SHORTCUTS = {
+    "aio-launcher": ("AioLauncher", "BFME All-in-One Launcher", "Install, mod and manage the Battle for Middle-earth games"),
+    "arena": ("Arena", "BFME Online Arena", "Play Battle for Middle-earth online"),
+    "aotr": ("Aotr", "Age of the Ring", "Play the Age of the Ring mod for Battle for Middle-earth 2"),
+}
 
-    done = sandbox.script(paths)
-    from_script = sandbox.files()
-    script_said = []
 
-    for line in done.stdout.splitlines():
-        if line.startswith("@bfme WARN "):
-            script_said.append(Warn(line[len("@bfme WARN "):]))
+def desktop_file(app_id, program, tryexec):
+    """The file name and full text of a program's shortcut. A development build says so in the name. Without a
+    known wrapper (tryexec is None) there is no TryExec line."""
+    suffix, name, comment = PROGRAM_SHORTCUTS[program]
 
-    if done.returncode == 0:
-        script_said.append(Log(done.stdout.splitlines()[-1]))
+    if app_id != RELEASE_ID:
+        name = f"{name} (Dev)"
 
-    if sandbox.apps.is_dir():
-        for path in sandbox.apps.iterdir():
-            path.unlink()
+    text = "[Desktop Entry]\nType=Application\n"
+    text += f"Name={name}\n"
+    text += f"Comment={comment}\n"
+    text += f"Exec=flatpak run --command=bfme-installer {app_id} --open {program}\n"
 
-    for name, text in start.items():
-        put(sandbox.apps / name, text)
+    if tryexec is not None:
+        text += f"TryExec={tryexec}\n"
 
-    ok, events = sandbox.engine(paths)
+    text += f"Icon={app_id}.{suffix}\nTerminal=false\nCategories=Game;\nStartupNotify=true\nX-Flatpak={app_id}\n"
+    return f"{app_id}.{suffix}.desktop", text
 
-    assert sandbox.files() == from_script
-    assert events == script_said
-    assert ok == (done.returncode == 0)
 
-    return from_script
+def up_to_date(sandbox):
+    return Log(f"Shortcuts are up to date in {sandbox.apps}")
+
+
+def unreachable(sandbox):
+    return Warn(f"This app cannot reach your menu folder ({sandbox.apps}), so there are no shortcuts. To give "
+                f"it access: flatpak override --user --filesystem=xdg-data/applications:create {sandbox.app_id}")
 
 
 @pytest.fixture
@@ -134,27 +129,49 @@ def paths(tmp_path):
     return Paths(tmp_path / "data")
 
 
-# Which shortcuts there are, compared with the script
+# Which shortcuts there are
 
 @pytest.mark.parametrize("installed", [(), ("aio-launcher",), ("aotr",), ("aio-launcher", "arena", "aotr")])
-@pytest.mark.parametrize("app_id", [DEV_ID, shortcuts.RELEASE_APP_ID])
-def test_the_shortcuts_are_the_scripts(tmp_path, paths, installed, app_id):
+@pytest.mark.parametrize("app_id", [DEV_ID, RELEASE_ID])
+def test_each_installed_program_gets_a_shortcut(tmp_path, paths, installed, app_id):
     make_prefix(paths)
 
     for program in installed:
         install(paths, program)
 
-    files = compare(tmp_path, paths, Sandbox(tmp_path, app_id=app_id))
+    sandbox = Sandbox(tmp_path, app_id=app_id)
+    expected = {}
 
-    assert len(files) == len(installed)
+    for program in installed:
+        name, text = desktop_file(app_id, program, f"{tmp_path}/flatpak/exports/bin/{app_id}")
+        expected[name] = text
+
+    ok, events = sandbox.engine(paths)
+
+    assert ok is True
+    assert sandbox.files() == expected
+    assert events == [up_to_date(sandbox)]
 
 
-@pytest.mark.parametrize("info,original", [(False, False), (True, True)])
-def test_tryexec_follows_where_the_app_is_installed_as_the_script_does(tmp_path, paths, info, original):
+@pytest.mark.parametrize("info,original,tryexec", [
+    (False, False, None),                                   # no flatpak-info: no TryExec
+    (True, True, "elsewhere/exports/bin/com.example.Dev"),  # the original install path wins
+])
+def test_tryexec_follows_where_the_app_is_installed(tmp_path, paths, info, original, tryexec):
     make_prefix(paths)
     install(paths, "arena")
+    sandbox = Sandbox(tmp_path, info=info, original=original)
 
-    compare(tmp_path, paths, Sandbox(tmp_path, info=info, original=original))
+    if tryexec is not None:
+        tryexec = f"{tmp_path}/{tryexec}"
+
+    name, text = desktop_file(DEV_ID, "arena", tryexec)
+
+    ok, events = sandbox.engine(paths)
+
+    assert ok is True
+    assert sandbox.files() == {name: text}
+    assert events == [up_to_date(sandbox)]
 
 
 def test_the_text_of_a_shortcut(tmp_path, paths):
@@ -176,12 +193,17 @@ def test_a_removed_programs_shortcut_goes_and_a_correct_one_is_left_alone(tmp_pa
     make_prefix(paths)
     install(paths, "arena")
     sandbox = Sandbox(tmp_path)
-    arena_text = shortcuts.shortcut_text(DEV_ID, "arena", shortcuts.flatpak_wrapper(DEV_ID, sandbox.info))
+    _, arena_text = desktop_file(DEV_ID, "arena", f"{tmp_path}/flatpak/exports/bin/{DEV_ID}")
     before = {f"{DEV_ID}.Launcher.desktop": "stale", f"{DEV_ID}.Arena.desktop": arena_text, "other.desktop": "keep"}
 
-    files = compare(tmp_path, paths, sandbox, before)
+    for name, text in before.items():
+        put(sandbox.apps / name, text)
 
-    assert files == {f"{DEV_ID}.Arena.desktop": arena_text, "other.desktop": "keep"}
+    ok, events = sandbox.engine(paths)
+
+    assert ok is True
+    assert sandbox.files() == {f"{DEV_ID}.Arena.desktop": arena_text, "other.desktop": "keep"}
+    assert events == [up_to_date(sandbox)]
 
     old = time.time() - 1000
     os.utime(sandbox.apps / f"{DEV_ID}.Arena.desktop", (old, old))
@@ -190,34 +212,38 @@ def test_a_removed_programs_shortcut_goes_and_a_correct_one_is_left_alone(tmp_pa
     assert (sandbox.apps / f"{DEV_ID}.Arena.desktop").stat().st_mtime == old
 
 
-# Whether the sandbox can reach the menu folder, compared with the script
+# Whether the sandbox can reach the menu folder
 
-@pytest.mark.parametrize("mounts", ["none", "home", "space", "sibling"])
-def test_reaching_the_menu_folder_is_the_scripts(tmp_path, paths, mounts):
+@pytest.mark.parametrize("mounts,reachable", [
+    ("none", False),
+    ("home", True),        # a bigger share holds the menu folder
+    ("space", False),      # \040 in the list
+    ("sibling", False),
+])
+def test_reaching_the_menu_folder(tmp_path, paths, mounts, reachable):
     make_prefix(paths)
     install(paths, "aotr")
     home = tmp_path / "home"
     choices = {
         "none": [],
-        "home": [home],                                 # a bigger share holds the menu folder
-        "space": [tmp_path / "a folder"],               # \040 in the list
+        "home": [home],
+        "space": [tmp_path / "a folder"],
         "sibling": [home / ".local/share/applications-old"],
     }
-
-    compare(tmp_path, paths, Sandbox(tmp_path, mounts=choices[mounts]))
-
-
-def test_unreachable_says_how_to_fix_it_and_writes_nothing(tmp_path, paths):
-    make_prefix(paths)
-    install(paths, "aotr")
-    sandbox = Sandbox(tmp_path, mounts=[])
+    sandbox = Sandbox(tmp_path, mounts=choices[mounts])
 
     ok, events = sandbox.engine(paths)
 
-    assert ok is False
-    assert sandbox.files() == {}
-    assert events == [Warn(f"This app cannot reach your menu folder ({sandbox.apps}), so there are no shortcuts. To give "
-                           f"it access: flatpak override --user --filesystem=xdg-data/applications:create {DEV_ID}")]
+    if reachable:
+        name, text = desktop_file(DEV_ID, "aotr", f"{tmp_path}/flatpak/exports/bin/{DEV_ID}")
+        assert ok is True
+        assert sandbox.files() == {name: text}
+        assert events == [up_to_date(sandbox)]
+    else:
+        # It says how to fix it and writes nothing.
+        assert ok is False
+        assert sandbox.files() == {}
+        assert events == [unreachable(sandbox)]
 
 
 def test_each_icon_is_the_one_the_manifest_exports():
@@ -254,7 +280,7 @@ def umu(tmp_path, monkeypatch):
     put(bin_dir / "lspci", "#!/bin/sh\n")
     (bin_dir / "lspci").chmod(0o755)
     env = {"PATH": f"{bin_dir}:/usr/bin:/bin", "HOME": str(tmp_path), "UMU_LOG": str(tmp_path / "umu.log"),
-           "BFME_UMU_RUN": str(bin_dir / "umu-run"), "BFME_PROTONPATH": "fake-proton"}
+           "BFME_PROTONPATH": "fake-proton"}
 
     for name, value in env.items():
         monkeypatch.setenv(name, value)
@@ -262,22 +288,18 @@ def umu(tmp_path, monkeypatch):
     return env
 
 
-def test_a_program_starts_from_its_folder_as_the_script_starts_it(tmp_path, paths, umu):
+def test_a_program_starts_from_its_folder(tmp_path, paths, umu):
     make_prefix(paths)
     install(paths, "aotr")
-    done = subprocess.run([str(SCRIPT), "aotr"], env=dict(umu, BFME_HOME=str(paths.base)), capture_output=True,
-                          text=True, timeout=60)
-    assert done.returncode == 0, done.stderr
-    from_script = Path(umu["UMU_LOG"]).read_text().splitlines()[-1]
-    script_said = done.stdout.splitlines()[-1]
-    os.remove(umu["UMU_LOG"])
     events = []
 
     code = launch.start_program(paths, Config(), "fake-proton", "aotr", paths.aotr_exe, "aotr", events.append)
 
+    # Each call is logged as "arguments|working folder|PROTON_VERB"; the game is the last call, after the prefix settings.
+    calls = Path(umu["UMU_LOG"]).read_text().splitlines()
     assert code == 0
-    assert Path(umu["UMU_LOG"]).read_text().splitlines() == [from_script]
-    assert events[0].text.split(". Log: ")[0] == script_said.split(". Log: ")[0]
+    assert calls[-1] == f"{paths.aotr_exe}|{paths.aotr_exe.parent}|runinprefix"
+    assert events[0].text.startswith(f"Starting aotr. Log: {paths.logs}/aotr-")
 
 
 def test_each_start_gets_its_own_log_and_the_newest_ten_are_kept(tmp_path, paths, umu):

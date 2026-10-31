@@ -1,10 +1,7 @@
 """engine.programs: installing, updating and removing the programs, and the status report."""
 import hashlib
 import os
-import shutil
-import subprocess
 import threading
-from pathlib import Path
 
 import pytest
 
@@ -14,10 +11,6 @@ from bfme_wizard.engine.config import Config
 from bfme_wizard.engine.errors import JobCancelled, SetupError
 from bfme_wizard.engine.events import Log, Warn
 from bfme_wizard.engine.paths import Paths
-
-ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = ROOT / "scripts" / "bfme-linux-setup.sh"
-
 
 def executable(path, text):
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -56,7 +49,7 @@ def logs(events):
     return out
 
 
-# The status report, compared with the script's
+# The status report
 
 LAYOUTS = {
     "nothing": [],
@@ -70,6 +63,26 @@ LAYOUTS = {
     "tools only": ["prefix", "workshop", "mission-control"],
     "games": ["prefix", "aio-launcher", "bfme1", "bfme2", "rotwk"],
     "a game folder without its program": ["prefix", "bfme2-folder"],
+}
+
+STATUS_KEYS = ["runner", "graphics", "prefix", "aio-launcher", "arena", "aotr", "workshop", "mission-control",
+               "bfme1", "bfme2", "rotwk", "complete"]
+
+# What differs, per layout, from a status where nothing is there. An unfinished install counts as missing, and only a
+# prefix with a launcher or AotR in it is complete.
+STATUS_CHANGES = {
+    "nothing": {},
+    "prefix only": {"prefix": "ready"},
+    "aio-launcher": {"prefix": "ready", "aio-launcher": "installed", "complete": "yes"},
+    "aio-launcher still installing": {"prefix": "ready"},
+    "arena only": {"prefix": "ready", "arena": "installed", "complete": "yes"},
+    "aotr": {"prefix": "ready", "aotr": "installed", "complete": "yes"},
+    "aotr still installing": {"prefix": "ready"},
+    "programs without a prefix": {"aio-launcher": "installed", "aotr": "installed"},
+    "tools only": {"prefix": "ready", "workshop": "installed", "mission-control": "installed"},
+    "games": {"prefix": "ready", "aio-launcher": "installed", "bfme1": "installed", "bfme2": "installed",
+              "rotwk": "installed", "complete": "yes"},
+    "a game folder without its program": {"prefix": "ready"},
 }
 
 
@@ -95,27 +108,30 @@ def build(paths, parts):
             (paths.drive_c / "BFME2").mkdir(parents=True)
 
 
-def script_status(tmp_path, paths):
-    env = {"PATH": "/usr/bin:/bin", "HOME": str(tmp_path), "BFME_HOME": str(paths.base)}
-    out = subprocess.run([str(SCRIPT), "--machine", "status"], env=env, capture_output=True, text=True, timeout=60).stdout
-    found = {}
-
-    for line in out.splitlines():
-        if line.startswith("@bfme STATUS "):
-            _, _, key, value = line.split(" ", 3)
-            found[key] = value
-
-    return found
-
-
 @pytest.mark.parametrize("layout", LAYOUTS)
-def test_the_status_is_the_scripts(tmp_path, paths, layout):
+def test_the_status_of_each_layout(paths, layout):
     build(paths, LAYOUTS[layout])
 
-    from_engine = programs.status(paths, Config())
+    expected = {
+        "runner": "proton",
+        "graphics": "vulkan",
+        "prefix": "missing",
+        "aio-launcher": "missing",
+        "arena": "missing",
+        "aotr": "missing",
+        "workshop": "missing",
+        "mission-control": "missing",
+        "bfme1": "missing",
+        "bfme2": "missing",
+        "rotwk": "missing",
+        "complete": "no",
+    }
+    expected.update(STATUS_CHANGES[layout])
 
-    assert from_engine == script_status(tmp_path, paths)
-    assert list(from_engine) == list(script_status(tmp_path, paths))
+    found = programs.status(paths, Config())
+
+    assert found == expected
+    assert list(found) == STATUS_KEYS
 
 
 # Waiting for a file
@@ -331,7 +347,7 @@ def test_a_tool_is_downloaded_into_its_folder(paths, file_server, tool):
     assert programs.tool_installed(paths, tool)
 
 
-# Removing, compared with the script's
+# Removing
 
 def everything(paths):
     """Every program, the games, a player's settings and what interrupted installs leave behind."""
@@ -349,7 +365,7 @@ def everything(paths):
 
 
 def tree(paths):
-    """Every file and folder under the data folder, without the logs, the lock and the script's own menu shortcut files
+    """Every file and folder under the data folder, without the logs, the lock and the menu shortcut files
     (shortcuts are a later step)."""
     found = set()
 
@@ -362,27 +378,68 @@ def tree(paths):
     return found
 
 
+ROAMING = "prefix/drive_c/users/steamuser/AppData/Roaming"
+
+# Per program: what removing it says, and every path it takes away. Everything else stays, the player's AotR settings
+# and other downloads included.
+REMOVED = {
+    "aio-launcher": (
+        "Removed BFME All-in-One Launcher.",
+        {
+            "downloads/AllInOneLauncherSetup.exe",
+            "downloads/AllInOneLauncherSetup.exe.part",
+            "prefix/.bfme-aio-launcher-installing",
+            f"{ROAMING}/BFME All In One Launcher",
+            f"{ROAMING}/BFME All In One Launcher/AllInOneLauncher.exe",
+        },
+    ),
+    "arena": (
+        "Removed BFME Online Arena.",
+        {
+            "downloads/OnlineArena.exe.part",
+            f"{ROAMING}/BFME Competetive Arena",
+            f"{ROAMING}/BFME Competetive Arena/BfmeFoundationProject_OnlineArena.exe",
+        },
+    ),
+    "aotr": (
+        "Removed Age of the Ring.",
+        {
+            "downloads/aotr",
+            "downloads/aotr/setup.exe",
+            "prefix/.bfme-aotr-installing",
+            "prefix/drive_c/AgeoftheRing",
+            "prefix/drive_c/AgeoftheRing/AotR_Launcher.exe",
+        },
+    ),
+    "workshop": (
+        "Removed Workshop Studio.",
+        {
+            "prefix/drive_c/BFME Tools/Workshop Studio",
+            "prefix/drive_c/BFME Tools/Workshop Studio/WorkshopStudio.exe",
+        },
+    ),
+    "mission-control": (
+        "Removed Mission Control.",
+        {
+            "prefix/drive_c/BFME Tools/Mission Control",
+            "prefix/drive_c/BFME Tools/Mission Control/MissionControl.exe",
+        },
+    ),
+}
+
+
 @pytest.mark.parametrize("program", [*programs.PROGRAMS, *programs.TOOLS])
-def test_removing_is_the_scripts(tmp_path, paths, program):
-    env = {"PATH": "/usr/bin:/bin", "HOME": str(tmp_path), "BFME_HOME": str(paths.base)}
+def test_removing_takes_away_only_the_programs_files(paths, program):
+    message, gone = REMOVED[program]
     everything(paths)
-    done = subprocess.run([str(SCRIPT), "remove", program], env=env, capture_output=True, text=True, timeout=60)
-    assert done.returncode == 0, done.stderr
-    from_script = tree(paths)
-    script_said = done.stdout.splitlines()[-1]
+    before = tree(paths)
+    assert gone <= before
 
-    for path in sorted(paths.base.iterdir()):
-        if path.is_dir():
-            shutil.rmtree(path)
-        else:
-            path.unlink()
-
-    everything(paths)
     events = []
     programs.remove(paths, Config(), program, events.append)
 
-    assert tree(paths) == from_script
-    assert logs(events) == [script_said]
+    assert tree(paths) == before - gone
+    assert logs(events) == [message]
     assert not programs.installed(paths, program)
 
 

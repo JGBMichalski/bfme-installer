@@ -12,7 +12,7 @@ The report can contain your home folder and user name, so read it first.
 Testing your modifications:
 - `dev/install-local.sh --run` builds the Flatpak from your checkout and installs it beside the release app, under
   another app ID. `dev/uninstall-local.sh` removes it.
-- `dev/screenshots.py` regenerates the README screenshots from the real wizard, against a stub script and a throwaway
+- `dev/screenshots.py` regenerates the README screenshots from the real wizard, against stand-in jobs and a throwaway
   game environment. It needs a desktop session.
 
 ## Before you open a pull request

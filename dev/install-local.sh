@@ -17,7 +17,7 @@ command -v flatpak-builder >/dev/null 2>&1 || { echo "ERROR: flatpak-builder is 
 
 rm -rf "$WORK/src" "$WORK/build"
 mkdir -p "$WORK/src"
-cp -r "$root/flatpak" "$root/wizard" "$root/scripts" "$WORK/src/"
+cp -r "$root/flatpak" "$root/wizard" "$WORK/src/"
 find "$WORK/src" -name __pycache__ -prune -exec rm -rf {} +
 cd "$WORK/src/flatpak"
 
