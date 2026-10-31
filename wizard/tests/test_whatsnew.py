@@ -1,4 +1,5 @@
 """whatsnew: the changelog's notes shown once after an update."""
+
 import pytest
 
 from bfme_wizard import whatsnew
@@ -44,6 +45,7 @@ def changelog(tmp_path):
 
 # Reading the changelog
 
+
 def test_each_released_version_is_a_section_and_unreleased_is_not():
     found = whatsnew.sections(CHANGELOG)
 
@@ -56,13 +58,16 @@ def test_each_released_version_is_a_section_and_unreleased_is_not():
     assert found[0][1] == "### Added\n\n- The app downloads **Age of the Ring** itself."
 
 
-@pytest.mark.parametrize("seen, current, expected", [
-    ("2.1.0", "3.0.0", ["3.0.0"]),
-    ("2.0.2", "3.0.0", ["3.0.0", "2.1.0"]),          # versions in between are not skipped
-    (None, "3.0.0", ["3.0.0"]),                       # unknown: this version only
-    ("3.0.0", "3.0.0", []),
-    ("2.0.2", "2.1.0", ["2.1.0"]),                    # nothing newer than the running version
-])
+@pytest.mark.parametrize(
+    "seen, current, expected",
+    [
+        ("2.1.0", "3.0.0", ["3.0.0"]),
+        ("2.0.2", "3.0.0", ["3.0.0", "2.1.0"]),  # versions in between are not skipped
+        (None, "3.0.0", ["3.0.0"]),  # unknown: this version only
+        ("3.0.0", "3.0.0", []),
+        ("2.0.2", "2.1.0", ["2.1.0"]),  # nothing newer than the running version
+    ],
+)
 def test_the_notes_since_the_version_seen(seen, current, expected):
     versions = []
 
@@ -73,6 +78,7 @@ def test_the_notes_since_the_version_seen(seen, current, expected):
 
 
 # When they are shown
+
 
 def test_a_development_build_shows_nothing(paths, changelog):
     assert whatsnew.to_show(paths, "dev", changelog) == []
@@ -116,6 +122,7 @@ def test_without_the_changelog_nothing_is_shown(paths, tmp_path):
 
 # How they look
 
+
 def test_the_markup_of_a_section():
     notes = "### Added\n\n- The app downloads **Age of the Ring**, see [the page](https://x).\n- A `graphics` <switch> & more."
 
@@ -129,6 +136,7 @@ def test_the_markup_of_a_section():
 
 def test_the_dialog_names_the_newest_version_and_holds_every_section(gtk, monkeypatch):
     from gi.repository import Adw
+
     from bfme_wizard import ui
     from tests.helpers import descendants
 

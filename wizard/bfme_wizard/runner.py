@@ -1,4 +1,5 @@
 """Run one setup job at a time on a worker thread, and pass what it reports to the main loop. GLib only, no GTK."""
+
 from __future__ import annotations
 
 import threading
@@ -48,7 +49,7 @@ class JobRunner:
             """Run the job in a separate thread."""
             try:
                 code = job(emit, cancel)
-            except Exception as error:   # a bug in a job must not leave the wizard waiting for ever
+            except Exception as error:  # a bug in a job must not leave the wizard waiting for ever
                 emit(Error(None, f"Something went wrong: {error}"))
                 code = 1
 
@@ -70,4 +71,4 @@ class JobRunner:
 def _once(callback: Callable, value: object) -> bool:
     """Call the callback with the given value once, then return False to remove it from the idle loop."""
     callback(value)
-    return False   # an idle callback that returns True would run again
+    return False  # an idle callback that returns True would run again

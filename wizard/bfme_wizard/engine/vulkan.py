@@ -4,6 +4,7 @@ Proton's DXVK needs Vulkan 1.3. Without a real graphics card that has it, OpenGL
 Run as `python3 -m bfme_wizard.engine.vulkan` it prints one line, `<vulkan|opengl|unknown> <message>`. The setup runs it as
 a child process (see graphics.probe), because a broken graphics driver can hang or crash the process that loads it.
 """
+
 from __future__ import annotations
 
 import ctypes
@@ -24,10 +25,16 @@ class Device:
 
 
 class _InstanceCreateInfo(ctypes.Structure):
-    _fields_ = [("sType", ctypes.c_int), ("pNext", ctypes.c_void_p), ("flags", ctypes.c_uint32),
-                ("pApplicationInfo", ctypes.c_void_p), ("enabledLayerCount", ctypes.c_uint32),
-                ("ppEnabledLayerNames", ctypes.c_void_p), ("enabledExtensionCount", ctypes.c_uint32),
-                ("ppEnabledExtensionNames", ctypes.c_void_p)]
+    _fields_ = [
+        ("sType", ctypes.c_int),
+        ("pNext", ctypes.c_void_p),
+        ("flags", ctypes.c_uint32),
+        ("pApplicationInfo", ctypes.c_void_p),
+        ("enabledLayerCount", ctypes.c_uint32),
+        ("ppEnabledLayerNames", ctypes.c_void_p),
+        ("enabledExtensionCount", ctypes.c_uint32),
+        ("ppEnabledExtensionNames", ctypes.c_void_p),
+    ]
 
 
 def devices() -> list[Device] | None:

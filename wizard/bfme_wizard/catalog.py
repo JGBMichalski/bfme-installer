@@ -3,6 +3,7 @@
 The home screen's cards, the Programs page's rows and the confirmation before a removal all say the same things about the
 same programs, so those things are written once, here.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -19,11 +20,11 @@ AOTR_INSTALLED_GB = 28
 
 @dataclass(frozen=True)
 class Program:
-    key: str                  # what the engine calls it
-    title: str                # on a card and in a list
-    name: str                 # in a sentence
-    summary: str              # what it is
-    removal: str              # what removing it deletes, and what it leaves alone
+    key: str  # what the engine calls it
+    title: str  # on a card and in a list
+    name: str  # in a sentence
+    summary: str  # what it is
+    removal: str  # what removing it deletes, and what it leaves alone
     before_install: str = ""  # what the player should know first
 
     @property
@@ -34,17 +35,23 @@ class Program:
 
 CATALOG: tuple[Program, ...] = (
     Program(
-        "aio-launcher", "AIO Launcher", "the AIO Launcher",
+        "aio-launcher",
+        "AIO Launcher",
+        "the AIO Launcher",
         "Install, patch and start your games",
         "Its files and settings are deleted. The games it installed, the Arena and Age of the Ring are not touched.",
     ),
     Program(
-        "arena", "Arena", "the Arena",
+        "arena",
+        "Arena",
+        "the Arena",
         "Play online matches against other players",
         "Its files and settings are deleted. The AIO Launcher, the games and Age of the Ring are not touched.",
     ),
     Program(
-        "aotr", "Age of the Ring", "Age of the Ring",
+        "aotr",
+        "Age of the Ring",
+        "Age of the Ring",
         "A large mod with its own launcher",
         f"It and its own copy of the games are deleted, which frees about {AOTR_INSTALLED_GB} GB. Your settings for it are "
         "kept. The AIO Launcher, the Arena and the games you installed with the AIO Launcher are not touched.",
@@ -55,13 +62,17 @@ CATALOG: tuple[Program, ...] = (
 # Extra programs, listed on the Tools page. They are not part of the setup, so the home screen has no card for them.
 TOOLS: tuple[Program, ...] = (
     Program(
-        "workshop", "Workshop Studio", "Workshop Studio",
+        "workshop",
+        "Workshop Studio",
+        "Workshop Studio",
         "Create workshop packages and publish them to the BFME Workshop",
         "Its folder is deleted. The AIO Launcher, the Arena, Age of the Ring and the games are not touched.",
         "About 300 MB to download.",
     ),
     Program(
-        "mission-control", "Mission Control", "Mission Control",
+        "mission-control",
+        "Mission Control",
+        "Mission Control",
         "For Arena operators, patch developers, event organizers and moderators",
         "Its folder is deleted. The AIO Launcher, the Arena, Age of the Ring and the games are not touched.",
         "About 300 MB to download.",

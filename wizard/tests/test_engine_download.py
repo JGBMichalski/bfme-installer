@@ -1,4 +1,5 @@
 """engine.download: what the setup script's download and verify_sha256 did."""
+
 import hashlib
 import threading
 
@@ -8,7 +9,7 @@ from bfme_wizard.engine import download as download_module
 from bfme_wizard.engine.download import download, verify_sha256
 from bfme_wizard.engine.errors import JobCancelled, SetupError
 
-DATA = bytes(range(256)) * 4096   # 1 MiB: several chunks
+DATA = bytes(range(256)) * 4096  # 1 MiB: several chunks
 
 
 @pytest.fixture(autouse=True)
@@ -173,7 +174,7 @@ def test_the_speed_counts_only_what_arrives_now(file_server, tmp_path, monkeypat
 
     download(file_server.url("/f.bin"), tmp_path / "f.bin", on_speed=speeds.append)
 
-    assert max(speeds) <= download_module.CHUNK          # not the 500 000 bytes already there
+    assert max(speeds) <= download_module.CHUNK  # not the 500 000 bytes already there
 
 
 def test_no_speed_is_measured_without_a_listener(file_server, tmp_path):

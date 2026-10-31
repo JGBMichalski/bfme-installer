@@ -1,4 +1,5 @@
 """The start page, where the player chooses programs. It returns after a stop, with a Resume button."""
+
 from __future__ import annotations
 
 import gi
@@ -13,10 +14,16 @@ from .widgets import first_icon, pill
 
 # (program, title, description) in install order. The Arena comes with the AIO Launcher.
 CHOICES = [
-    ("aio-launcher", "All-in-One Launcher",
-     "Install, patch and play the BFME games. Includes the Online Arena for multiplayer."),
-    ("aotr", "Age of the Ring",
-     f"A large mod with its own launcher and its own copy of the games. It downloads from ModDB, about {AOTR_DOWNLOAD_GB} GB."),
+    (
+        "aio-launcher",
+        "All-in-One Launcher",
+        "Install, patch and play the BFME games. Includes the Online Arena for multiplayer.",
+    ),
+    (
+        "aotr",
+        "Age of the Ring",
+        f"A large mod with its own launcher and its own copy of the games. It downloads from ModDB, about {AOTR_DOWNLOAD_GB} GB.",
+    ),
 ]
 FRESH = ("Set up BFME on Linux", "Choose what to install.")
 READY = ("Choose what to install", "Your game environment is ready.")
@@ -28,7 +35,9 @@ class StartPage:
         self.controller = controller
         self.view = Adw.StatusPage(
             css_classes=["compact"],
-            icon_name=first_icon("system-software-install-symbolic", "folder-download-symbolic", "emblem-system-symbolic"),
+            icon_name=first_icon(
+                "system-software-install-symbolic", "folder-download-symbolic", "emblem-system-symbolic"
+            ),
         )
         group = Adw.PreferencesGroup()
         self._checks: dict[str, Gtk.CheckButton] = {}

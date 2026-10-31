@@ -1,4 +1,5 @@
 """engine.moddb: reading the Age of the Ring download from ModDB's pages."""
+
 import pytest
 
 from bfme_wizard.engine import moddb
@@ -26,26 +27,36 @@ def test_every_page_is_asked_for_as_the_app(moddb):
 
 def test_the_real_pages_markup_is_read(moddb):
     # Copied from the live page on Oct 30 2026: the numbers and the hash as ModDB writes them.
-    page = ('<h5>Filename</h5>\n\t\t\t\t\t\t<span class="summary">\n\t\t\t\t\t\t\tAotR_Standalone_10.0.0_Installer.zip'
-            '\t\t\t\t\t\t</span>\n<h5>Size</h5>\n\t\t\t\t\t\t<span class="summary">\n\t\t\t\t\t\t\t17.57gb '
-            '(18,861,338,263 bytes)\t\t\t\t\t\t</span>\n<h5>MD5 Hash</h5>\n\t\t\t\t\t\t<span class="summary">\n'
-            '\t\t\t\t\t\t\tc50672558753866eea39eca3ef3bd0da\t\t\t\t\t\t</span>\n<a href="/downloads/start/290690">')
+    page = (
+        '<h5>Filename</h5>\n\t\t\t\t\t\t<span class="summary">\n\t\t\t\t\t\t\tAotR_Standalone_10.0.0_Installer.zip'
+        '\t\t\t\t\t\t</span>\n<h5>Size</h5>\n\t\t\t\t\t\t<span class="summary">\n\t\t\t\t\t\t\t17.57gb '
+        '(18,861,338,263 bytes)\t\t\t\t\t\t</span>\n<h5>MD5 Hash</h5>\n\t\t\t\t\t\t<span class="summary">\n'
+        '\t\t\t\t\t\t\tc50672558753866eea39eca3ef3bd0da\t\t\t\t\t\t</span>\n<a href="/downloads/start/290690">'
+    )
     moddb.publish(b"x")
     moddb.server.files["/mods/aotr/downloads/age-of-the-ring"] = page.encode()
 
     found = find_aotr()
 
-    assert (found.name, found.size, found.md5) == \
-        ("AotR_Standalone_10.0.0_Installer.zip", 18861338263, "c50672558753866eea39eca3ef3bd0da")
+    assert (found.name, found.size, found.md5) == (
+        "AotR_Standalone_10.0.0_Installer.zip",
+        18861338263,
+        "c50672558753866eea39eca3ef3bd0da",
+    )
 
 
-@pytest.mark.parametrize("change, reason", [
-    (lambda page: page.replace("<h5>Filename</h5>", "<h5>File</h5>"), "its Filename is missing"),
-    (lambda page: page.replace("AotR_Standalone_10.0.0_Installer.zip", "AotR_Patch_10.0.1.zip"),
-     "the file is now AotR_Patch_10.0.1.zip"),
-    (lambda page: page.replace(" bytes)", ")"), "its size or MD5 cannot be read"),
-    (lambda page: page.replace("/downloads/start/290690", "/elsewhere"), "its download link is missing"),
-])
+@pytest.mark.parametrize(
+    "change, reason",
+    [
+        (lambda page: page.replace("<h5>Filename</h5>", "<h5>File</h5>"), "its Filename is missing"),
+        (
+            lambda page: page.replace("AotR_Standalone_10.0.0_Installer.zip", "AotR_Patch_10.0.1.zip"),
+            "the file is now AotR_Patch_10.0.1.zip",
+        ),
+        (lambda page: page.replace(" bytes)", ")"), "its size or MD5 cannot be read"),
+        (lambda page: page.replace("/downloads/start/290690", "/elsewhere"), "its download link is missing"),
+    ],
+)
 def test_a_changed_file_page_says_what_changed(moddb, change, reason):
     moddb.publish(b"x")
     key = "/mods/aotr/downloads/age-of-the-ring"

@@ -7,6 +7,7 @@
 
 A shortcut starts its program without a window. If the program is gone, the wizard opens and removes the shortcut.
 """
+
 from __future__ import annotations
 
 import os

@@ -4,6 +4,7 @@ ModDB has no API for this, so the app reads the same pages a browser does: the f
 then the download page for the mirror link, which redirects to the file. When a page is not as expected (changed markup,
 a bot check, no connection), the player downloads the file in a browser instead and chooses it.
 """
+
 from __future__ import annotations
 
 import re
@@ -14,7 +15,9 @@ from urllib.parse import urljoin
 
 from .download import USER_AGENT
 
-AOTR_PAGE_URL = "https://www.moddb.com/mods/the-horse-lords-a-total-modification-for-bfme/downloads/age-of-the-ring-version-90"
+AOTR_PAGE_URL = (
+    "https://www.moddb.com/mods/the-horse-lords-a-total-modification-for-bfme/downloads/age-of-the-ring-version-90"
+)
 TIMEOUT_SEC = 30
 
 
@@ -25,9 +28,9 @@ class ModdbUnavailable(Exception):
 @dataclass(frozen=True)
 class RemoteFile:
     name: str
-    size: int     # bytes
+    size: int  # bytes
     md5: str
-    url: str      # the mirror link; it redirects to the file
+    url: str  # the mirror link; it redirects to the file
 
 
 def _get(url: str) -> str:

@@ -1,4 +1,5 @@
 """Starting a program in the game environment, with a log of its own."""
+
 from __future__ import annotations
 
 import re
@@ -13,8 +14,9 @@ from .paths import Paths
 KEEP_LOGS = 10
 
 
-def start_program(paths: Paths, config: Config, proton_path: str, log_name: str, exe: Path, label: str,
-                  emit: Emit) -> int:
+def start_program(
+    paths: Paths, config: Config, proton_path: str, log_name: str, exe: Path, label: str, emit: Emit
+) -> int:
     """Run the program from its own folder and wait until it ends. Its output goes to <log_name>-<time>.log; the newest
     KEEP_LOGS of those are kept. Returns its exit status."""
     paths.logs.mkdir(parents=True, exist_ok=True)

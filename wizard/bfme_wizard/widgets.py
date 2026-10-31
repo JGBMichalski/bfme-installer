@@ -1,7 +1,8 @@
 """GTK helpers shared by the window and its pages."""
+
 from __future__ import annotations
 
-from functools import lru_cache
+from functools import cache
 
 import gi
 
@@ -18,7 +19,7 @@ def first_icon(*names: str) -> str:
     return next((n for n in names if theme.has_icon(n)), "image-missing")
 
 
-@lru_cache(maxsize=None)
+@cache
 def read_picture(path: str) -> Gdk.Texture:
     """A picture from a file, read once and kept: the home screen is rebuilt on every change, and must not read files each time.
 
@@ -37,8 +38,14 @@ def program_icon(info: Program, size: int) -> Adw.Avatar:
         picture = read_picture(str(info.icon))
     except GLib.Error:
         picture = None
-    return Adw.Avatar(size=size, text=info.title, show_initials=True, custom_image=picture,
-                      halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
+    return Adw.Avatar(
+        size=size,
+        text=info.title,
+        show_initials=True,
+        custom_image=picture,
+        halign=Gtk.Align.CENTER,
+        valign=Gtk.Align.CENTER,
+    )
 
 
 def pill(label: str, callback, *, suggested: bool = True) -> Gtk.Button:

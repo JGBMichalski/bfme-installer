@@ -1,4 +1,5 @@
 """The Programs page: one row per program, with Install when it is missing and Remove when it is installed."""
+
 from bfme_wizard.catalog import AOTR_DOWNLOAD_GB
 from tests.fake_jobs import idle_controller
 from tests.helpers import buttons, descendants, wait_for
@@ -9,15 +10,21 @@ ALL = {"aio-launcher": "installed", "arena": "installed", "aotr": "installed"}
 def make_page(installed, model_state="done", removing=None, apps=None):
     """The page, its controller, every row (the programs, then the tools) and what its buttons asked for."""
     from gi.repository import Adw
+
     from bfme_wizard.programs import ProgramsPage
+
     c = idle_controller()
     c.model.installed = dict(installed)
     c.model.state = model_state
     c.model.removing = removing
     c.apps.state.update(apps or {})
     asked = []
-    page = ProgramsPage(c, install=lambda p: asked.append(("install", p)), remove=lambda p: asked.append(("remove", p)),
-                        open_app=lambda p: asked.append(("open", p)))
+    page = ProgramsPage(
+        c,
+        install=lambda p: asked.append(("install", p)),
+        remove=lambda p: asked.append(("remove", p)),
+        open_app=lambda p: asked.append(("open", p)),
+    )
     rows = [w for w in descendants(page.view) if isinstance(w, Adw.ActionRow)]
     return c, page, rows, asked
 
@@ -30,6 +37,7 @@ def program_rows(installed, **state):
 def rows_of(page):
     """The rows as they are now (a refresh builds new ones)."""
     from gi.repository import Adw
+
     return [w for w in descendants(page.view) if isinstance(w, Adw.ActionRow)]
 
 
@@ -45,8 +53,8 @@ def test_an_installed_program_offers_remove_and_a_missing_one_offers_install(gtk
 
 def test_install_looks_like_the_main_action_and_remove_like_the_dangerous_one(gtk):
     rows = program_rows({"aio-launcher": "installed"})
-    remove, = buttons(rows[0], gtk)
-    install, = buttons(rows[2], gtk)
+    (remove,) = buttons(rows[0], gtk)
+    (install,) = buttons(rows[2], gtk)
     assert remove.has_css_class("destructive-action") and not remove.has_css_class("suggested-action")
     assert install.has_css_class("suggested-action") and not install.has_css_class("destructive-action")
 
@@ -64,7 +72,7 @@ def test_each_row_says_whether_the_program_is_there(gtk):
     assert rows[0].get_subtitle() == "Installed"
     assert rows[1].get_subtitle() == "Installed"
     assert rows[2].get_subtitle().startswith("Not installed.")
-    assert f"{AOTR_DOWNLOAD_GB} GB" in rows[2].get_subtitle()       # Age of the Ring is a big download
+    assert f"{AOTR_DOWNLOAD_GB} GB" in rows[2].get_subtitle()  # Age of the Ring is a big download
 
 
 def test_a_missing_program_says_what_installing_it_installs_with_it(gtk):
@@ -73,7 +81,7 @@ def test_a_missing_program_says_what_installing_it_installs_with_it(gtk):
     assert "Installs the Arena too" in rows[0].get_subtitle()
     assert "Installs the AIO Launcher too" in rows[1].get_subtitle()
     rows = program_rows({"aio-launcher": "installed"})
-    assert "too" not in rows[1].get_subtitle()                      # the AIO Launcher is there: nothing else comes
+    assert "too" not in rows[1].get_subtitle()  # the AIO Launcher is there: nothing else comes
     rows = program_rows({"arena": "installed"})
     assert "too" not in rows[0].get_subtitle()
 
@@ -95,7 +103,7 @@ def test_with_two_programs_open_it_names_both_in_the_order_of_the_page(gtk):
 def test_a_missing_program_can_still_be_installed_while_another_is_open(gtk):
     # Only removing is dangerous to what is open.
     rows = program_rows({"aio-launcher": "installed", "arena": "installed"}, apps={"aio-launcher": "running"})
-    install, = buttons(rows[2], gtk)
+    (install,) = buttons(rows[2], gtk)
     assert (install.get_label(), install.get_sensitive()) == ("Install", True)
 
 
@@ -114,7 +122,7 @@ def test_nothing_can_be_changed_while_the_script_is_busy(gtk):
 def test_the_program_being_removed_shows_it_and_everything_else_waits(gtk):
     rows = program_rows(ALL, model_state="removing", removing="arena")
     assert rows[1].get_subtitle() == "Removing..."
-    assert buttons(rows[1], gtk) == []                 # no button to press twice
+    assert buttons(rows[1], gtk) == []  # no button to press twice
     assert any(isinstance(w, gtk.Spinner) for w in descendants(rows[1]))
     others = [b for r in (rows[0], rows[2]) for b in buttons(r, gtk)]
     assert [b.get_sensitive() for b in others] == [False, False]
@@ -122,6 +130,7 @@ def test_the_program_being_removed_shows_it_and_everything_else_waits(gtk):
 
 def test_the_page_says_that_games_are_safe(gtk):
     from gi.repository import Adw
+
     _c, page, _rows, _asked = make_page(ALL)
     preferences = next(w for w in descendants(page.view) if isinstance(w, Adw.PreferencesPage))
     assert "games you installed with the AIO Launcher" in preferences.get_description()
@@ -140,8 +149,10 @@ def test_it_is_rebuilt_only_when_what_it_shows_has_changed(gtk):
 
 # The tools
 
+
 def test_the_tools_have_a_group_of_their_own_after_the_programs(gtk):
     from gi.repository import Adw
+
     _c, page, rows, _asked = make_page({})
     groups = [w for w in descendants(page.view) if isinstance(w, Adw.PreferencesGroup)]
     assert [g.get_title() for g in groups] == ["", "Tools"]
@@ -168,10 +179,12 @@ def test_a_running_tool_cannot_be_opened_again(gtk):
 
 # The catalog: the programs are listed in three places that do not import each other. They must agree.
 
+
 def test_the_catalog_covers_exactly_the_programs_the_rest_of_the_wizard_knows_in_the_order_it_shows_them():
     from bfme_wizard.apps import APPS
     from bfme_wizard.catalog import CATALOG
     from bfme_wizard.model import ALL_PROGRAMS
+
     assert [p.key for p in CATALOG] == list(ALL_PROGRAMS)
     assert sorted(APPS) == sorted(ALL_PROGRAMS)
 
@@ -179,7 +192,9 @@ def test_the_catalog_covers_exactly_the_programs_the_rest_of_the_wizard_knows_in
 def test_the_tools_are_known_to_the_rest_of_the_wizard():
     from bfme_wizard.apps import TOOL_APPS
     from bfme_wizard.catalog import TOOLS
-    from bfme_wizard.model import JOB_STEPS, TOOLS as MODEL_TOOLS
+    from bfme_wizard.model import JOB_STEPS
+    from bfme_wizard.model import TOOLS as MODEL_TOOLS
+
     assert [p.key for p in TOOLS] == list(MODEL_TOOLS)
     assert sorted(TOOL_APPS) == sorted(MODEL_TOOLS)
     for key in MODEL_TOOLS:
@@ -188,12 +203,14 @@ def test_the_tools_are_known_to_the_rest_of_the_wizard():
 
 def test_the_programs_that_install_together_are_programs():
     from bfme_wizard.catalog import INSTALLED_TOGETHER, program
+
     for key, partner in INSTALLED_TOGETHER.items():
-        assert INSTALLED_TOGETHER[partner] == key    # it goes both ways
+        assert INSTALLED_TOGETHER[partner] == key  # it goes both ways
         assert (program(key).key, program(partner).key) == (key, partner)
 
 
 def test_every_program_says_what_removing_it_leaves_alone():
     from bfme_wizard.catalog import CATALOG
+
     for info in CATALOG:
         assert "not touched" in info.removal

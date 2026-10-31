@@ -1,4 +1,5 @@
 """The wizard window. Renders the model one page at a time."""
+
 from __future__ import annotations
 
 import os
@@ -10,10 +11,11 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, Gdk, Gio, GLib, GObject, Gtk  # noqa: E402
 
 from . import whatsnew
-from .aotr import MODDB_URL, AotrDownloadPage
+from .aotr import AotrDownloadPage
 from .catalog import program
 from .controller import PROGRAM_OF, Controller
 from .diagnostics import any_log, build_report
+from .engine.moddb import AOTR_PAGE_URL
 from .engine.paths import data_dir, paths
 from .home import GameFoldersPage, HomePage, TroubleshootPage
 from .model import description_of, speed_text, title_of
@@ -27,24 +29,16 @@ APP_ID = os.environ.get("FLATPAK_ID") or "com.jgbmichalski.BfmeInstaller"
 
 # Icons of the corner buttons, best first: the host's icon theme and the Flatpak runtime's are not the same set, and a name
 # only the host has shows a broken image inside the Flatpak. The first of each is in the GNOME runtime.
-PROGRAMS_ICONS = (
-    "folder-download-symbolic",
-    "system-software-install-symbolic",
-    "document-save-symbolic"
-)
+PROGRAMS_ICONS = ("folder-download-symbolic", "system-software-install-symbolic", "document-save-symbolic")
 
-FOLDERS_ICONS = (
-    "folder-symbolic",
-    "folder-open-symbolic",
-    "system-file-manager-symbolic"
-)
+FOLDERS_ICONS = ("folder-symbolic", "folder-open-symbolic", "system-file-manager-symbolic")
 
 # A lifebuoy: help when something goes wrong. Not a gear (that says Settings), not a warning sign (that says alarm).
 TROUBLESHOOT_ICONS = (
     "help-browser-symbolic",
     "applications-engineering-symbolic",
     "dialog-question-symbolic",
-    "help-about-symbolic"
+    "help-about-symbolic",
 )
 
 
@@ -123,7 +117,9 @@ class WizardWindow(Adw.ApplicationWindow):
         self.removing_page = self._spinner_page("Removing...", "removing")
 
     def _build_run(self) -> None:
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12, valign=Gtk.Align.CENTER, halign=Gtk.Align.CENTER)
+        box = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL, spacing=12, valign=Gtk.Align.CENTER, halign=Gtk.Align.CENTER
+        )
         box.set_size_request(440, -1)
         self.run_count = Gtk.Label(css_classes=["dim-label"])
         self.run_title = Gtk.Label(css_classes=["title-1"], wrap=True, justify=Gtk.Justification.CENTER)
@@ -152,8 +148,13 @@ class WizardWindow(Adw.ApplicationWindow):
         if self.troubleshoot is not None:
             return
         self.troubleshoot = TroubleshootPage(
-            self.controller, copy_text=self.copy, copy_diagnostics=self.copy_diagnostics,
-            open_logs=self.open_logs, open_config=self.open_config, confirm_reset=self.confirm_reset, change_graphics=self.change_graphics,
+            self.controller,
+            copy_text=self.copy,
+            copy_diagnostics=self.copy_diagnostics,
+            open_logs=self.open_logs,
+            open_config=self.open_config,
+            confirm_reset=self.confirm_reset,
+            change_graphics=self.change_graphics,
             change_option=self.change_option,
         )
         self._troubleshoot_page = Adw.NavigationPage.new(self.troubleshoot.view, "Troubleshoot")
@@ -167,8 +168,9 @@ class WizardWindow(Adw.ApplicationWindow):
     def show_programs(self) -> None:
         if self.programs is not None:
             return
-        self.programs = ProgramsPage(self.controller, install=self.install_program, remove=self.confirm_remove,
-                                    open_app=self.controller.open_app)
+        self.programs = ProgramsPage(
+            self.controller, install=self.install_program, remove=self.confirm_remove, open_app=self.controller.open_app
+        )
         self._programs_page = Adw.NavigationPage.new(self.programs.view, "Programs")
         self.nav.push(self._programs_page)
 
@@ -190,10 +192,10 @@ class WizardWindow(Adw.ApplicationWindow):
             except GLib.Error:
                 toast = Adw.Toast.new("Could not open your browser.")
                 toast.set_button_label("Copy link")
-                toast.connect("button-clicked", lambda *_: self.copy(MODDB_URL, "Link copied"))
+                toast.connect("button-clicked", lambda *_: self.copy(AOTR_PAGE_URL, "Link copied"))
                 self.toasts.add_toast(toast)
 
-        Gtk.UriLauncher.new(MODDB_URL).launch(self, None, opened)
+        Gtk.UriLauncher.new(AOTR_PAGE_URL).launch(self, None, opened)
 
     def choose_aotr_zip(self) -> None:
         zips = Gtk.FileFilter()
@@ -210,7 +212,7 @@ class WizardWindow(Adw.ApplicationWindow):
             try:
                 picked = source.open_finish(result)
             except GLib.Error:
-                return   # the player closed the chooser
+                return  # the player closed the chooser
             path = picked.get_path() if picked is not None else None
             if not path:
                 self.toasts.add_toast(Adw.Toast.new("That file cannot be read from here."))
@@ -272,7 +274,7 @@ class WizardWindow(Adw.ApplicationWindow):
         dialog = Adw.AlertDialog(
             heading="Delete the game environment?",
             body="This deletes the game environment, including every game you installed and Age of the Ring. "
-                 "This cannot be undone.\n\nClose the AIO Launcher, the Arena and Age of the Ring first.",
+            "This cannot be undone.\n\nClose the AIO Launcher, the Arena and Age of the Ring first.",
         )
         dialog.add_response("cancel", "Cancel")
         dialog.add_response("reset", "Delete and set up again")
@@ -287,7 +289,7 @@ class WizardWindow(Adw.ApplicationWindow):
         dialog = Adw.AlertDialog(
             heading=f"Remove {info.name}?",
             body=f"{info.removal}\n\nYou can install it again from the Programs page.\n\n"
-                 "Close the AIO Launcher, the Arena and Age of the Ring first.",
+            "Close the AIO Launcher, the Arena and Age of the Ring first.",
         )
         dialog.add_response("cancel", "Cancel")
         dialog.add_response("remove", "Remove")
@@ -304,7 +306,7 @@ class WizardWindow(Adw.ApplicationWindow):
             if ok:
                 text = f"{name[:1].upper()}{name[1:]} was removed."
             else:
-                error = self.model.error   # still there: the setup is looked at again right after this
+                error = self.model.error  # still there: the setup is looked at again right after this
                 text = f"Could not remove {name}: {error.message}" if error else f"Could not remove {name}."
             self.toasts.add_toast(Adw.Toast.new(text))
 
@@ -313,7 +315,11 @@ class WizardWindow(Adw.ApplicationWindow):
 
     def _do_reset(self) -> None:
         def done(ok: bool) -> None:
-            text = "The game environment was deleted." if ok else "The reset failed. Open the logs folder from Troubleshoot."
+            text = (
+                "The game environment was deleted."
+                if ok
+                else "The reset failed. Open the logs folder from Troubleshoot."
+            )
             self.toasts.add_toast(Adw.Toast.new(text))
 
         if self.controller.reset(done):
@@ -323,6 +329,7 @@ class WizardWindow(Adw.ApplicationWindow):
 
     def change_graphics(self, backend: str) -> None:
         """Switch the graphics backend. The page shows the new one once the script has saved it."""
+
         def done(ok: bool) -> None:
             name = "OpenGL" if backend == "opengl" else "Vulkan"
             text = f"Now using {name}. It takes effect the next time you open a program."
@@ -335,6 +342,7 @@ class WizardWindow(Adw.ApplicationWindow):
 
     def change_option(self, option: str, value: str | int) -> None:
         """Save one of the other graphics settings. The page shows it once the setup has saved it."""
+
         def done(ok: bool) -> None:
             text = "Saved. It takes effect the next time you open a program."
 
@@ -345,7 +353,7 @@ class WizardWindow(Adw.ApplicationWindow):
 
         if not self.controller.set_option(option, value, done):
             self.toasts.add_toast(Adw.Toast.new(self.controller.blocked_reason() or "Not now."))
-            self.troubleshoot.refresh(force=True)   # puts the row back to what is saved
+            self.troubleshoot.refresh(force=True)  # puts the row back to what is saved
 
     def _render_update_banner(self) -> None:
         u = self.updater
@@ -428,7 +436,7 @@ class WizardWindow(Adw.ApplicationWindow):
             self.stack.set_visible_child_name("problem")
         else:  # idle, cancelled: the start page
             if self.stack.get_visible_child_name() != "start":
-                self.start.enter()   # it comes into view: tick what is remembered, and leave the player's own ticks alone after
+                self.start.enter()  # it comes into view: tick what is remembered, and leave the player's own ticks alone after
             else:
                 self.start.refresh()
             self.stack.set_visible_child_name("start")
@@ -453,7 +461,7 @@ class WizardWindow(Adw.ApplicationWindow):
 
             self.run_note.set_text(note)
         elif m.speed is not None:
-            self.run_note.set_text(speed_text(m.speed))   # a download of unknown size
+            self.run_note.set_text(speed_text(m.speed))  # a download of unknown size
         else:
             self.run_note.set_text(m.last_check_message if step_id == "doctor" else "")
         self.run_cancel.set_label("Stopping after this step..." if m.cancel_requested else "Cancel")
@@ -486,10 +494,12 @@ class WizardWindow(Adw.ApplicationWindow):
                 c.level == "fail" and cid == "flatpak-32bit" for cid, c in m.checks.items()
             ):
                 # A running Flatpak mounts extensions at launch only. A fresh start is needed.
-                self.problem_box.append(Gtk.Label(
-                    label="After the command finishes, close this window and open BFME Installer again.",
-                    wrap=True,
-                ))
+                self.problem_box.append(
+                    Gtk.Label(
+                        label="After the command finishes, close this window and open BFME Installer again.",
+                        wrap=True,
+                    )
+                )
                 self.problem_box.append(pill("Close", lambda: self.get_application().quit()))
             else:
                 self.problem_box.append(pill("Recheck", self.controller.recheck))
@@ -516,7 +526,9 @@ class WizardWindow(Adw.ApplicationWindow):
             row.set_subtitle(GLib.markup_escape_text(command))
             row.set_subtitle_selectable(True)
             row.add_css_class("monospace")
-            button = Gtk.Button(icon_name="edit-copy-symbolic", valign=Gtk.Align.CENTER, tooltip_text="Copy the command")
+            button = Gtk.Button(
+                icon_name="edit-copy-symbolic", valign=Gtk.Align.CENTER, tooltip_text="Copy the command"
+            )
             button.add_css_class("flat")
             button.connect("clicked", lambda *_: self.copy(command, "Command copied"))
             row.add_suffix(button)
@@ -571,10 +583,16 @@ def show_whats_new(window: Gtk.Window, notes: list[tuple[str, str]]) -> Adw.Aler
 
         parts.append(body)
 
-    label = Gtk.Label(label="\n\n".join(parts), use_markup=True, wrap=True, xalign=0, selectable=True,
-                      margin_start=6, margin_end=6)
-    scroll = Gtk.ScrolledWindow(child=label, hscrollbar_policy=Gtk.PolicyType.NEVER, min_content_height=320,
-                                propagate_natural_height=True, max_content_height=420)
+    label = Gtk.Label(
+        label="\n\n".join(parts), use_markup=True, wrap=True, xalign=0, selectable=True, margin_start=6, margin_end=6
+    )
+    scroll = Gtk.ScrolledWindow(
+        child=label,
+        hscrollbar_policy=Gtk.PolicyType.NEVER,
+        min_content_height=320,
+        propagate_natural_height=True,
+        max_content_height=420,
+    )
     dialog = Adw.AlertDialog(heading=f"What's new in {notes[0][0]}", extra_child=scroll)
     dialog.add_response("close", "Close")
     dialog.present(window)
@@ -585,14 +603,15 @@ class WizardApp(Adw.Application):
     def __init__(self, runner, offer: str | None = None, jobs=None) -> None:
         super().__init__(application_id=APP_ID)
         self.runner = runner
-        self.offer = offer   # the program a shortcut wanted to open, when it was not installed (any more)
-        self.jobs = jobs     # engine/jobs.py unless given; dev/screenshots.py gives a stand-in
+        self.offer = offer  # the program a shortcut wanted to open, when it was not installed (any more)
+        self.jobs = jobs  # engine/jobs.py unless given; dev/screenshots.py gives a stand-in
         self.connect("activate", self._activate)
 
     def _activate(self, _app) -> None:
         """Activate the application, creating and presenting the main window if it does not already exist."""
         window = self.props.active_window
         if window is None:
+
             def controller(on_change):
                 if self.jobs is None:
                     return Controller(self.runner, on_change, offer=self.offer)

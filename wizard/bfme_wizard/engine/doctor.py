@@ -1,4 +1,5 @@
 """The system check: what must be in place before the setup can run. Only checks that can fail inside the Flatpak."""
+
 from __future__ import annotations
 
 import platform
@@ -10,7 +11,7 @@ from .config import Config
 from .events import Check, Emit, Fix, Log
 from .paths import Paths
 
-MIN_FREE_GB = 30   # three games plus the Arena
+MIN_FREE_GB = 30  # three games plus the Arena
 FLATPAK_RUNTIME_VERSION = "25.08"
 LIB_ROOT = Path("/usr/lib")
 
@@ -22,7 +23,6 @@ Or by hand, then start the app again:
 With an NVIDIA graphics card also install the matching 32-bit driver. Find its name with:
   flatpak list | grep nvidia
 and install the same name with GL32 in place of GL, for example org.freedesktop.Platform.GL32.nvidia-<version>."""
-
 
 
 def flatpak_32bit_missing(lib_root: Path | None = None) -> bool:
@@ -91,7 +91,9 @@ def _graphics_check(config: Config) -> Check:
         return Check("graphics", "ok", f"Graphics: {why}. The setup will use OpenGL (WineD3D).")
 
     if backend == "opengl":
-        return Check("graphics", "warn", f"Graphics: {why}. OpenGL is recommended: switch it under Troubleshoot, Graphics.")
+        return Check(
+            "graphics", "warn", f"Graphics: {why}. OpenGL is recommended: switch it under Troubleshoot, Graphics."
+        )
 
     return Check("graphics", "ok", f"Graphics: {why}. Using {graphics.label(config.graphics)}, as you chose.")
 
@@ -115,7 +117,7 @@ def run_checks(paths: Paths, config: Config, emit: Emit, lib_root: Path | None =
 
     checks.append(_graphics_check(config))
 
-    free_gb = shutil.disk_usage(_existing_parent(paths.base)).free // (1024 ** 3)
+    free_gb = shutil.disk_usage(_existing_parent(paths.base)).free // (1024**3)
 
     if free_gb >= MIN_FREE_GB:
         checks.append(Check("disk", "ok", f"free disk space: {free_gb} GB (need about {MIN_FREE_GB} GB)"))
@@ -123,8 +125,14 @@ def run_checks(paths: Paths, config: Config, emit: Emit, lib_root: Path | None =
         checks.append(Check("disk", "warn", f"less than {MIN_FREE_GB} GB free where the data goes ({paths.base})"))
 
     # A Flatpak cannot see the host's firewall services.
-    checks.append(Check("firewall", "ok", "firewall: not checked from inside a Flatpak. If you cannot host or join games, "
-                                          "check ufw or firewalld on your system."))
+    checks.append(
+        Check(
+            "firewall",
+            "ok",
+            "firewall: not checked from inside a Flatpak. If you cannot host or join games, "
+            "check ufw or firewalld on your system.",
+        )
+    )
 
     marks = {"ok": "[ok]  ", "warn": "[warn]", "fail": "[FAIL]"}
     fails = 0

@@ -1,4 +1,5 @@
 """The home screen cards, the Game folders page and the Troubleshoot page. They show the model and call back into the window."""
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -12,8 +13,8 @@ from gi.repository import Adw, GLib, Gtk  # noqa: E402
 
 from .catalog import CATALOG, Program
 from .controller import Controller
-from .model import games_line
 from .engine.paths import paths
+from .model import games_line
 from .widgets import clear, first_icon, pill, program_icon
 
 # What the page says when there is no card to show. A complete setup always has one, so this is only a safety net.
@@ -26,18 +27,34 @@ QUICK_EXIT_NOTE = "Closed after a few seconds. If it didn't open, see Troublesho
 
 # The sandbox cannot see these. Advice only, never pass or fail. The drivers named depend on the chosen backend.
 # (value, label) of each choice in Troubleshoot's Graphics section.
-GPU_CHOICES: list[tuple[str | int, str]] = [("auto", "Automatic"), ("dedicated", "Dedicated card"), ("integrated", "Built-in card")]
+GPU_CHOICES: list[tuple[str | int, str]] = [
+    ("auto", "Automatic"),
+    ("dedicated", "Dedicated card"),
+    ("integrated", "Built-in card"),
+]
 
 
 def cant_check(graphics: str) -> list[tuple[str, str, str]]:
     if graphics == "opengl":
-        drivers = ("Graphics drivers", "The launchers/applications need working OpenGL drivers on your computer. If a game is slow "
-                   "or does not start, switch back to Vulkan on this page.", "glxinfo -B")
+        drivers = (
+            "Graphics drivers",
+            "The launchers/applications need working OpenGL drivers on your computer. If a game is slow "
+            "or does not start, switch back to Vulkan on this page.",
+            "glxinfo -B",
+        )
     else:
-        drivers = ("Graphics drivers", "The launchers/applications need working Vulkan drivers on your computer. On an older "
-                   "graphics card, switch to OpenGL on this page.", "vulkaninfo --summary")
+        drivers = (
+            "Graphics drivers",
+            "The launchers/applications need working Vulkan drivers on your computer. On an older "
+            "graphics card, switch to OpenGL on this page.",
+            "vulkaninfo --summary",
+        )
     return [
-        ("Firewall", "If you cannot host or join games, check that your firewall (ufw or firewalld) allows them.", "sudo ufw status"),
+        (
+            "Firewall",
+            "If you cannot host or join games, check that your firewall (ufw or firewalld) allows them.",
+            "sudo ufw status",
+        ),
         drivers,
     ]
 
@@ -48,11 +65,20 @@ class HomePage:
     def __init__(self, controller: Controller, version: Callable[[], str]) -> None:
         self.controller, self.version = controller, version
         self.box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        self.content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=18, vexpand=True, valign=Gtk.Align.CENTER,
-                               halign=Gtk.Align.CENTER, margin_start=24, margin_end=24,
-                               margin_top=CORNER_CLEARANCE, margin_bottom=CORNER_CLEARANCE)
-        self.version_label = Gtk.Label(css_classes=["caption", "dim-label"], halign=Gtk.Align.CENTER,
-                                       margin_top=6, margin_bottom=12)
+        self.content = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=18,
+            vexpand=True,
+            valign=Gtk.Align.CENTER,
+            halign=Gtk.Align.CENTER,
+            margin_start=24,
+            margin_end=24,
+            margin_top=CORNER_CLEARANCE,
+            margin_bottom=CORNER_CLEARANCE,
+        )
+        self.version_label = Gtk.Label(
+            css_classes=["caption", "dim-label"], halign=Gtk.Align.CENTER, margin_top=6, margin_bottom=12
+        )
         self.box.append(self.content)
         self.box.append(self.version_label)
 
@@ -61,12 +87,20 @@ class HomePage:
         self.version_label.set_text(f"Version {self.version()}")
         line = games_line(self.controller.model)
         if line:
-            self.content.append(Gtk.Label(label=line, wrap=True, justify=Gtk.Justification.CENTER,
-                                          css_classes=["heading"]))
+            self.content.append(
+                Gtk.Label(label=line, wrap=True, justify=Gtk.Justification.CENTER, css_classes=["heading"])
+            )
         installed = [info for info in CATALOG if self.controller.model.is_installed(info.key)]
         if not installed:
-            self.content.append(Gtk.Label(label=NOTHING_INSTALLED, wrap=True, justify=Gtk.Justification.CENTER,
-                                          css_classes=["dim-label"], max_width_chars=40))
+            self.content.append(
+                Gtk.Label(
+                    label=NOTHING_INSTALLED,
+                    wrap=True,
+                    justify=Gtk.Justification.CENTER,
+                    css_classes=["dim-label"],
+                    max_width_chars=40,
+                )
+            )
             return
         cards = Gtk.Box(spacing=16, homogeneous=True, halign=Gtk.Align.CENTER)
         for info in installed:
@@ -76,10 +110,25 @@ class HomePage:
     def _card(self, info: Program) -> Gtk.Widget:
         name = info.key
         state = self.controller.apps.state[name]
-        inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10, margin_top=18, margin_bottom=18, margin_start=18, margin_end=18)
+        inner = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=10,
+            margin_top=18,
+            margin_bottom=18,
+            margin_start=18,
+            margin_end=18,
+        )
         inner.append(program_icon(info, CARD_ICON_SIZE))
         inner.append(Gtk.Label(label=info.title, css_classes=["title-2"]))
-        inner.append(Gtk.Label(label=info.summary, wrap=True, justify=Gtk.Justification.CENTER, css_classes=["dim-label"], max_width_chars=20))
+        inner.append(
+            Gtk.Label(
+                label=info.summary,
+                wrap=True,
+                justify=Gtk.Justification.CENTER,
+                css_classes=["dim-label"],
+                max_width_chars=20,
+            )
+        )
         if state == "running":
             running = Gtk.Box(spacing=8, halign=Gtk.Align.CENTER, margin_top=4, margin_bottom=4)
             running.append(Gtk.Spinner(spinning=True))
@@ -88,8 +137,15 @@ class HomePage:
         else:
             inner.append(pill("Open", lambda n=name: self.controller.open_app(n)))
         if state == "quick":
-            inner.append(Gtk.Label(label=QUICK_EXIT_NOTE, wrap=True, justify=Gtk.Justification.CENTER,
-                                   css_classes=["caption", "warning"], max_width_chars=26))
+            inner.append(
+                Gtk.Label(
+                    label=QUICK_EXIT_NOTE,
+                    wrap=True,
+                    justify=Gtk.Justification.CENTER,
+                    css_classes=["caption", "warning"],
+                    max_width_chars=26,
+                )
+            )
         card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, css_classes=["card"])
         card.append(inner)
         return card
@@ -120,10 +176,13 @@ class GameFoldersPage:
             page.add(group)
             any_installed = True
         if not any_installed:
-            self.view.set_content(Adw.StatusPage(
-                title="No games installed", description="Install a game with the AIO Launcher, and its folders will be here.",
-                icon_name=first_icon("folder-symbolic", "folder-open-symbolic"),
-            ))
+            self.view.set_content(
+                Adw.StatusPage(
+                    title="No games installed",
+                    description="Install a game with the AIO Launcher, and its folders will be here.",
+                    icon_name=first_icon("folder-symbolic", "folder-open-symbolic"),
+                )
+            )
             return
         self.view.set_content(page)
 
@@ -131,12 +190,28 @@ class GameFoldersPage:
 class TroubleshootPage:
     """Rebuilt only when its content changes, so expanded rows stay open."""
 
-    def __init__(self, controller: Controller, *, copy_text: Callable[[str, str], None], copy_diagnostics: Callable[[], None],
-                 open_logs: Callable[[], None], open_config: Callable[[], None], confirm_reset: Callable[[], None],
-                 change_graphics: Callable[[str], None], change_option: Callable[[str, str | int], None]) -> None:
+    def __init__(
+        self,
+        controller: Controller,
+        *,
+        copy_text: Callable[[str, str], None],
+        copy_diagnostics: Callable[[], None],
+        open_logs: Callable[[], None],
+        open_config: Callable[[], None],
+        confirm_reset: Callable[[], None],
+        change_graphics: Callable[[str], None],
+        change_option: Callable[[str, str | int], None],
+    ) -> None:
         self.controller = controller
-        self._cb = dict(copy_text=copy_text, copy_diagnostics=copy_diagnostics, open_logs=open_logs, open_config=open_config,
-                        confirm_reset=confirm_reset, change_graphics=change_graphics, change_option=change_option)
+        self._cb = dict(
+            copy_text=copy_text,
+            copy_diagnostics=copy_diagnostics,
+            open_logs=open_logs,
+            open_config=open_config,
+            confirm_reset=confirm_reset,
+            change_graphics=change_graphics,
+            change_option=change_option,
+        )
         self.view = Adw.ToolbarView()
         self.view.add_top_bar(Adw.HeaderBar())
         self._key = None
@@ -146,8 +221,17 @@ class TroubleshootPage:
         """Rebuild the page if what it shows changed, or when forced (a row the player changed must show what is saved)."""
         c = self.controller
         m = c.model
-        key = (tuple(m.check_rows), c.checking, m.state, tuple(c.apps.state.values()), c.blocked_reason(), m.graphics,
-               m.gpu, m.fps_counter, m.graphics_cards)
+        key = (
+            tuple(m.check_rows),
+            c.checking,
+            m.state,
+            tuple(c.apps.state.values()),
+            c.blocked_reason(),
+            m.graphics,
+            m.gpu,
+            m.fps_counter,
+            m.graphics_cards,
+        )
         if key == self._key and not force:
             return
         self._key = key
@@ -192,7 +276,7 @@ class TroubleshootPage:
         group = Adw.PreferencesGroup(
             title="Graphics",
             description="Vulkan is the default. OpenGL can work better on older graphics cards. Changes take effect the next "
-                        "time you open a program.",
+            "time you open a program.",
         )
         m = self.controller.model
         free = self.controller.blocked_reason() is None
@@ -201,7 +285,9 @@ class TroubleshootPage:
             title="Backend",
             subtitle="OpenGL (WineD3D)" if opengl else "Vulkan (DXVK)",
         )
-        button = Gtk.Button(label="Use Vulkan" if opengl else "Use OpenGL", valign=Gtk.Align.CENTER, css_classes=["flat"])
+        button = Gtk.Button(
+            label="Use Vulkan" if opengl else "Use OpenGL", valign=Gtk.Align.CENTER, css_classes=["flat"]
+        )
         button.set_sensitive(self.controller.blocked_reason() is None)
         button.connect("clicked", lambda *_: self._cb["change_graphics"]("vulkan" if opengl else "opengl"))
         row.add_suffix(button)
@@ -209,18 +295,39 @@ class TroubleshootPage:
 
         # The choice of card only means something on a computer that has two.
         if m.graphics_cards > 1:
-            group.add(self._choice_row("Graphics card", "Which card runs the games, on a computer with two.", "gpu",
-                                       GPU_CHOICES, m.gpu, free))
+            group.add(
+                self._choice_row(
+                    "Graphics card",
+                    "Which card runs the games, on a computer with two.",
+                    "gpu",
+                    GPU_CHOICES,
+                    m.gpu,
+                    free,
+                )
+            )
 
-        counter = Adw.SwitchRow(title="Show FPS", subtitle="The frame rate in the corner of the game. Vulkan only.",
-                                active=m.fps_counter, sensitive=free)
-        counter.connect("notify::active", lambda row, _param: self._cb["change_option"]("fps-counter", int(row.get_active())))
+        counter = Adw.SwitchRow(
+            title="Show FPS",
+            subtitle="The frame rate in the corner of the game. Vulkan only.",
+            active=m.fps_counter,
+            sensitive=free,
+        )
+        counter.connect(
+            "notify::active", lambda row, _param: self._cb["change_option"]("fps-counter", int(row.get_active()))
+        )
         group.add(counter)
 
         return group
 
-    def _choice_row(self, title: str, subtitle: str, option: str, choices: list[tuple[str | int, str]],
-                    current: str | int, sensitive: bool) -> Adw.ComboRow:
+    def _choice_row(
+        self,
+        title: str,
+        subtitle: str,
+        option: str,
+        choices: list[tuple[str | int, str]],
+        current: str | int,
+        sensitive: bool,
+    ) -> Adw.ComboRow:
         """A row to pick one of a few values. Picking one saves it."""
         labels = []
         selected = 0
@@ -231,8 +338,9 @@ class TroubleshootPage:
             if value == current:
                 selected = index
 
-        row = Adw.ComboRow(title=title, subtitle=subtitle, model=Gtk.StringList.new(labels), selected=selected,
-                           sensitive=sensitive)
+        row = Adw.ComboRow(
+            title=title, subtitle=subtitle, model=Gtk.StringList.new(labels), selected=selected, sensitive=sensitive
+        )
 
         # Connected after the current value is set, so building the row saves nothing.
         def picked(combo: Adw.ComboRow, _param) -> None:
@@ -257,10 +365,17 @@ class TroubleshootPage:
     def _tools_group(self) -> Adw.PreferencesGroup:
         group = Adw.PreferencesGroup(title="Tools")
         for title, subtitle, action in (
-            ("Copy diagnostics", "Version, your computer's desktop and graphics card, system checks and the end of the latest logs. Check it before you share it.", "copy_diagnostics"),
+            (
+                "Copy diagnostics",
+                "Version, your computer's desktop and graphics card, system checks and the end of the latest logs. Check it before you share it.",
+                "copy_diagnostics",
+            ),
             ("Open logs folder", "Opens the folder in your file manager.", "open_logs"),
-            ("Open settings file", "Opens config.env in your text editor. Changes apply the next time you open a program.",
-             "open_config"),
+            (
+                "Open settings file",
+                "Opens config.env in your text editor. Changes apply the next time you open a program.",
+                "open_config",
+            ),
         ):
             row = Adw.ActionRow(title=title, subtitle=subtitle, subtitle_lines=2, activatable=True)
             row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
@@ -269,8 +384,12 @@ class TroubleshootPage:
         reason = self.controller.blocked_reason()
         reset = Adw.ActionRow(
             title="Reset game environment",
-            subtitle=GLib.markup_escape_text(reason or "Deletes the game environment and every game you installed, including Age of the Ring."),
-            subtitle_lines=2, activatable=reason is None, sensitive=reason is None,
+            subtitle=GLib.markup_escape_text(
+                reason or "Deletes the game environment and every game you installed, including Age of the Ring."
+            ),
+            subtitle_lines=2,
+            activatable=reason is None,
+            sensitive=reason is None,
         )
         reset.add_css_class("error")
         reset.add_suffix(Gtk.Image.new_from_icon_name("user-trash-symbolic"))
@@ -292,7 +411,12 @@ class TroubleshootPage:
             row.set_subtitle(GLib.markup_escape_text(fix))
             row.set_subtitle_lines(5)
             row.add_css_class("monospace")
-            button = Gtk.Button(icon_name="edit-copy-symbolic", valign=Gtk.Align.CENTER, css_classes=["flat"], tooltip_text="Copy the command")
+            button = Gtk.Button(
+                icon_name="edit-copy-symbolic",
+                valign=Gtk.Align.CENTER,
+                css_classes=["flat"],
+                tooltip_text="Copy the command",
+            )
             button.connect("clicked", lambda *_: self._cb["copy_text"](fix, "Command copied"))
             row.add_suffix(button)
         return row

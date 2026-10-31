@@ -1,4 +1,5 @@
 """Menu shortcuts for the installed programs. The app only runs as a Flatpak, so they open the program through it."""
+
 from __future__ import annotations
 
 import os
@@ -18,7 +19,7 @@ MOUNTINFO = Path("/proc/self/mountinfo")
 class Shortcut:
     name: str
     comment: str
-    suffix: str # The end of the shortcut's file name and of its icon's name, both <app id>.<suffix>.
+    suffix: str  # The end of the shortcut's file name and of its icon's name, both <app id>.<suffix>.
 
 
 SHORTCUTS = {
@@ -66,10 +67,10 @@ def flatpak_wrapper(app: str, info: Path = FLATPAK_INFO) -> str:
 
     for line in text.splitlines():
         if line.startswith("original-app-path="):
-            original = line[len("original-app-path="):]
+            original = line[len("original-app-path=") :]
 
         if line.startswith("app-path="):
-            current = line[len("app-path="):]
+            current = line[len("app-path=") :]
 
     app_path = original or current
     marker = f"app/{app}/"
@@ -77,7 +78,7 @@ def flatpak_wrapper(app: str, info: Path = FLATPAK_INFO) -> str:
     if marker not in app_path:
         return ""
 
-    install_root = app_path[:app_path.index(marker)]
+    install_root = app_path[: app_path.index(marker)]
 
     return f"{install_root}exports/bin/{app}"
 
@@ -100,7 +101,7 @@ def menu_folder_reachable(folder: Path, mountinfo: Path = MOUNTINFO) -> bool:
         if len(fields) < 5:
             continue
 
-        mount_point = fields[4].replace("\\040", " ")   # a space in a path is written \040
+        mount_point = fields[4].replace("\\040", " ")  # a space in a path is written \040
 
         if mount_point == "/":
             continue
@@ -168,8 +169,13 @@ def _sync_one(folder: Path, app: str, program: str, installed: bool, wrapper: st
     return True
 
 
-def sync(paths: Paths, emit: Emit, environ: dict[str, str] | None = None, info: Path = FLATPAK_INFO,
-         mountinfo: Path = MOUNTINFO) -> bool:
+def sync(
+    paths: Paths,
+    emit: Emit,
+    environ: dict[str, str] | None = None,
+    info: Path = FLATPAK_INFO,
+    mountinfo: Path = MOUNTINFO,
+) -> bool:
     """A shortcut for each installed program, and none for the others. False when they could not all be written."""
     app = app_id(environ)
     folder = menu_dir(environ)
@@ -184,8 +190,12 @@ def sync(paths: Paths, emit: Emit, environ: dict[str, str] | None = None, info: 
 
     # With nothing installed, create nothing (a first start leaves no folders). Leftover entries are still removed below.
     if any_installed and not menu_folder_reachable(folder, mountinfo):
-        emit(Warn(f"This app cannot reach your menu folder ({folder}), so there are no shortcuts. To give it access: "
-                  f"flatpak override --user --filesystem=xdg-data/applications:create {app}"))
+        emit(
+            Warn(
+                f"This app cannot reach your menu folder ({folder}), so there are no shortcuts. To give it access: "
+                f"flatpak override --user --filesystem=xdg-data/applications:create {app}"
+            )
+        )
         return False
 
     wrapper = flatpak_wrapper(app, info)

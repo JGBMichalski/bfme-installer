@@ -1,14 +1,15 @@
 """engine.shortcuts and engine.launch, in a stand-in for the Flatpak sandbox."""
+
 import os
 import time
 from pathlib import Path
 
 import pytest
+
 from bfme_wizard.engine import launch, shortcuts
 from bfme_wizard.engine.config import Config
 from bfme_wizard.engine.events import Log, Warn
 from bfme_wizard.engine.paths import Paths
-
 from tests.helpers import manifest_app_id, manifest_icon_exports
 
 DEV_ID = "com.example.Dev"
@@ -89,7 +90,11 @@ RELEASE_ID = shortcuts.RELEASE_APP_ID
 
 # Per program: the shortcut's file suffix, name, comment and what it opens.
 PROGRAM_SHORTCUTS = {
-    "aio-launcher": ("AioLauncher", "BFME All-in-One Launcher", "Install, mod and manage the Battle for Middle-earth games"),
+    "aio-launcher": (
+        "AioLauncher",
+        "BFME All-in-One Launcher",
+        "Install, mod and manage the Battle for Middle-earth games",
+    ),
     "arena": ("Arena", "BFME Online Arena", "Play Battle for Middle-earth online"),
     "aotr": ("Aotr", "Age of the Ring", "Play the Age of the Ring mod for Battle for Middle-earth 2"),
 }
@@ -120,8 +125,10 @@ def up_to_date(sandbox):
 
 
 def unreachable(sandbox):
-    return Warn(f"This app cannot reach your menu folder ({sandbox.apps}), so there are no shortcuts. To give "
-                f"it access: flatpak override --user --filesystem=xdg-data/applications:create {sandbox.app_id}")
+    return Warn(
+        f"This app cannot reach your menu folder ({sandbox.apps}), so there are no shortcuts. To give "
+        f"it access: flatpak override --user --filesystem=xdg-data/applications:create {sandbox.app_id}"
+    )
 
 
 @pytest.fixture
@@ -130,6 +137,7 @@ def paths(tmp_path):
 
 
 # Which shortcuts there are
+
 
 @pytest.mark.parametrize("installed", [(), ("aio-launcher",), ("aotr",), ("aio-launcher", "arena", "aotr")])
 @pytest.mark.parametrize("app_id", [DEV_ID, RELEASE_ID])
@@ -153,10 +161,13 @@ def test_each_installed_program_gets_a_shortcut(tmp_path, paths, installed, app_
     assert events == [up_to_date(sandbox)]
 
 
-@pytest.mark.parametrize("info,original,tryexec", [
-    (False, False, None),                                   # no flatpak-info: no TryExec
-    (True, True, "elsewhere/exports/bin/com.example.Dev"),  # the original install path wins
-])
+@pytest.mark.parametrize(
+    "info,original,tryexec",
+    [
+        (False, False, None),  # no flatpak-info: no TryExec
+        (True, True, "elsewhere/exports/bin/com.example.Dev"),  # the original install path wins
+    ],
+)
 def test_tryexec_follows_where_the_app_is_installed(tmp_path, paths, info, original, tryexec):
     make_prefix(paths)
     install(paths, "arena")
@@ -186,7 +197,8 @@ def test_the_text_of_a_shortcut(tmp_path, paths):
         "Comment=Install, mod and manage the Battle for Middle-earth games\n"
         f"Exec=flatpak run --command=bfme-installer {DEV_ID} --open aio-launcher\n"
         f"TryExec={tmp_path}/flatpak/exports/bin/{DEV_ID}\n"
-        f"Icon={DEV_ID}.AioLauncher\nTerminal=false\nCategories=Game;\nStartupNotify=true\nX-Flatpak={DEV_ID}\n")
+        f"Icon={DEV_ID}.AioLauncher\nTerminal=false\nCategories=Game;\nStartupNotify=true\nX-Flatpak={DEV_ID}\n"
+    )
 
 
 def test_a_removed_programs_shortcut_goes_and_a_correct_one_is_left_alone(tmp_path, paths):
@@ -214,12 +226,16 @@ def test_a_removed_programs_shortcut_goes_and_a_correct_one_is_left_alone(tmp_pa
 
 # Whether the sandbox can reach the menu folder
 
-@pytest.mark.parametrize("mounts,reachable", [
-    ("none", False),
-    ("home", True),        # a bigger share holds the menu folder
-    ("space", False),      # \040 in the list
-    ("sibling", False),
-])
+
+@pytest.mark.parametrize(
+    "mounts,reachable",
+    [
+        ("none", False),
+        ("home", True),  # a bigger share holds the menu folder
+        ("space", False),  # \040 in the list
+        ("sibling", False),
+    ],
+)
 def test_reaching_the_menu_folder(tmp_path, paths, mounts, reachable):
     make_prefix(paths)
     install(paths, "aotr")
@@ -279,8 +295,12 @@ def umu(tmp_path, monkeypatch):
     (bin_dir / "umu-run").chmod(0o755)
     put(bin_dir / "lspci", "#!/bin/sh\n")
     (bin_dir / "lspci").chmod(0o755)
-    env = {"PATH": f"{bin_dir}:/usr/bin:/bin", "HOME": str(tmp_path), "UMU_LOG": str(tmp_path / "umu.log"),
-           "BFME_PROTONPATH": "fake-proton"}
+    env = {
+        "PATH": f"{bin_dir}:/usr/bin:/bin",
+        "HOME": str(tmp_path),
+        "UMU_LOG": str(tmp_path / "umu.log"),
+        "BFME_PROTONPATH": "fake-proton",
+    }
 
     for name, value in env.items():
         monkeypatch.setenv(name, value)
@@ -328,7 +348,7 @@ def test_each_start_gets_its_own_log_and_the_newest_ten_are_kept(tmp_path, paths
 def test_only_the_logs_of_starts_are_rotated(paths, umu):
     put(paths.aotr_exe)
     paths.logs.mkdir(parents=True)
-    put(paths.logs / "aotr-setup.log", "a log of its own")       # like aio-launcher-setup.log
+    put(paths.logs / "aotr-setup.log", "a log of its own")  # like aio-launcher-setup.log
 
     for number in range(12):
         old = paths.logs / f"aotr-2025010{number % 10}-{number:06d}.log"

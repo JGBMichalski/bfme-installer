@@ -3,6 +3,7 @@
 The zip comes from ModDB: the app downloads it (see moddb.py), or the player does and chooses it. It is a ZIP64 archive
 (~19 GB, Deflate64) that only 7-Zip can open.
 """
+
 from __future__ import annotations
 
 import os
@@ -28,8 +29,10 @@ from .programs import AOTR_INSTALLING
 # 18.87 GB unpacked, 27.51 GB installed (146%), so an install needs 46.4 GB at its peak and this asks for 47.2 GB.
 INSTALL_RATIO_PERCENT = 150
 WATCH_SEC = 2
-NEED_7ZIP = ("7-Zip is needed to read the download. Install it (Debian/Ubuntu: p7zip-full, Fedora: 7zip, Arch: 7zip) "
-             "and try again.")
+NEED_7ZIP = (
+    "7-Zip is needed to read the download. Install it (Debian/Ubuntu: p7zip-full, Fedora: 7zip, Arch: 7zip) "
+    "and try again."
+)
 DOWNLOAD_AGAIN = "Download it again from ModDB."
 # The installer's data files: AotR_Standalone_9.3.0_Installer-1a.bin, -1b.bin, -2a.bin, ...
 PART = re.compile(r"^(.*)-(\d+)([a-z])\.bin$")
@@ -38,7 +41,7 @@ PART = re.compile(r"^(.*)-(\d+)([a-z])\.bin$")
 @dataclass(frozen=True)
 class AotrZip:
     path: Path
-    exe_name: str          # the installer program inside the zip
+    exe_name: str  # the installer program inside the zip
     unpacked_bytes: int
 
 
@@ -54,8 +57,9 @@ def sevenzip() -> str:
 
 def zip_entries(zip_path: Path) -> list[tuple[int, str]]:
     """(size, name) per file in the zip. Fails on an incomplete zip: an unfinished browser download has no directory."""
-    done = subprocess.run([sevenzip(), "l", "-slt", "-ba", "--", str(zip_path)], capture_output=True, text=True,
-                          check=False)
+    done = subprocess.run(
+        [sevenzip(), "l", "-slt", "-ba", "--", str(zip_path)], capture_output=True, text=True, check=False
+    )
 
     if done.returncode != 0:
         raise SetupError(f"This file is incomplete or damaged. {DOWNLOAD_AGAIN}")
@@ -69,11 +73,11 @@ def zip_entries(zip_path: Path) -> list[tuple[int, str]]:
             if name is not None:
                 entries.append((size, name))
 
-            name = line[len("Path = "):]
+            name = line[len("Path = ") :]
             size = 0
 
         if line.startswith("Size = "):
-            size = int(line[len("Size = "):] or 0)
+            size = int(line[len("Size = ") :] or 0)
 
     if name is not None:
         entries.append((size, name))
@@ -87,12 +91,15 @@ def check_zip(zip_path: Path) -> AotrZip:
         raise SetupError(f"The file '{zip_path}' was not found.")
 
     if zip_path.name.endswith((".part", ".crdownload", ".download")):
-        raise SetupError("This download is not finished yet. Wait until your browser has finished, then choose the file "
-                         "again.")
+        raise SetupError(
+            "This download is not finished yet. Wait until your browser has finished, then choose the file again."
+        )
 
     if not re.fullmatch(r"AotR_Standalone_.*_Installer\.zip", zip_path.name):
-        raise SetupError("This is not the Age of the Ring installer. Choose the file named like "
-                         "AotR_Standalone_10.0.0_Installer.zip.")
+        raise SetupError(
+            "This is not the Age of the Ring installer. Choose the file named like "
+            "AotR_Standalone_10.0.0_Installer.zip."
+        )
 
     entries = zip_entries(zip_path)
     exe_name = ""
@@ -105,7 +112,7 @@ def check_zip(zip_path: Path) -> AotrZip:
     if not exe_name:
         raise SetupError(f"The installer program is missing from this file. {DOWNLOAD_AGAIN}")
 
-    stem = exe_name[:-len(".exe")]
+    stem = exe_name[: -len(".exe")]
     has_parts = False
     unpacked = 0
 
@@ -148,8 +155,10 @@ def _need_free_space(paths: Paths, need: int) -> None:
     free = shutil.disk_usage(paths.base).free
 
     if need > free:
-        raise SetupError(f"Not enough free space: Age of the Ring needs {need // 1000000000 + 1} GB more, but only "
-                         f"{free // 1000000000} GB is free.")
+        raise SetupError(
+            f"Not enough free space: Age of the Ring needs {need // 1000000000 + 1} GB more, but only "
+            f"{free // 1000000000} GB is free."
+        )
 
 
 def check_download_space(paths: Paths, config: Config, remote: RemoteFile) -> None:
@@ -172,8 +181,9 @@ def check_download_space(paths: Paths, config: Config, remote: RemoteFile) -> No
     _need_free_space(paths, need - already)
 
 
-def download_zip(paths: Paths, config: Config, remote: RemoteFile, emit: Emit,
-                 cancel: threading.Event | None = None) -> Path:
+def download_zip(
+    paths: Paths, config: Config, remote: RemoteFile, emit: Emit, cancel: threading.Event | None = None
+) -> Path:
     """Download the zip into the downloads folder, with progress, and check it against ModDB's MD5. A finished download
     is not repeated."""
     zip_path = paths.downloads / remote.name
@@ -207,8 +217,13 @@ def from_unpacked(paths: Paths, zip_name: str) -> AotrZip | None:
     return None
 
 
-def _watch(process: subprocess.Popen, measure: Callable[[], int | None], emit: Emit, cancel: threading.Event | None,
-           on_cancel: Callable[[], None] | None = None) -> int:
+def _watch(
+    process: subprocess.Popen,
+    measure: Callable[[], int | None],
+    emit: Emit,
+    cancel: threading.Event | None,
+    on_cancel: Callable[[], None] | None = None,
+) -> int:
     """Report progress while the process runs, capped at 99: only the process ending means done. A cancel stops the
     process, then on_cancel cleans up after it. Returns the exit status."""
     last = -1
@@ -337,16 +352,17 @@ def _fd_position(fdinfo: Path) -> int | None:
 
     for line in text.splitlines():
         if line.startswith("pos:"):
-            return int(line[len("pos:"):].strip())
+            return int(line[len("pos:") :].strip())
 
     return None
 
 
-def run_installer(paths: Paths, config: Config, proton_path: str, aotr_zip: AotrZip, emit: Emit,
-                  cancel: threading.Event | None = None) -> None:
+def run_installer(
+    paths: Paths, config: Config, proton_path: str, aotr_zip: AotrZip, emit: Emit, cancel: threading.Event | None = None
+) -> None:
     """Run the Age of the Ring installer without its window. It leaves a marker until it is done, so a half-finished install
     is not taken for Age of the Ring."""
-    
+
     def measure() -> int | None:
         """Measure the install progress as a percentage of the total expected bytes."""
         return install_percent(paths.aotr_unpack)

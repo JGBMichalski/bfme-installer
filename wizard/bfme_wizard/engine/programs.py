@@ -1,4 +1,5 @@
 """The programs in the game environment: installing, updating and removing them, and what is installed."""
+
 from __future__ import annotations
 
 import hashlib
@@ -130,8 +131,14 @@ def wait_for_stable_file(path: Path, limit_sec: int, cancel: threading.Event | N
     return False
 
 
-def install_aio_launcher(paths: Paths, config: Config, proton_path: str, emit: Emit, cancel: threading.Event | None = None,
-                         url: str | None = None) -> None:
+def install_aio_launcher(
+    paths: Paths,
+    config: Config,
+    proton_path: str,
+    emit: Emit,
+    cancel: threading.Event | None = None,
+    url: str | None = None,
+) -> None:
     """Run the AIO Launcher's setup in the game environment. The prefix must be ready."""
     if aio_launcher_installed(paths):
         return
@@ -199,8 +206,13 @@ def arena_remote_hash(server_host: str | None = None) -> str:
         return ""
 
 
-def install_or_update_arena(paths: Paths, emit: Emit, cancel: threading.Event | None = None,
-                            files_host: str | None = None, server_host: str | None = None) -> None:
+def install_or_update_arena(
+    paths: Paths,
+    emit: Emit,
+    cancel: threading.Event | None = None,
+    files_host: str | None = None,
+    server_host: str | None = None,
+) -> None:
     """Download the Arena, or a newer one. An installed Arena is kept when the server cannot be asked."""
     files_host = files_host or ARENA_FILES_HOST
     (paths.arena_exe.parent / "Data").mkdir(parents=True, exist_ok=True)
@@ -222,8 +234,9 @@ def install_or_update_arena(paths: Paths, emit: Emit, cancel: threading.Event | 
     tmp.unlink(missing_ok=True)
     tmp.with_name(tmp.name + ".part").unlink(missing_ok=True)
     emit(Log(f"Downloading {tmp.name}."))
-    download(f"{files_host}/application-builds/online-arena-{ARENA_BRANCH}", tmp, cancel=cancel,
-             on_speed=report_speed(emit))
+    download(
+        f"{files_host}/application-builds/online-arena-{ARENA_BRANCH}", tmp, cancel=cancel, on_speed=report_speed(emit)
+    )
 
     if remote:
         got = _md5(tmp)
@@ -236,8 +249,9 @@ def install_or_update_arena(paths: Paths, emit: Emit, cancel: threading.Event | 
     paths.arena_exe.chmod(0o755)
 
 
-def install_tool(paths: Paths, tool: str, cancel: threading.Event | None = None, url: str | None = None,
-                 emit: Emit | None = None) -> None:
+def install_tool(
+    paths: Paths, tool: str, cancel: threading.Event | None = None, url: str | None = None, emit: Emit | None = None
+) -> None:
     """Workshop Studio and Mission Control are single programs, so they are downloaded straight into a folder of their
     own."""
     exe = paths.tool_exe(tool)
@@ -252,6 +266,7 @@ def install_tool(paths: Paths, tool: str, cancel: threading.Event | None = None,
 
 
 # Removing
+
 
 def remove(paths: Paths, config: Config, program: str, emit: Emit) -> None:
     """Take one program out of the game environment: its folder and what an interrupted install of it left. Keeps the

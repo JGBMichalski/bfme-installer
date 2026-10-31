@@ -1,4 +1,5 @@
 """The game environment (Wine prefix): creating it, its registry settings, the graphics backend, and deleting it."""
+
 from __future__ import annotations
 
 import dataclasses
@@ -8,14 +9,14 @@ from pathlib import Path
 from . import config as config_file
 from . import graphics, proton
 from .config import GPUS, GRAPHICS, Config
-from .events import Emit, Log, Warn
 from .errors import SetupError
+from .events import Emit, Log, Warn
 from .paths import Paths
 
 # Raise it to roll out a new setting: every prefix gets the settings again once.
 SETTINGS_VERSION = 4
 CREATING_MARKER = ".bfme-creating"
-SETTINGS_FILE = "bfme-settings.reg"   # in drive_c while it is imported
+SETTINGS_FILE = "bfme-settings.reg"  # in drive_c while it is imported
 D3D_DLLS = ("d3d8", "d3d9", "d3d10core", "d3d11", "dxgi")
 DLL_OVERRIDES = r"HKCU\Software\Wine\DllOverrides"
 
@@ -43,7 +44,7 @@ def create_prefix(paths: Paths, config: Config, proton_path: str, emit: Emit) ->
     paths.prefix.mkdir(parents=True, exist_ok=True)
     paths.logs.mkdir(parents=True, exist_ok=True)
     (paths.prefix / CREATING_MARKER).touch()
-    
+
     emit(Log("Creating the Proton prefix. The first start downloads Proton and takes a few minutes."))
     log = paths.logs / "prefix-create.log"
 

@@ -28,8 +28,11 @@ def test_a_card_with_vulkan_1_3_means_vulkan():
 
 
 def test_the_best_card_is_named_and_a_dedicated_one_wins_a_tie():
-    found = [Device("llvmpipe", CPU, (1, 4)), Device("Intel(R) UHD Graphics", INTEGRATED, (1, 4)),
-             Device("Quadro RTX 3000", DISCRETE, (1, 4))]
+    found = [
+        Device("llvmpipe", CPU, (1, 4)),
+        Device("Intel(R) UHD Graphics", INTEGRATED, (1, 4)),
+        Device("Quadro RTX 3000", DISCRETE, (1, 4)),
+    ]
     assert choose(found) == ("vulkan", "Vulkan 1.4 on Quadro RTX 3000")
 
 
@@ -40,6 +43,7 @@ def test_one_new_enough_card_is_enough():
 
 # The probe, run as the setup runs it
 
+
 def test_the_probe_runs_as_a_child_process_and_answers():
     backend, why = graphics.probe()
 
@@ -47,13 +51,16 @@ def test_the_probe_runs_as_a_child_process_and_answers():
     assert why
 
 
-@pytest.mark.parametrize("output,expected", [
-    ("vulkan Vulkan 1.4 on Test GPU\n", ("vulkan", "Vulkan 1.4 on Test GPU")),
-    ("opengl no graphics card with Vulkan was found\n", ("opengl", "no graphics card with Vulkan was found")),
-    ("unknown could not check Vulkan (boom)\n", ("unknown", "could not check Vulkan (boom)")),
-    ("", ("unknown", "could not check Vulkan")),
-    ("Segmentation fault\n", ("unknown", "could not check Vulkan")),
-])
+@pytest.mark.parametrize(
+    "output,expected",
+    [
+        ("vulkan Vulkan 1.4 on Test GPU\n", ("vulkan", "Vulkan 1.4 on Test GPU")),
+        ("opengl no graphics card with Vulkan was found\n", ("opengl", "no graphics card with Vulkan was found")),
+        ("unknown could not check Vulkan (boom)\n", ("unknown", "could not check Vulkan (boom)")),
+        ("", ("unknown", "could not check Vulkan")),
+        ("Segmentation fault\n", ("unknown", "could not check Vulkan")),
+    ],
+)
 def test_the_probes_answer_is_read(monkeypatch, output, expected):
     monkeypatch.setattr(graphics.subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(a, 0, stdout=output))
 

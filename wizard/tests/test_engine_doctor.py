@@ -1,4 +1,5 @@
 """engine.doctor: the system check."""
+
 from collections import namedtuple
 
 import pytest
@@ -82,14 +83,17 @@ def help_lines(events):
     return out
 
 
-@pytest.mark.parametrize("files,missing", [
-    ((), True),
-    ((LD,), True),
-    ((GL32,), True),
-    ((LD, GL32), False),
-    ((LD, GL32, "x86_64-linux-gnu/GL/nvidia-550-107-02/"), True),
-    ((LD, "x86_64-linux-gnu/GL/nvidia-550-107-02/", "i386-linux-gnu/GL/nvidia-550-107-02/"), False),
-])
+@pytest.mark.parametrize(
+    "files,missing",
+    [
+        ((), True),
+        ((LD,), True),
+        ((GL32,), True),
+        ((LD, GL32), False),
+        ((LD, GL32, "x86_64-linux-gnu/GL/nvidia-550-107-02/"), True),
+        ((LD, "x86_64-linux-gnu/GL/nvidia-550-107-02/", "i386-linux-gnu/GL/nvidia-550-107-02/"), False),
+    ],
+)
 def test_the_32bit_extensions(tmp_path, files, missing):
     assert doctor.flatpak_32bit_missing(lib_root(tmp_path, *files)) is missing
 
@@ -100,7 +104,8 @@ def test_the_fix_names_each_nvidia_drivers_32bit_match(tmp_path):
     assert doctor.flatpak_32bit_fix(root) == (
         "flatpak install --user flathub org.freedesktop.Platform.Compat.i386//25.08 "
         "org.freedesktop.Platform.GL32.default//25.08 org.freedesktop.Platform.GL32.nvidia-550-107-02 "
-        "org.freedesktop.Platform.GL32.nvidia-560-35-03")
+        "org.freedesktop.Platform.GL32.nvidia-560-35-03"
+    )
 
 
 def test_missing_extensions_fail_the_check_with_help_and_a_fix(tmp_path, paths, probe):
@@ -115,8 +120,9 @@ def test_missing_extensions_fail_the_check_with_help_and_a_fix(tmp_path, paths, 
 
 # The other checks
 
+
 def test_a_ready_computer_passes(tmp_path, paths, probe, monkeypatch):
-    monkeypatch.setattr(doctor.shutil, "disk_usage", lambda path: Usage(0, 0, 100 * 1024 ** 3))
+    monkeypatch.setattr(doctor.shutil, "disk_usage", lambda path: Usage(0, 0, 100 * 1024**3))
     ok, events = run(paths, Config(), lib_root(tmp_path, LD, GL32))
 
     checks = [e for e in events if isinstance(e, Check)]
@@ -137,7 +143,7 @@ def test_another_processor_fails(tmp_path, paths, probe, monkeypatch):
 
 
 def test_little_disk_space_is_a_warning(tmp_path, paths, probe, monkeypatch):
-    monkeypatch.setattr(doctor.shutil, "disk_usage", lambda path: Usage(0, 0, 5 * 1024 ** 3))
+    monkeypatch.setattr(doctor.shutil, "disk_usage", lambda path: Usage(0, 0, 5 * 1024**3))
     ok, events = run(paths, Config(), lib_root(tmp_path, LD, GL32))
 
     assert ok is True
@@ -150,7 +156,7 @@ def test_disk_space_is_measured_where_the_data_will_go(tmp_path, paths, probe, m
 
     def disk_usage(path):
         asked.append(path)
-        return Usage(0, 0, 100 * 1024 ** 3)
+        return Usage(0, 0, 100 * 1024**3)
 
     monkeypatch.setattr(doctor.shutil, "disk_usage", disk_usage)
     run(paths, Config(), lib_root(tmp_path, LD, GL32))
@@ -182,7 +188,7 @@ GRAPHICS_CHECKS = [
 
 @pytest.mark.parametrize("answer,saved,level,message", GRAPHICS_CHECKS)
 def test_the_checks_for_each_graphics_answer(tmp_path, paths, probe, monkeypatch, answer, saved, level, message):
-    monkeypatch.setattr(doctor.shutil, "disk_usage", lambda path: Usage(0, 0, 100 * 1024 ** 3))
+    monkeypatch.setattr(doctor.shutil, "disk_usage", lambda path: Usage(0, 0, 100 * 1024**3))
     probe["value"] = answer
     paths.base.mkdir(parents=True, exist_ok=True)
 
@@ -204,6 +210,10 @@ def test_the_checks_for_each_graphics_answer(tmp_path, paths, probe, monkeypatch
         Check("flatpak-32bit", "ok", "32-bit Flatpak extensions installed"),
         Check("graphics", level, message),
         Check("disk", "ok", "free disk space: 100 GB (need about 30 GB)"),
-        Check("firewall", "ok", "firewall: not checked from inside a Flatpak. "
-                                "If you cannot host or join games, check ufw or firewalld on your system."),
+        Check(
+            "firewall",
+            "ok",
+            "firewall: not checked from inside a Flatpak. "
+            "If you cannot host or join games, check ufw or firewalld on your system.",
+        ),
     ]

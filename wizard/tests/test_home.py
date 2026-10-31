@@ -22,8 +22,8 @@ def feed(model, *events):
         model.feed_event(event)
 
 
-
 # The model: games, graphics and checks
+
 
 def test_installed_games_in_a_fixed_order():
     m = SetupModel()
@@ -44,7 +44,7 @@ def test_just_finished_only_after_this_session_ran_the_setup():
     m.begin_job("environment")
     feed(m, Done())
     assert m.finish_install(0) == "aio-launcher"
-    assert not m.just_finished   # the AIO Launcher is still to come
+    assert not m.just_finished  # the AIO Launcher is still to come
     m.begin_job("aio-launcher")
     feed(m, Done())
     m.finish_install(0)
@@ -62,10 +62,15 @@ def test_the_backend_comes_from_the_status_and_defaults_to_vulkan():
 
 def test_rows_hide_the_firewall_and_list_problems_first():
     m = SetupModel()
-    feed(m, Check("cpu", "ok", "x86_64 processor"), Check("firewall", "warn", "firewall is active"),
-          Check("flatpak-32bit", "fail", "the 32-bit parts are missing"),
-          Fix("flatpak-32bit", "flatpak install --user flathub X"), Check("disk", "warn", "low disk"),
-          Check("curl", "ok", "curl found"))
+    feed(
+        m,
+        Check("cpu", "ok", "x86_64 processor"),
+        Check("firewall", "warn", "firewall is active"),
+        Check("flatpak-32bit", "fail", "the 32-bit parts are missing"),
+        Fix("flatpak-32bit", "flatpak install --user flathub X"),
+        Check("disk", "warn", "low disk"),
+        Check("curl", "ok", "curl found"),
+    )
     assert [r[0] for r in m.check_rows] == ["flatpak-32bit", "disk", "cpu", "curl"]
     assert m.check_rows[0][3] == "flatpak install --user flathub X"
     assert [p.message for p in m.problems] == ["the 32-bit parts are missing"]
@@ -110,6 +115,7 @@ TOOLS_IDLE = {"workshop": "idle", "mission-control": "idle"}
 
 def opener(seconds=0.0, code=0, opened=None):
     """A stand-in for jobs.open_program: the program runs for `seconds`, then the job ends with `code`."""
+
     def open_program(program, emit, cancel):
         if opened is not None:
             opened.append(program)
@@ -136,7 +142,9 @@ def test_a_short_run_is_reported_softly_and_a_long_one_is_not():
 def test_both_apps_can_run_at_once_and_each_only_once():
     opened = []
     apps = AppLauncher(opener(1, opened=opened), lambda: None, quick_seconds=0)
-    apps.start("aio-launcher"); apps.start("aio-launcher"); apps.start("arena")
+    apps.start("aio-launcher")
+    apps.start("aio-launcher")
+    apps.start("arena")
     assert apps.state == {"aio-launcher": "running", "arena": "running", "aotr": "idle", **TOOLS_IDLE}
     assert apps.any_running
     wait_for(5000, lambda: not apps.any_running)
@@ -170,6 +178,7 @@ def test_a_tool_is_opened_by_its_name():
 
 # Diagnostics
 
+
 def test_report_has_the_version_checks_fixes_and_log_tails(tmp_path):
     logs = tmp_path
     (logs / "aio-launcher-20260101-000000.log").write_text("old\n")
@@ -177,15 +186,32 @@ def test_report_has_the_version_checks_fixes_and_log_tails(tmp_path):
     (logs / "aio-launcher-20260102-000000.log").write_text("\n".join(f"line {i}" for i in range(100)))
     (logs / "arena-20260101-000000.log").write_text("arena says hi\n")
     m = SetupModel()
-    m.installed = {"runner": "proton", "prefix": "ready", "aio-launcher": "installed", "arena": "installed", "bfme2": "installed"}
+    m.installed = {
+        "runner": "proton",
+        "prefix": "ready",
+        "aio-launcher": "installed",
+        "arena": "installed",
+        "bfme2": "installed",
+    }
     feed(m, Check("cpu", "ok", "x86_64 processor"), Check("f", "fail", "parts missing"), Fix("f", "flatpak install X"))
     report = build_report("0.2.9", m, logs)
-    for expected in ("Version: 0.2.9", "Runner: proton", "Graphics: unknown", "BFME 2 installed", "BFME unknown",
-                     "[FAILED] parts missing", "fix: flatpak install X", "[ok] x86_64 processor",
-                     "--- latest AIO Launcher log (aio-launcher-20260102-000000.log", "line 99", "arena says hi", "--- no prefix creation log ---"):
+    for expected in (
+        "Version: 0.2.9",
+        "Runner: proton",
+        "Graphics: unknown",
+        "BFME 2 installed",
+        "BFME unknown",
+        "[FAILED] parts missing",
+        "fix: flatpak install X",
+        "[ok] x86_64 processor",
+        "--- latest AIO Launcher log (aio-launcher-20260102-000000.log",
+        "line 99",
+        "arena says hi",
+        "--- no prefix creation log ---",
+    ):
         assert expected in report
-    assert "line 59" not in report   # only the last 40 lines
-    assert "old\n" not in report     # only the newest log
+    assert "line 59" not in report  # only the last 40 lines
+    assert "old\n" not in report  # only the newest log
 
 
 def test_the_report_names_the_graphics_backend(tmp_path):
@@ -202,7 +228,9 @@ def test_a_report_before_any_check_or_log_still_works(tmp_path):
 
 
 def test_the_report_says_what_computer_it_came_from(tmp_path):
-    report = build_report("dev", SetupModel(), tmp_path, system=["Desktop: KDE, wayland session", "Graphics card: NVIDIA X"])
+    report = build_report(
+        "dev", SetupModel(), tmp_path, system=["Desktop: KDE, wayland session", "Graphics card: NVIDIA X"]
+    )
     assert "Desktop: KDE, wayland session\nGraphics card: NVIDIA X\n" in report
 
 
@@ -234,10 +262,20 @@ def test_log_helpers(tmp_path):
 
 # Menu entries
 
+
 # "launcher": shortcuts made before the AIO Launcher was called "aio-launcher".
-@pytest.mark.parametrize("args, app", [(["--open", "aio-launcher"], "aio-launcher"), (["--open", "launcher"], "aio-launcher"),
-                                       (["x", "--open", "arena"], "arena"), ([], None), (["--open"], None),
-                                       (["--open", "bfme2"], None), (["aio-launcher"], None)])
+@pytest.mark.parametrize(
+    "args, app",
+    [
+        (["--open", "aio-launcher"], "aio-launcher"),
+        (["--open", "launcher"], "aio-launcher"),
+        (["x", "--open", "arena"], "arena"),
+        ([], None),
+        (["--open"], None),
+        (["--open", "bfme2"], None),
+        (["aio-launcher"], None),
+    ],
+)
 def test_parse_args(args, app):
     assert parse_args(args) == app
 
@@ -253,21 +291,25 @@ def test_a_shortcut_whose_program_is_there_opens_it_without_a_window():
         order.append(program)
         return 0
 
-    with mock.patch("bfme_wizard.__main__.jobs.ready_to_open", return_value=True) as ready, \
-            mock.patch("bfme_wizard.__main__.jobs.sync_shortcuts", side_effect=sync_shortcuts), \
-            mock.patch("bfme_wizard.__main__.jobs.open_program", side_effect=open_program), \
-            mock.patch("sys.argv", ["bfme-installer", "--open", "launcher"]):
+    with (
+        mock.patch("bfme_wizard.__main__.jobs.ready_to_open", return_value=True) as ready,
+        mock.patch("bfme_wizard.__main__.jobs.sync_shortcuts", side_effect=sync_shortcuts),
+        mock.patch("bfme_wizard.__main__.jobs.open_program", side_effect=open_program),
+        mock.patch("sys.argv", ["bfme-installer", "--open", "launcher"]),
+    ):
         assert main() == 0
 
     ready.assert_called_once_with("aio-launcher")
-    assert order == ["sync", "aio-launcher"]     # the shortcuts first, then the program
+    assert order == ["sync", "aio-launcher"]  # the shortcuts first, then the program
 
 
 def test_the_program_opens_even_when_the_shortcuts_cannot_be_synced():
-    with mock.patch("bfme_wizard.__main__.jobs.ready_to_open", return_value=True), \
-            mock.patch("bfme_wizard.__main__.jobs.sync_shortcuts", return_value=1), \
-            mock.patch("bfme_wizard.__main__.jobs.open_program", return_value=0) as open_program, \
-            mock.patch("sys.argv", ["bfme-installer", "--open", "arena"]):
+    with (
+        mock.patch("bfme_wizard.__main__.jobs.ready_to_open", return_value=True),
+        mock.patch("bfme_wizard.__main__.jobs.sync_shortcuts", return_value=1),
+        mock.patch("bfme_wizard.__main__.jobs.open_program", return_value=0) as open_program,
+        mock.patch("sys.argv", ["bfme-installer", "--open", "arena"]),
+    ):
         assert main() == 0
 
     assert open_program.call_args.args[0] == "arena"
@@ -297,8 +339,10 @@ def test_a_2x_shortcut_is_replaced_the_first_time_it_is_used(tmp_path, monkeypat
     for name, value in {"HOME": str(home), "BFME_HOME": str(data.base), "FLATPAK_ID": app}.items():
         monkeypatch.setenv(name, value)
 
-    with mock.patch("bfme_wizard.__main__.jobs.open_program", return_value=0), \
-            mock.patch("sys.argv", ["bfme-installer", "--open", "launcher"]):
+    with (
+        mock.patch("bfme_wizard.__main__.jobs.open_program", return_value=0),
+        mock.patch("sys.argv", ["bfme-installer", "--open", "launcher"]),
+    ):
         assert main() == 0
 
     names = []
@@ -312,11 +356,13 @@ def test_a_2x_shortcut_is_replaced_the_first_time_it_is_used(tmp_path, monkeypat
 def test_a_shortcut_whose_program_is_gone_opens_the_wizard_offering_it(monkeypatch):
     from bfme_wizard import ui
 
-    with mock.patch("bfme_wizard.__main__.jobs.ready_to_open", return_value=False), \
-            mock.patch("bfme_wizard.__main__.jobs.open_program") as open_program, \
-            mock.patch("bfme_wizard.__main__.has_display", return_value=True), \
-            mock.patch.object(ui, "WizardApp") as app, \
-            mock.patch("sys.argv", ["bfme-installer", "--open", "aotr"]):
+    with (
+        mock.patch("bfme_wizard.__main__.jobs.ready_to_open", return_value=False),
+        mock.patch("bfme_wizard.__main__.jobs.open_program") as open_program,
+        mock.patch("bfme_wizard.__main__.has_display", return_value=True),
+        mock.patch.object(ui, "WizardApp") as app,
+        mock.patch("sys.argv", ["bfme-installer", "--open", "aotr"]),
+    ):
         app.return_value.run.return_value = 0
         assert main() == 0
 
@@ -327,14 +373,18 @@ def test_a_shortcut_whose_program_is_gone_opens_the_wizard_offering_it(monkeypat
 def test_without_a_display_it_says_so_and_stops():
     err = io.StringIO()
 
-    with mock.patch("bfme_wizard.__main__.has_display", return_value=False), \
-            mock.patch("sys.argv", ["bfme-installer"]), contextlib.redirect_stderr(err):
+    with (
+        mock.patch("bfme_wizard.__main__.has_display", return_value=False),
+        mock.patch("sys.argv", ["bfme-installer"]),
+        contextlib.redirect_stderr(err),
+    ):
         assert main() == 1
 
     assert "No display found, so the setup wizard cannot open." in err.getvalue()
 
 
 # The controller running the stand-in jobs
+
 
 @pytest.fixture
 def fake(tmp_path):
@@ -369,10 +419,10 @@ def test_a_failed_check_is_found_without_leaving_the_home_screen(c, fake):
     c.start()
     settle(c, "done")
     assert [p.message for p in c.model.problems] == ["the 32-bit Flatpak extensions are not installed"]
-    assert c.model.error is None          # a failing check is not a setup error
+    assert c.model.error is None  # a failing check is not a setup error
     assert "blocked" not in states
     fake.unflag("broken")
-    assert c.run_checks()            # "Check again"
+    assert c.run_checks()  # "Check again"
     wait_for(8000, lambda: not c.runner.busy)
     assert c.model.problems == []
     assert c.model.state == "done"
@@ -385,7 +435,8 @@ def test_check_again_does_nothing_while_a_job_runs(c):
 
 
 def test_reset_deletes_then_shows_the_setup_again(c):
-    c.start(); settle(c, "done")
+    c.start()
+    settle(c, "done")
     results = []
     assert c.reset(results.append)
     assert c.model.state == "checking"
@@ -395,7 +446,8 @@ def test_reset_deletes_then_shows_the_setup_again(c):
 
 
 def test_nothing_from_before_a_reset_is_remembered(c):
-    c.start(); settle(c, "done")
+    c.start()
+    settle(c, "done")
     assert c.model.games == ["BFME 2"]
     c.reset(lambda ok: None)
     wait_for(8000, lambda: c.model.state == "idle" and not c.runner.busy)
@@ -404,16 +456,18 @@ def test_nothing_from_before_a_reset_is_remembered(c):
 
 def test_a_failed_reset_is_reported_and_the_state_is_looked_at_again(c, fake):
     fake.flag("reset-fails")
-    c.start(); settle(c, "done")
+    c.start()
+    settle(c, "done")
     results = []
     c.reset(results.append)
     wait_for(8000, lambda: results and not c.runner.busy)
     assert results == [False]
-    assert c.model.state == "done"    # nothing was deleted: the home screen comes back
+    assert c.model.state == "done"  # nothing was deleted: the home screen comes back
 
 
 def test_reset_is_refused_while_things_run(c):
-    c.start(); settle(c, "done")
+    c.start()
+    settle(c, "done")
     c.model.state = "running"
     assert "setup is running" in c.blocked_reason()
     assert not c.reset(lambda ok: None)
@@ -426,8 +480,10 @@ def test_reset_is_refused_while_things_run(c):
 
 # Troubleshoot page
 
+
 def test_the_advice_about_graphics_drivers_names_the_chosen_backend(gtk):
     from bfme_wizard.home import cant_check
+
     vulkan = {title: text for title, text, _command in cant_check("vulkan")}
     opengl = {title: text for title, text, _command in cant_check("opengl")}
     assert "working Vulkan drivers" in vulkan["Graphics drivers"]
@@ -438,12 +494,18 @@ def test_the_advice_about_graphics_drivers_names_the_chosen_backend(gtk):
 
 def troubleshoot_button_labels(Gtk, graphics):
     from bfme_wizard.home import TroubleshootPage
+
     c = idle_controller()
     c.model.state = "idle"
     c.model.installed = {"graphics": graphics}
     page = TroubleshootPage(
-        c, copy_text=lambda *_a: None, copy_diagnostics=lambda: None, open_logs=lambda: None,
-        open_config=lambda: None, confirm_reset=lambda: None, change_graphics=lambda _backend: None,
+        c,
+        copy_text=lambda *_a: None,
+        copy_diagnostics=lambda: None,
+        open_logs=lambda: None,
+        open_config=lambda: None,
+        confirm_reset=lambda: None,
+        change_graphics=lambda _backend: None,
         change_option=lambda _option, _value: None,
     )
     return [b.get_label() for b in buttons(page.view, Gtk)]
@@ -462,6 +524,7 @@ ALL = {"aio-launcher": "installed", "arena": "installed", "aotr": "installed"}
 
 def home_page(installed):
     from bfme_wizard.home import HomePage
+
     c = idle_controller()
     c.model.installed = installed
     page = HomePage(c, lambda: "1.0.0")
@@ -510,7 +573,7 @@ def test_a_running_program_shows_that_and_a_quick_exit_says_so_softly(gtk):
     c, page = home_page(ALL)
     c.apps.state.update({"aio-launcher": "running", "arena": "quick"})
     page.refresh()
-    assert [b.get_label() for b in buttons(page.content, gtk)] == ["Open", "Open"]   # not the running one
+    assert [b.get_label() for b in buttons(page.content, gtk)] == ["Open", "Open"]  # not the running one
     text = labels(page.content, gtk)
     assert "Running" in text
     assert any("Closed after a few seconds" in line for line in text)
@@ -530,14 +593,17 @@ def test_the_version_is_at_the_bottom(gtk):
 
 # Game folders page
 
+
 def folders_page(home, opened):
     from bfme_wizard.home import GameFoldersPage
+
     with mock.patch.dict(os.environ, {"BFME_HOME": str(home)}):
         return GameFoldersPage(opened.append)
 
 
 def groups(page):
     from gi.repository import Adw
+
     return [w for w in descendants(page.view) if isinstance(w, Adw.PreferencesGroup)]
 
 
@@ -562,6 +628,7 @@ def test_with_no_game_installed_the_page_says_so_instead_of_being_empty(gtk, tmp
     page = folders_page(tmp_path, [])
     assert groups(page) == []
     from gi.repository import Adw
+
     status = [w for w in descendants(page.view) if isinstance(w, Adw.StatusPage)]
     assert len(status) == 1
     assert status[0].get_title() == "No games installed"
@@ -575,19 +642,22 @@ def test_its_rows_open_its_program_folder_and_its_lowercase_maps_folder(gtk, tmp
     opened = []
     page = folders_page(tmp_path, opened)
     from gi.repository import Adw
+
     rows = [w for w in descendants(groups(page)[0]) if isinstance(w, Adw.ActionRow)]
     assert [r.get_title() for r in rows] == ["Game folder", "Maps and user data"]
     for row in rows:
         row.emit("activated")
     assert opened == [drive / "AgeoftheRing", user / "maps"]
-    assert [g.get_title() for g in groups(page)] == ["Age of the Ring"]   # the games are separate
+    assert [g.get_title() for g in groups(page)] == ["Age of the Ring"]  # the games are separate
 
 
 # Start page
 
+
 @pytest.fixture
 def start(gtk):
     from bfme_wizard.start import StartPage
+
     c = idle_controller()
     return c, StartPage(c)
 
@@ -599,7 +669,7 @@ def test_nothing_is_ticked_and_nothing_can_start_until_the_player_chooses(start)
     page._checks["aotr"].set_active(True)
     assert (page.selected, page.button.get_sensitive()) == (("aotr",), True)
     page._checks["aio-launcher"].set_active(True)
-    assert page.selected == ("aio-launcher", "aotr")   # install order, not tick order
+    assert page.selected == ("aio-launcher", "aotr")  # install order, not tick order
 
 
 def test_install_waits_while_the_script_is_busy_and_comes_back_after(start):
@@ -627,7 +697,7 @@ def test_the_players_ticks_survive_a_refresh(start):
     c, page = start
     page.enter()
     page._checks["aio-launcher"].set_active(True)
-    page.refresh()   # the window renders on every change; only enter() takes the choice from the model
+    page.refresh()  # the window renders on every change; only enter() takes the choice from the model
     assert page.selected == ("aio-launcher",)
 
 
@@ -639,8 +709,11 @@ def test_after_a_stop_the_same_choice_says_resume_and_another_says_install(start
     feed(c.model, Cancelled())
     c.model.finish_install(130)
     page.enter()
-    assert (page.selected, page.button.get_label(), page.view.get_title()) == \
-        (("aio-launcher", "aotr"), "Resume", "Setup paused")
+    assert (page.selected, page.button.get_label(), page.view.get_title()) == (
+        ("aio-launcher", "aotr"),
+        "Resume",
+        "Setup paused",
+    )
     page._checks["aotr"].set_active(False)
     assert page.button.get_label() == "Install"
 
@@ -667,16 +740,22 @@ def test_the_button_installs_what_is_ticked(start):
 
 # Troubleshoot: the graphics card and the FPS counter
 
+
 def troubleshoot(installed, state="done"):
     from bfme_wizard.home import TroubleshootPage
+
     c = idle_controller()
     c.model.state = state
     c.model.installed = dict(installed)
     asked = []
     page = TroubleshootPage(
-        c, copy_text=lambda *_a: None, copy_diagnostics=lambda: None, open_logs=lambda: None,
+        c,
+        copy_text=lambda *_a: None,
+        copy_diagnostics=lambda: None,
+        open_logs=lambda: None,
         open_config=lambda: asked.append(("open_config",)),
-        confirm_reset=lambda: None, change_graphics=lambda _backend: None,
+        confirm_reset=lambda: None,
+        change_graphics=lambda _backend: None,
         change_option=lambda option, value: asked.append((option, value)),
     )
     return page, asked
@@ -694,6 +773,7 @@ def rows_titled(page, kind):
 
 def test_the_choice_of_card_is_only_there_with_two_cards(gtk):
     from gi.repository import Adw
+
     one, _ = troubleshoot({"graphics-cards": "1"})
     two, _ = troubleshoot({"graphics-cards": "2"})
 
@@ -703,6 +783,7 @@ def test_the_choice_of_card_is_only_there_with_two_cards(gtk):
 
 def test_the_rows_show_what_is_saved_and_building_them_saves_nothing(gtk):
     from gi.repository import Adw
+
     page, asked = troubleshoot({"graphics-cards": "2", "gpu": "integrated", "fps-counter": "1"})
     combos = rows_titled(page, Adw.ComboRow)
 
@@ -713,6 +794,7 @@ def test_the_rows_show_what_is_saved_and_building_them_saves_nothing(gtk):
 
 def test_changing_a_row_saves_that_setting(gtk):
     from gi.repository import Adw
+
     page, asked = troubleshoot({"graphics-cards": "2"})
     combos = rows_titled(page, Adw.ComboRow)
 
@@ -724,6 +806,7 @@ def test_changing_a_row_saves_that_setting(gtk):
 
 def test_the_rows_wait_while_the_setup_runs(gtk):
     from gi.repository import Adw
+
     page, _ = troubleshoot({"graphics-cards": "2"}, state="running")
 
     for row in [*rows_titled(page, Adw.ComboRow).values(), *rows_titled(page, Adw.SwitchRow).values()]:
@@ -732,6 +815,7 @@ def test_the_rows_wait_while_the_setup_runs(gtk):
 
 def test_the_settings_file_row_opens_it(gtk):
     from gi.repository import Adw
+
     page, asked = troubleshoot({})
 
     rows_titled(page, Adw.ActionRow)["Open settings file"].emit("activated")

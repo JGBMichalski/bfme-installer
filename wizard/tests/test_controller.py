@@ -1,7 +1,6 @@
 import os
 
 import pytest
-
 from gi.repository import GLib
 
 from bfme_wizard.controller import Controller
@@ -30,11 +29,13 @@ class Fake:
 
     def run_until(self, state, action):
         action()
+
         def check():
             if self.c.model.state == state and not self.c.runner.busy:
                 self.loop.quit()
                 return False
             return True
+
         GLib.timeout_add(50, check)
         GLib.timeout_add(10000, self.loop.quit)
         self.loop.run()
@@ -143,7 +144,7 @@ def test_choosing_the_same_again_after_a_stop_picks_up_where_it_stopped(fake):
     fake.flag("checks-pass", "cancel-once")
     fake.run_until("cancelled", lambda: fake.c.install(["aio-launcher"]))
     fake.run_until("done", lambda: fake.c.install(["aio-launcher"]))
-    assert fake.calls() == ["prepare", "aio_launcher_install", "aio_launcher_install"]   # no second prepare
+    assert fake.calls() == ["prepare", "aio_launcher_install", "aio_launcher_install"]  # no second prepare
 
 
 def test_a_different_choice_after_a_stop_starts_a_new_plan(fake):
@@ -158,7 +159,7 @@ def test_a_different_choice_after_a_stop_starts_a_new_plan(fake):
 def test_a_cancel_pressed_during_the_last_step_of_a_job_does_not_start_the_next_job(fake):
     fake.flag("moddb-down", "checks-pass")
     fake.c.install(["aio-launcher", "aotr"])
-    fake.c.model.request_cancel()   # as the Cancel button does; the job has no step left to stop before
+    fake.c.model.request_cancel()  # as the Cancel button does; the job has no step left to stop before
     fake.run_until("cancelled", lambda: None)
     assert fake.calls() == ["prepare"]
     # The same choice resumes at the next job, then waits for the Age of the Ring file.
@@ -170,7 +171,7 @@ def test_a_second_install_while_running_is_ignored(fake):
     fake.flag("checks-pass")
     fake.c.install(["aio-launcher"])
     fake.c.install(["aio-launcher"])  # ignored: the first is still running
-    fake.c.start()                # also ignored
+    fake.c.start()  # also ignored
     GLib.timeout_add(5000, fake.loop.quit)
     GLib.timeout_add(50, lambda: (fake.loop.quit(), False)[1] if fake.c.model.state == "done" else True)
     fake.loop.run()
@@ -183,7 +184,7 @@ def test_alone_it_installs_neither_the_aio_launcher_nor_the_arena(fake):
     fake.flag("moddb-down", "checks-pass")
     fake.run_until("idle", fake.c.start)
     fake.run_until("waiting", lambda: fake.c.install(["aotr"]))
-    assert fake.calls() == ["status", "prepare", "aotr_install None"]   # the environment, then a try at the download
+    assert fake.calls() == ["status", "prepare", "aotr_install None"]  # the environment, then a try at the download
     assert (fake.c.model.job, fake.c.model.current) == ("aotr", "aotr-download")
     fake.run_until("done", lambda: fake.c.choose_aotr_file(ZIP))
     assert fake.calls() == ["status", "prepare", "aotr_install None", f"aotr_install {ZIP}"]
@@ -211,8 +212,13 @@ def test_the_download_page_knows_what_the_jobs_before_it_installed(fake):
     assert not fake.c.model.has_home_screen
     fake.run_until("waiting", lambda: fake.c.install(["aio-launcher", "aotr"]))
     assert fake.c.model.has_home_screen
-    assert fake.calls() == ["status", "prepare", "aio_launcher_install", "aotr_install None"]   # learned without asking again
-    fake.run_until("done", fake.c.back_home)    # and it really is the home screen
+    assert fake.calls() == [
+        "status",
+        "prepare",
+        "aio_launcher_install",
+        "aotr_install None",
+    ]  # learned without asking again
+    fake.run_until("done", fake.c.back_home)  # and it really is the home screen
 
 
 def test_leaving_when_only_the_environment_was_prepared_lands_on_the_start_page(fake):
@@ -227,7 +233,7 @@ def test_from_the_home_screen_it_goes_straight_to_the_download_page(fake):
     fake.run_until("done", fake.c.start)
     before = fake.calls()
     fake.run_until("waiting", lambda: fake.c.install(["aotr"]))
-    assert fake.calls() == [*before, "aotr_install None"]   # only the try at the download: the rest is there
+    assert fake.calls() == [*before, "aotr_install None"]  # only the try at the download: the rest is there
     assert fake.c.model.started_from_home
 
 
@@ -238,7 +244,7 @@ def test_a_failed_check_can_be_retried_with_the_same_file(fake):
     fake.run_until("failed", lambda: fake.c.choose_aotr_file(ZIP))
     assert fake.c.model.failed_step == "aotr-check"
     assert "incomplete" in fake.c.model.error.message
-    fake.run_until("done", fake.c.retry)   # runs aotr_install again with the same file, not the setup
+    fake.run_until("done", fake.c.retry)  # runs aotr_install again with the same file, not the setup
     assert fake.c.model.aotr_installed
     assert [c for c in fake.calls() if c.startswith("aotr")] == ["aotr_install None", *[f"aotr_install {ZIP}"] * 2]
 
@@ -250,8 +256,11 @@ def test_a_failed_check_can_be_followed_by_another_file(fake):
     fake.run_until("failed", lambda: fake.c.choose_aotr_file("/tmp/old.zip"))
     fake.run_until("waiting", fake.c.choose_another_aotr_file)
     fake.run_until("done", lambda: fake.c.choose_aotr_file("/tmp/new.zip"))
-    assert [c for c in fake.calls() if c.startswith("aotr")] == \
-        ["aotr_install None", "aotr_install /tmp/old.zip", "aotr_install /tmp/new.zip"]
+    assert [c for c in fake.calls() if c.startswith("aotr")] == [
+        "aotr_install None",
+        "aotr_install /tmp/old.zip",
+        "aotr_install /tmp/new.zip",
+    ]
 
 
 def test_back_home_looks_at_the_setup_again(fake):
@@ -266,8 +275,8 @@ def test_back_home_looks_at_the_setup_again(fake):
 def test_leaving_the_download_page_of_a_first_setup_goes_back_to_the_start_page(fake):
     fake.flag("moddb-down", "checks-pass")
     fake.run_until("waiting", lambda: fake.c.install(["aotr"]))
-    fake.run_until("idle", fake.c.back_home)           # nothing is installed yet, so there is no home screen
-    assert fake.c.model.environment_ready    # but the environment is ready, and says so
+    fake.run_until("idle", fake.c.back_home)  # nothing is installed yet, so there is no home screen
+    assert fake.c.model.environment_ready  # but the environment is ready, and says so
     assert fake.c.model.selection == ("aotr",)
 
 
@@ -288,8 +297,8 @@ def test_a_start_with_nothing_installed_does_it_too(fake):
 def test_a_program_removed_by_hand_is_noticed_at_the_next_start(fake):
     fake.flag("prefix", "aio-launcher", "aotr")
     fake.run_until("done", fake.c.start)
-    os.unlink(os.path.join(fake.dir, "aotr"))          # the player deleted Age of the Ring
-    fake.run_until("done", fake.c.start)               # and opens the wizard again
+    os.unlink(os.path.join(fake.dir, "aotr"))  # the player deleted Age of the Ring
+    fake.run_until("done", fake.c.start)  # and opens the wizard again
     assert fake.calls(raw=True).count("sync_shortcuts") == 2
     assert not fake.c.model.aotr_installed
 
@@ -298,7 +307,7 @@ def test_the_only_program_removed_by_hand_is_noticed_too(fake):
     fake.flag("prefix", "aio-launcher")
     fake.run_until("done", fake.c.start)
     os.unlink(os.path.join(fake.dir, "aio-launcher"))
-    fake.run_until("idle", fake.c.start)               # no home screen any more: the start page
+    fake.run_until("idle", fake.c.start)  # no home screen any more: the start page
     assert fake.calls(raw=True) == ["status", "sync_shortcuts", "check", "status", "sync_shortcuts"]
 
 
@@ -339,7 +348,7 @@ def test_a_failing_run_changes_nothing_for_the_player(fake):
     fake.run_until("done", fake.c.start)
     assert fake.c.model.error is None
     assert not fake.c.checking
-    assert fake.calls(raw=True) == ["status", "sync_shortcuts", "check"]   # and the checks still run
+    assert fake.calls(raw=True) == ["status", "sync_shortcuts", "check"]  # and the checks still run
 
 
 def test_the_page_waits_for_the_shortcuts_so_its_buttons_never_meet_a_busy_job(fake):
@@ -347,9 +356,11 @@ def test_the_page_waits_for_the_shortcuts_so_its_buttons_never_meet_a_busy_job(f
     # the shortcuts have been brought in line and no job is running.
     fake.flag("prefix", "aio-launcher")
     first = []
+
     def changed():
         if fake.c.model.state == "done" and not first:
             first.append(("sync_shortcuts" in fake.calls(raw=True), fake.c.runner.busy))
+
     fake.c._on_change = changed
     fake.run_until("done", fake.c.start)
     assert first == [(True, False)]
@@ -357,9 +368,11 @@ def test_the_page_waits_for_the_shortcuts_so_its_buttons_never_meet_a_busy_job(f
 
 def test_the_start_page_waits_too(fake):
     first = []
+
     def changed():
         if fake.c.model.state == "idle" and not first:
             first.append(("sync_shortcuts" in fake.calls(raw=True), fake.c.runner.busy))
+
     fake.c._on_change = changed
     fake.run_until("idle", fake.c.start)
     assert first == [(True, False)]
@@ -401,8 +414,6 @@ def test_a_program_goes_and_the_others_stay(fake):
 
 
 @pytest.mark.parametrize("program", ["aio-launcher", "arena", "aotr"])
-
-
 def test_each_program_can_go_by_itself(fake, program):
     fake.started()
     assert fake.remove(program) == [True]
@@ -429,10 +440,12 @@ def test_a_failed_removal_says_what_went_wrong_and_looks_again(fake):
     fake.started()
     fake.flag("remove-fails")
     seen = []
-    fake.run_until("done", lambda: fake.c.remove("aio-launcher", lambda ok: seen.append((ok, fake.c.model.error.message))))
+    fake.run_until(
+        "done", lambda: fake.c.remove("aio-launcher", lambda ok: seen.append((ok, fake.c.model.error.message)))
+    )
     assert seen == [(False, "Could not remove it")]
-    assert fake.c.model.is_installed("aio-launcher")      # nothing was deleted
-    assert fake.c.model.error is None                        # and the home screen is not an error page
+    assert fake.c.model.is_installed("aio-launcher")  # nothing was deleted
+    assert fake.c.model.error is None  # and the home screen is not an error page
 
 
 def test_it_is_refused_while_the_setup_runs_or_a_program_is_open_or_a_job_is_running(fake):
@@ -447,7 +460,7 @@ def test_it_is_refused_while_the_setup_runs_or_a_program_is_open_or_a_job_is_run
     fake.c.run_checks()
     assert not fake.c.remove("arena", lambda ok: None)
     fake.run_until("done", lambda: None)
-    assert fake.calls()[len(before):] == ["check"]     # only the checks ran
+    assert fake.calls()[len(before) :] == ["check"]  # only the checks ran
 
 
 def test_only_a_program_can_be_removed(fake):
@@ -474,9 +487,9 @@ def test_a_program_that_was_removed_can_be_installed_again(fake):
 
 
 # Offer: what a shortcut wanted, when the setup could not just start it.
-@pytest.mark.parametrize("entry, program", [("aio-launcher", "aio-launcher"), ("arena", "aio-launcher"), ("aotr", "aotr")])
-
-
+@pytest.mark.parametrize(
+    "entry, program", [("aio-launcher", "aio-launcher"), ("arena", "aio-launcher"), ("aotr", "aotr")]
+)
 def test_an_entry_for_a_program_that_is_not_installed_prechooses_it_on_the_start_page(fake, entry, program):
     fake.c = fake.controller(offer=entry)
     fake.run_until("idle", fake.c.start)
@@ -492,7 +505,7 @@ def test_the_age_of_the_ring_entry_goes_to_its_download_page_on_a_complete_setup
     fake.flag("moddb-down", "prefix", "aio-launcher")
     fake.c = fake.controller(offer="aotr")
     fake.run_until("waiting", fake.c.start)
-    assert fake.calls() == ["status", "aotr_install None"]   # no system checks first: it goes straight to the download
+    assert fake.calls() == ["status", "aotr_install None"]  # no system checks first: it goes straight to the download
 
 
 def test_but_only_once(fake):
@@ -517,6 +530,7 @@ def test_an_aio_launcher_entry_on_a_complete_setup_just_shows_the_home_screen(fa
 
 # Age of the Ring downloaded by the app
 
+
 def test_the_app_downloads_it_and_installs_it_without_the_player(fake):
     fake.flag("prefix", "aio-launcher")
     fake.run_until("done", fake.c.start)
@@ -538,12 +552,13 @@ def test_choosing_a_file_instead_skips_the_download(fake):
     fake.flag("prefix", "aio-launcher")
     fake.run_until("done", fake.c.start)
     fake.run_until("waiting", fake.c.choose_another_aotr_file)
-    assert fake.c.model.file_note is None             # the player asked for it; nothing went wrong
+    assert fake.c.model.file_note is None  # the player asked for it; nothing went wrong
     fake.run_until("done", lambda: fake.c.choose_aotr_file(ZIP))
     assert [c for c in fake.calls() if c.startswith("aotr")] == [f"aotr_install {ZIP}"]
 
 
 # The other graphics settings
+
 
 def test_a_setting_is_saved_then_the_setup_is_looked_at_again(fake):
     fake.flag("prefix", "aio-launcher")

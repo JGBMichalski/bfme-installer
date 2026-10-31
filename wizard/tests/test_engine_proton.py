@@ -1,4 +1,5 @@
 """engine.proton: getting Proton, the environment umu runs programs with, and ending the Wine session."""
+
 import hashlib
 import io
 import tarfile
@@ -12,8 +13,10 @@ from bfme_wizard.engine.errors import SetupError
 from bfme_wizard.engine.events import Log
 from bfme_wizard.engine.paths import Paths
 
-LSPCI_TWO_CARDS = ("00:02.0 VGA compatible controller: Intel Corporation CometLake-H GT2\n"
-                   "01:00.0 3D controller: NVIDIA Corporation TU106GLM [Quadro RTX 3000 Mobile]\n")
+LSPCI_TWO_CARDS = (
+    "00:02.0 VGA compatible controller: Intel Corporation CometLake-H GT2\n"
+    "01:00.0 3D controller: NVIDIA Corporation TU106GLM [Quadro RTX 3000 Mobile]\n"
+)
 LSPCI_ONE_CARD = "01:00.0 VGA compatible controller: NVIDIA Corporation GA104 [GeForce RTX 3070]\n"
 
 
@@ -52,6 +55,7 @@ def no_retry_delay(monkeypatch):
 
 # Getting Proton
 
+
 def test_another_proton_is_used_as_it_is(paths, file_server):
     config = Config(protonpath="GE-Proton10-1")
 
@@ -65,8 +69,9 @@ def test_the_pinned_proton_is_downloaded_checked_and_unpacked_once(paths, file_s
     seen = []
     target = paths.base / "proton" / DEFAULT_PROTONPATH
 
-    got = proton.ensure_proton(paths, Config(), seen.append, url=file_server.url("/p.tar.gz"),
-                               sha256=hashlib.sha256(data).hexdigest())
+    got = proton.ensure_proton(
+        paths, Config(), seen.append, url=file_server.url("/p.tar.gz"), sha256=hashlib.sha256(data).hexdigest()
+    )
 
     assert got == str(target)
     assert (target / "toolmanifest.vdf").read_bytes() == b"manifest"
@@ -115,8 +120,15 @@ def test_protonpath_is_our_copy_once_it_is_there(paths):
 
 # NVIDIA
 
-@pytest.mark.parametrize("output,expected", [(LSPCI_TWO_CARDS, True), (LSPCI_ONE_CARD, False),
-                                             ("00:02.0 VGA compatible controller: Intel\n01:00.0 VGA compatible controller: AMD\n", False)])
+
+@pytest.mark.parametrize(
+    "output,expected",
+    [
+        (LSPCI_TWO_CARDS, True),
+        (LSPCI_ONE_CARD, False),
+        ("00:02.0 VGA compatible controller: Intel\n01:00.0 VGA compatible controller: AMD\n", False),
+    ],
+)
 def test_nvidia_offload_only_with_two_cards_one_of_them_nvidia(tmp_path, monkeypatch, output, expected):
     executable(tmp_path / "bin" / "lspci", f"#!/bin/sh\nprintf '%s' '{output}'\n")
     monkeypatch.setenv("PATH", str(tmp_path / "bin"))
@@ -133,7 +145,11 @@ def test_no_lspci_means_no_offload(tmp_path, monkeypatch):
 # The environment
 
 WINE_OVERRIDES = {"WINEDLLOVERRIDES": "winemenubuilder.exe=d", "WINE_D3D_CONFIG": "csmt=0x1"}
-NVIDIA_OFFLOAD = {"__GLX_VENDOR_LIBRARY_NAME": "nvidia", "__NV_PRIME_RENDER_OFFLOAD": "1", "__VK_LAYER_NV_optimus": "NVIDIA_only"}
+NVIDIA_OFFLOAD = {
+    "__GLX_VENDOR_LIBRARY_NAME": "nvidia",
+    "__NV_PRIME_RENDER_OFFLOAD": "1",
+    "__VK_LAYER_NV_optimus": "NVIDIA_only",
+}
 OPENGL = {"PROTON_USE_WINED3D": "1", "WINEDLLOVERRIDES": "d3d8,d3d9,d3d10core,d3d11,dxgi=b"}
 
 
@@ -150,23 +166,37 @@ def changed(env, base):
 
 # What runner_env adds besides the variables every run gets. With WINE_D3D_CONFIG already set, OpenGL keeps it;
 # an existing WINEDLLOVERRIDES is appended to.
-@pytest.mark.parametrize("graphics,lspci,extra_environ,expected", [
-    ("vulkan", LSPCI_TWO_CARDS, {}, NVIDIA_OFFLOAD),
-    ("vulkan", LSPCI_TWO_CARDS, WINE_OVERRIDES, NVIDIA_OFFLOAD),
-    ("vulkan", LSPCI_ONE_CARD, {}, {}),
-    ("vulkan", LSPCI_ONE_CARD, WINE_OVERRIDES, {}),
-    ("opengl", LSPCI_TWO_CARDS, {}, {**OPENGL, "WINE_D3D_CONFIG": "renderer=gl", **NVIDIA_OFFLOAD}),
-    ("opengl", LSPCI_TWO_CARDS, WINE_OVERRIDES,
-     {**OPENGL, "WINEDLLOVERRIDES": "d3d8,d3d9,d3d10core,d3d11,dxgi=b,winemenubuilder.exe=d", **NVIDIA_OFFLOAD}),
-    ("opengl", LSPCI_ONE_CARD, {}, {**OPENGL, "WINE_D3D_CONFIG": "renderer=gl"}),
-    ("opengl", LSPCI_ONE_CARD, WINE_OVERRIDES,
-     {**OPENGL, "WINEDLLOVERRIDES": "d3d8,d3d9,d3d10core,d3d11,dxgi=b,winemenubuilder.exe=d"}),
-])
+@pytest.mark.parametrize(
+    "graphics,lspci,extra_environ,expected",
+    [
+        ("vulkan", LSPCI_TWO_CARDS, {}, NVIDIA_OFFLOAD),
+        ("vulkan", LSPCI_TWO_CARDS, WINE_OVERRIDES, NVIDIA_OFFLOAD),
+        ("vulkan", LSPCI_ONE_CARD, {}, {}),
+        ("vulkan", LSPCI_ONE_CARD, WINE_OVERRIDES, {}),
+        ("opengl", LSPCI_TWO_CARDS, {}, {**OPENGL, "WINE_D3D_CONFIG": "renderer=gl", **NVIDIA_OFFLOAD}),
+        (
+            "opengl",
+            LSPCI_TWO_CARDS,
+            WINE_OVERRIDES,
+            {**OPENGL, "WINEDLLOVERRIDES": "d3d8,d3d9,d3d10core,d3d11,dxgi=b,winemenubuilder.exe=d", **NVIDIA_OFFLOAD},
+        ),
+        ("opengl", LSPCI_ONE_CARD, {}, {**OPENGL, "WINE_D3D_CONFIG": "renderer=gl"}),
+        (
+            "opengl",
+            LSPCI_ONE_CARD,
+            WINE_OVERRIDES,
+            {**OPENGL, "WINEDLLOVERRIDES": "d3d8,d3d9,d3d10core,d3d11,dxgi=b,winemenubuilder.exe=d"},
+        ),
+    ],
+)
 def test_the_environment(tmp_path, monkeypatch, graphics, lspci, extra_environ, expected):
     executable(tmp_path / "bin" / "lspci", f"#!/bin/sh\nprintf '%s' '{lspci}'\n")
     environ = {
-        "PATH": f"{tmp_path / 'bin'}:/usr/bin:/bin", "HOME": str(tmp_path), "BFME_HOME": str(tmp_path / "data"),
-        "BFME_PROTONPATH": "fake-proton", **extra_environ,
+        "PATH": f"{tmp_path / 'bin'}:/usr/bin:/bin",
+        "HOME": str(tmp_path),
+        "BFME_HOME": str(tmp_path / "data"),
+        "BFME_PROTONPATH": "fake-proton",
+        **extra_environ,
     }
     monkeypatch.setenv("PATH", environ["PATH"])
     paths = Paths(tmp_path / "data")
@@ -218,16 +248,21 @@ def test_without_umu_run_it_says_so(tmp_path, monkeypatch, paths):
 
 # Ending the Wine session
 
+
 def fake_wineserver(path, log):
-    executable(path, f'#!/bin/sh\necho "$WINEPREFIX $*" >> \'{log}\'\n')
+    executable(path, f"#!/bin/sh\necho \"$WINEPREFIX $*\" >> '{log}'\n")
 
 
 def test_the_wine_session_is_killed_and_waited_for(tmp_path):
     proton_folder = tmp_path / "my-proton"
     log = tmp_path / "wineserver.log"
     fake_wineserver(proton_folder / "files/bin/wineserver", log)
-    environ = {"PATH": "/usr/bin:/bin", "HOME": str(tmp_path), "BFME_HOME": str(tmp_path / "data"),
-               "BFME_PROTONPATH": str(proton_folder)}
+    environ = {
+        "PATH": "/usr/bin:/bin",
+        "HOME": str(tmp_path),
+        "BFME_HOME": str(tmp_path / "data"),
+        "BFME_PROTONPATH": str(proton_folder),
+    }
     paths = Paths(tmp_path / "data")
     (paths.prefix / "drive_c/windows").mkdir(parents=True)
     (paths.prefix / "drive_c/users/steamuser").mkdir(parents=True)
@@ -263,14 +298,15 @@ def test_the_proton_download_says_so(paths, file_server):
     file_server.files["/p.tar.gz"] = data
     events = []
 
-    proton.ensure_proton(paths, Config(), url=file_server.url("/p.tar.gz"), sha256=hashlib.sha256(data).hexdigest(),
-                         emit=events.append)
+    proton.ensure_proton(
+        paths, Config(), url=file_server.url("/p.tar.gz"), sha256=hashlib.sha256(data).hexdigest(), emit=events.append
+    )
 
     assert events == [Log(f"Downloading {DEFAULT_PROTONPATH}.tar.gz.")]
 
 
-
 # The graphics card and DXVK's settings
+
 
 def card_env(tmp_path, monkeypatch, gpu, lspci):
     executable(tmp_path / "bin" / "lspci", f"#!/bin/sh\nprintf '%s' '{lspci}'\n")
@@ -291,14 +327,20 @@ def card_choice(env):
     return chosen
 
 
-@pytest.mark.parametrize("gpu, lspci, expected", [
-    ("auto", LSPCI_TWO_CARDS, NVIDIA_OFFLOAD),
-    ("auto", LSPCI_ONE_CARD, {}),
-    ("dedicated", LSPCI_ONE_CARD, {**NVIDIA_OFFLOAD, "DRI_PRIME": "1"}),
-    ("dedicated", LSPCI_TWO_CARDS, {**NVIDIA_OFFLOAD, "DRI_PRIME": "1"}),
-    ("integrated", LSPCI_TWO_CARDS, {"__VK_LAYER_NV_optimus": "non_NVIDIA_only", "__GLX_VENDOR_LIBRARY_NAME": "mesa",
-                                     "DRI_PRIME": "0"}),
-])
+@pytest.mark.parametrize(
+    "gpu, lspci, expected",
+    [
+        ("auto", LSPCI_TWO_CARDS, NVIDIA_OFFLOAD),
+        ("auto", LSPCI_ONE_CARD, {}),
+        ("dedicated", LSPCI_ONE_CARD, {**NVIDIA_OFFLOAD, "DRI_PRIME": "1"}),
+        ("dedicated", LSPCI_TWO_CARDS, {**NVIDIA_OFFLOAD, "DRI_PRIME": "1"}),
+        (
+            "integrated",
+            LSPCI_TWO_CARDS,
+            {"__VK_LAYER_NV_optimus": "non_NVIDIA_only", "__GLX_VENDOR_LIBRARY_NAME": "mesa", "DRI_PRIME": "0"},
+        ),
+    ],
+)
 def test_the_graphics_card_the_player_chose(tmp_path, monkeypatch, gpu, lspci, expected):
     assert card_choice(card_env(tmp_path, monkeypatch, gpu, lspci)) == expected
 
@@ -310,10 +352,13 @@ def test_the_cards_are_listed_as_lspci_names_them(tmp_path, monkeypatch):
     assert len(proton.graphics_cards()) == 2
 
 
-@pytest.mark.parametrize("player, expected", [
-    (None, "d3d9.cachedWriteOnlyBuffers = True"),
-    ("dxgi.syncInterval = 0", "d3d9.cachedWriteOnlyBuffers = True; dxgi.syncInterval = 0"),
-])
+@pytest.mark.parametrize(
+    "player, expected",
+    [
+        (None, "d3d9.cachedWriteOnlyBuffers = True"),
+        ("dxgi.syncInterval = 0", "d3d9.cachedWriteOnlyBuffers = True; dxgi.syncInterval = 0"),
+    ],
+)
 def test_dxvks_settings_and_the_players_own(paths, player, expected):
     environ = {}
 

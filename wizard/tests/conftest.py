@@ -9,6 +9,7 @@ def gtk():
     """The Gtk module, or skip: the CI job has only the GLib bindings and no display."""
     try:
         import gi
+
         gi.require_version("Gtk", "4.0")
         gi.require_version("Adw", "1")
         from gi.repository import Gtk
@@ -31,7 +32,7 @@ class FileServer:
         self.files = {}
         self.failures = []
         self.requests = []
-        self.agents = []   # the User-Agent of every request
+        self.agents = []  # the User-Agent of every request
         self.ignore_range = False
         self.no_length = False
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), self._handler())
@@ -122,16 +123,19 @@ class Moddb:
 
     def __init__(self, server, monkeypatch):
         from bfme_wizard.engine import moddb
+
         self.server = server
         self.page_url = server.url("/mods/aotr/downloads/age-of-the-ring")
         monkeypatch.setattr(moddb, "AOTR_PAGE_URL", self.page_url)
 
     def publish(self, data, name="AotR_Standalone_10.0.0_Installer.zip", md5=None):
         import hashlib
+
         md5 = md5 or hashlib.md5(data).hexdigest()
         files = self.server.files
         files["/mods/aotr/downloads/age-of-the-ring"] = MODDB_FILE_PAGE.format(
-            name=name, size=len(data), size_gb=len(data) / 2 ** 30, md5=md5).encode()
+            name=name, size=len(data), size_gb=len(data) / 2**30, md5=md5
+        ).encode()
         files["/downloads/start/290690"] = MODDB_START_PAGE.format(name=name).encode()
         files["/downloads/mirror/290690/130/f93911bb939f81ae6ebd42fade8bc944"] = data
         return name

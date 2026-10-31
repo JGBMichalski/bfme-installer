@@ -19,6 +19,8 @@ Testing your modifications:
 
 - Keep the change small and say why you made it.
 - Add or update a test for any logic you change.
+- In `wizard/`, run the tests (`python3 -m pytest`), the linter (`ruff check .`) and the formatter (`ruff format .`).
+  CI fails on lint or format errors. Without ruff installed, `uvx ruff` or `pipx run ruff` runs it.
 - Add a line under **Unreleased** in the [changelog](CHANGELOG.md) for anything a player would notice.
 
 By contributing, you agree that your work is released under the [GPL-3.0-or-later license](LICENSE).

@@ -1,4 +1,5 @@
 """engine.prefix: the game environment, its settings and the graphics backend."""
+
 from pathlib import Path
 
 import pytest
@@ -41,9 +42,12 @@ def env(tmp_path, monkeypatch):
     executable(tmp_path / "bin" / "umu-run", FAKE_UMU)
     executable(tmp_path / "bin" / "lspci", "#!/bin/sh\n")
     values = {
-        "PATH": f"{tmp_path / 'bin'}:/usr/bin:/bin", "HOME": str(tmp_path), "BFME_HOME": str(tmp_path / "data"),
+        "PATH": f"{tmp_path / 'bin'}:/usr/bin:/bin",
+        "HOME": str(tmp_path),
+        "BFME_HOME": str(tmp_path / "data"),
         "BFME_PROTONPATH": "fake-proton",
-        "UMU_LOG": str(tmp_path / "umu.log"), "REG_COPY": str(tmp_path / "imported.reg"),
+        "UMU_LOG": str(tmp_path / "umu.log"),
+        "REG_COPY": str(tmp_path / "imported.reg"),
     }
 
     for name, value in values.items():
@@ -81,6 +85,7 @@ def logs(events):
 
 # Ready or not
 
+
 def test_ready_needs_both_folders_and_no_creation_marker(paths):
     assert not prefix.prefix_ready(paths)
     (paths.drive_c / "windows").mkdir(parents=True)
@@ -92,6 +97,7 @@ def test_ready_needs_both_folders_and_no_creation_marker(paths):
 
 
 # Creating it
+
 
 def test_creating_runs_umu_once_without_runinprefix_and_leaves_no_marker(env, paths):
     events = []
@@ -159,9 +165,9 @@ REG_FILE_START = (
 )
 REG_FILE = {
     "vulkan": REG_FILE_START + '"d3d8"="native,builtin"\r\n"d3d9"="native,builtin"\r\n"d3d10core"="native,builtin"\r\n'
-                               '"d3d11"="native,builtin"\r\n"dxgi"="native,builtin"\r\n',
+    '"d3d11"="native,builtin"\r\n"dxgi"="native,builtin"\r\n',
     "opengl": REG_FILE_START + '"d3d8"="builtin"\r\n"d3d9"="builtin"\r\n"d3d10core"="builtin"\r\n"d3d11"="builtin"\r\n'
-                               '"dxgi"="builtin"\r\n',
+    '"dxgi"="builtin"\r\n',
 }
 
 
@@ -228,6 +234,7 @@ def test_prepare_creates_a_missing_prefix_then_applies_the_settings(env, paths):
 
 
 # The first setup's graphics backend
+
 
 @pytest.fixture
 def probe(monkeypatch):
@@ -324,6 +331,7 @@ def test_an_unknown_backend_is_refused(paths):
 
 # Deleting it
 
+
 def test_reset_ends_the_wine_session_and_deletes_the_prefix(tmp_path, env, paths):
     make_prefix(paths)
     log = tmp_path / "wineserver.log"
@@ -340,9 +348,13 @@ def test_reset_ends_the_wine_session_and_deletes_the_prefix(tmp_path, env, paths
 
 # The graphics card
 
-@pytest.mark.parametrize("option, value, key, field", [
-    ("gpu", "integrated", "BFME_GPU", "gpu"),
-])
+
+@pytest.mark.parametrize(
+    "option, value, key, field",
+    [
+        ("gpu", "integrated", "BFME_GPU", "gpu"),
+    ],
+)
 def test_the_card_is_only_saved(env, paths, option, value, key, field):
     make_prefix(paths)
     paths.base.mkdir(parents=True, exist_ok=True)
@@ -351,13 +363,16 @@ def test_the_card_is_only_saved(env, paths, option, value, key, field):
 
     assert getattr(config, field) == value
     assert paths.config.read_text() == f"{key}={value}\n"
-    assert umu_calls(env) == []                    # they apply when a program opens
+    assert umu_calls(env) == []  # they apply when a program opens
 
 
-@pytest.mark.parametrize("option, value, message", [
-    ("gpu", "nvidia", "Graphics card cannot be nvidia."),
-    ("vsync", 1, "Unknown setting: vsync."),
-])
+@pytest.mark.parametrize(
+    "option, value, message",
+    [
+        ("gpu", "nvidia", "Graphics card cannot be nvidia."),
+        ("vsync", 1, "Unknown setting: vsync."),
+    ],
+)
 def test_a_wrong_setting_is_refused(paths, option, value, message):
     with pytest.raises(SetupError, match=message):
         prefix.set_option(paths, Config(), option, value, [].append)
@@ -365,8 +380,8 @@ def test_a_wrong_setting_is_refused(paths, option, value, message):
     assert not paths.config.exists()
 
 
-
 # The FPS counter: DXVK_HUD=fps in BFME_EXTRA_ENV
+
 
 def test_the_fps_counter_is_added_to_the_extra_environment_and_keeps_the_rest(paths):
     paths.base.mkdir(parents=True)
@@ -384,7 +399,7 @@ def test_turning_it_off_removes_any_dxvk_hud_and_only_that(paths):
     paths.base.mkdir(parents=True)
     paths.config.write_text('BFME_EXTRA_ENV="DXVK_HUD=full WINEDEBUG=-all"\n')
     config = load(paths.config, {})
-    assert prefix.fps_counter_on(config)       # any DXVK_HUD counts as on
+    assert prefix.fps_counter_on(config)  # any DXVK_HUD counts as on
 
     config = prefix.set_option(paths, config, "fps-counter", 0, [].append)
 

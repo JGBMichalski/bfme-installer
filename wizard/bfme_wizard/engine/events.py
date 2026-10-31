@@ -1,13 +1,15 @@
 """What a job reports while it runs. The wizard shows each event as it arrives."""
+
 from __future__ import annotations
 
-from dataclasses import dataclass
 from collections.abc import Callable
+from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
 class Log:
     """A line for the log the player can copy."""
+
     text: str
 
 
@@ -25,6 +27,7 @@ class Progress:
 @dataclass(frozen=True)
 class Speed:
     """How fast a download goes."""
+
     bytes_per_second: int
 
 
@@ -74,6 +77,7 @@ Emit = Callable[[Event], None]
 
 def report_speed(emit: Emit) -> Callable[[int], None]:
     """A download's on_speed that reports each measurement as a Speed event."""
+
     def on_speed(bytes_per_second: int) -> None:
         emit(Speed(bytes_per_second))
 

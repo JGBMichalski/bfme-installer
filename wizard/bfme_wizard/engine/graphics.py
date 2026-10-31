@@ -1,4 +1,5 @@
 """The graphics backend's name, and which one suits this computer."""
+
 from __future__ import annotations
 
 import os
@@ -6,8 +7,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-PROBE_TIMEOUT_SEC = 20   # a hung driver must not stop the setup
-PACKAGE_ROOT = Path(__file__).resolve().parents[2]   # the folder that holds bfme_wizard
+PROBE_TIMEOUT_SEC = 20  # a hung driver must not stop the setup
+PACKAGE_ROOT = Path(__file__).resolve().parents[2]  # the folder that holds bfme_wizard
 
 
 def label(graphics: str) -> str:

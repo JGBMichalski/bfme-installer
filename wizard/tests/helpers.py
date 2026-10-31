@@ -1,5 +1,6 @@
 """Utilities the tests share: a way to wait for the main loop, and what the manifest says. The `gtk` fixture is in
 conftest.py, the stand-in jobs in fake_jobs.py."""
+
 import re
 import struct
 from pathlib import Path
@@ -46,8 +47,11 @@ def buttons(widget, Gtk):
 
 def labels(widget, Gtk, css_class=None):
     """The text of every label under the widget, optionally only those with a style class."""
-    return [w.get_label() for w in descendants(widget)
-            if isinstance(w, Gtk.Label) and (css_class is None or w.has_css_class(css_class))]
+    return [
+        w.get_label()
+        for w in descendants(widget)
+        if isinstance(w, Gtk.Label) and (css_class is None or w.has_css_class(css_class))
+    ]
 
 
 def png_size(path):

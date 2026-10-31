@@ -2,6 +2,7 @@
 
 The report can contain the home folder and user name, so the window tells players to check it before sharing.
 """
+
 from __future__ import annotations
 
 import os
@@ -73,7 +74,10 @@ def _gpus() -> list[str]:
 def _nvidia_driver() -> str | None:
     """The NVIDIA kernel driver's version, or None without one."""
     try:
-        match = re.search(r"Kernel Module(?: for \S+)?\s+(\d[\d.]*)", Path("/proc/driver/nvidia/version").read_text(encoding="utf-8", errors="replace"))
+        match = re.search(
+            r"Kernel Module(?: for \S+)?\s+(\d[\d.]*)",
+            Path("/proc/driver/nvidia/version").read_text(encoding="utf-8", errors="replace"),
+        )
     except OSError:
         return None
     return match.group(1) if match else None
@@ -86,7 +90,9 @@ def system_lines(environ: dict[str, str] | None = None) -> list[str]:
     and driver. Each line says "unknown" or "none" rather than being left out, so a missing fact is visible.
     """
     env = os.environ if environ is None else environ
-    session = env.get("XDG_SESSION_TYPE") or ("wayland" if env.get("WAYLAND_DISPLAY") else "x11" if env.get("DISPLAY") else "unknown")
+    session = env.get("XDG_SESSION_TYPE") or (
+        "wayland" if env.get("WAYLAND_DISPLAY") else "x11" if env.get("DISPLAY") else "unknown"
+    )
     lines = [
         f"System: {_os_name()}, kernel {platform.release()}",
         f"Desktop: {env.get('XDG_CURRENT_DESKTOP') or 'unknown'}, {session} session",
@@ -109,15 +115,21 @@ def _vulkan() -> str:
 
 def build_report(version: str, model: SetupModel, log_dir: Path, system: list[str] | None = None) -> str:
     graphics = model.graphics_label if "graphics" in model.installed else "unknown"
-    out = ["BFME Installer diagnostics", f"Version: {version}", f"Runner: {model.installed.get('runner', 'unknown')}",
-           f"Graphics: {graphics}"]
+    out = [
+        "BFME Installer diagnostics",
+        f"Version: {version}",
+        f"Runner: {model.installed.get('runner', 'unknown')}",
+        f"Graphics: {graphics}",
+    ]
     out += system_lines() if system is None else system
-    out.append("Setup: " + ", ".join(f"{k} {model.installed.get(k, 'unknown')}" for k in ("prefix", "aio-launcher", "arena")))
+    out.append(
+        "Setup: " + ", ".join(f"{k} {model.installed.get(k, 'unknown')}" for k in ("prefix", "aio-launcher", "arena"))
+    )
     out.append("Games: " + ", ".join(f"{name} {model.installed.get(key, 'unknown')}" for key, name in GAMES))
     out += ["", "System checks:"]
     if model.checks:
         marks = {"ok": "ok", "warn": "warning", "fail": "FAILED"}
-        for cid, level, message, fix in model.check_rows:
+        for _cid, level, message, fix in model.check_rows:
             out.append(f"  [{marks[level]}] {message}")
             if fix:
                 out.append(f"      fix: {fix}")
@@ -125,7 +137,10 @@ def build_report(version: str, model: SetupModel, log_dir: Path, system: list[st
         out.append("  (not run yet)")
     for title, prefix in (("AIO Launcher", "aio-launcher"), ("Arena", "arena"), ("prefix creation", "prefix-create")):
         log = newest_log(log_dir, prefix)
-        out += ["", f"--- latest {title} log ({log.name}, last {LOG_LINES} lines) ---" if log else f"--- no {title} log ---"]
+        out += [
+            "",
+            f"--- latest {title} log ({log.name}, last {LOG_LINES} lines) ---" if log else f"--- no {title} log ---",
+        ]
         if log:
             out.append(tail(log))
     return "\n".join(out) + "\n"

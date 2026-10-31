@@ -1,5 +1,7 @@
 """engine.config: reads and writes config.env."""
+
 import re
+
 import pytest
 
 from bfme_wizard.engine.config import DEFAULT_PROTONPATH, Config, ConfigError, load, read_file, save
@@ -61,6 +63,7 @@ def test_save_makes_the_folder_and_file(tmp_path):
 
 # Saving and reading back
 
+
 def test_a_saved_choice_is_read_back(path):
     path.write_text("BFME_NVIDIA=1\n# keep me\n")
 
@@ -76,20 +79,24 @@ def test_a_saved_choice_is_read_back(path):
     assert load(path, {}).graphics == "vulkan"
 
 
-@pytest.mark.parametrize("text,expected", [
-    ("BFME_GRAPHICS=opengl\n", "opengl"),
-    ("export BFME_GRAPHICS=opengl\n", "opengl"),
-    ("BFME_GRAPHICS='opengl'\n", "opengl"),
-    ('BFME_GRAPHICS="opengl"\n', "opengl"),
-    ("  BFME_GRAPHICS=opengl\n", "opengl"),
-    ("BFME_GRAPHICS=\n", "vulkan"),
-])
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        ("BFME_GRAPHICS=opengl\n", "opengl"),
+        ("export BFME_GRAPHICS=opengl\n", "opengl"),
+        ("BFME_GRAPHICS='opengl'\n", "opengl"),
+        ('BFME_GRAPHICS="opengl"\n', "opengl"),
+        ("  BFME_GRAPHICS=opengl\n", "opengl"),
+        ("BFME_GRAPHICS=\n", "vulkan"),
+    ],
+)
 def test_the_backend_in_each_file_syntax(path, text, expected):
     path.write_text(text)
     assert load(path, {}).graphics == expected
 
 
 # The graphics card
+
 
 def test_the_other_graphics_settings_default_to_today(path):
     config = load(path, {})
@@ -104,9 +111,12 @@ def test_the_other_graphics_settings_are_read(path):
     assert config.gpu == "integrated"
 
 
-@pytest.mark.parametrize("text, message", [
-    ("BFME_GPU=nvidia\n", 'BFME_GPU must be auto, dedicated or integrated, not "nvidia".'),
-])
+@pytest.mark.parametrize(
+    "text, message",
+    [
+        ("BFME_GPU=nvidia\n", 'BFME_GPU must be auto, dedicated or integrated, not "nvidia".'),
+    ],
+)
 def test_a_wrong_value_is_refused(path, text, message):
     path.write_text(text)
 

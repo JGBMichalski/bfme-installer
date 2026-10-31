@@ -2,6 +2,7 @@
 
 Every test builds the real window (no main loop is needed to look at what it would show), so they need GTK and a display.
 """
+
 import glob
 import os
 
@@ -16,7 +17,7 @@ from tests.helpers import buttons, descendants, labels, wait_for
 ALL = {"aio-launcher": "installed", "arena": "installed", "aotr": "installed"}
 # The icon buttons that lead to the other pages, by tooltip, left to right.
 ICON_BUTTONS = ("Install or remove programs", "Game folders", "Troubleshoot")
-NEAR = 12      # how far from the corner of the page the icon buttons may sit, in pixels
+NEAR = 12  # how far from the corner of the page the icon buttons may sit, in pixels
 
 
 _APP = None
@@ -27,6 +28,7 @@ def shared_app():
     global _APP
     if _APP is None:
         from gi.repository import Adw, Gio
+
         Adw.init()
         _APP = Adw.Application(application_id="org.example.BfmeWindowTest", flags=Gio.ApplicationFlags.NON_UNIQUE)
         _APP.register(None)
@@ -37,6 +39,7 @@ def shared_app():
 def make_window(gtk, tmp_path):
     """Builds windows for the test and destroys them afterwards. Without `jobs` nothing is installed as far as the jobs know."""
     from bfme_wizard import ui
+
     made = []
 
     def make(jobs=None, installed=None, state="done"):
@@ -65,6 +68,7 @@ def win(make_window):
 def dialogs(gtk, monkeypatch):
     """Collects the dialogs the window presents instead of showing them."""
     from gi.repository import Adw
+
     presented = []
     monkeypatch.setattr(Adw.AlertDialog, "present", lambda dialog, parent=None: presented.append(dialog))
     return presented
@@ -73,10 +77,12 @@ def dialogs(gtk, monkeypatch):
 @pytest.fixture
 def toasts(monkeypatch):
     """Returns a function that collects the titles of the toasts a window shows instead of showing them."""
+
     def collect(win):
         titles = []
         monkeypatch.setattr(win.toasts, "add_toast", lambda toast: titles.append(toast.get_title()))
         return titles
+
     return collect
 
 
@@ -117,11 +123,12 @@ def layout(win, width=640, height=560):
 # The icon buttons that lead to the other pages. They float in the top right corner of the page, under the header bar,
 # and are not in the header bar.
 
+
 def test_there_are_three_in_one_row_with_troubleshoot_in_the_corner(win, gtk):
     found = corner_buttons(win, gtk)
     rect = layout(win)
-    assert sorted(found, key=lambda tip: rect(found[tip])[0]) == list(ICON_BUTTONS)    # left to right
-    assert len({rect(button)[1] for button in found.values()}) == 1                    # one row
+    assert sorted(found, key=lambda tip: rect(found[tip])[0]) == list(ICON_BUTTONS)  # left to right
+    assert len({rect(button)[1] for button in found.values()}) == 1  # one row
 
 
 def test_none_of_them_is_in_the_header_bar(win, gtk):
@@ -131,18 +138,18 @@ def test_none_of_them_is_in_the_header_bar(win, gtk):
 def test_they_float_in_the_top_right_corner_of_the_page_under_the_header_bar(win, gtk):
     found = corner_buttons(win, gtk)
     rect = layout(win)
-    page_x, page_y, page_w, page_h = rect(win.stack)       # the page is what is under the header bar and the banners
+    page_x, page_y, page_w, page_h = rect(win.stack)  # the page is what is under the header bar and the banners
     _x, header_y, _w, header_h = rect(win.header)
     assert page_y >= header_y + header_h
     for tip, button in found.items():
         x, y, w, h = rect(button)
         assert x >= page_x, tip
         assert x + w <= page_x + page_w, tip
-        assert y >= page_y, tip                 # under the header bar, on the page
+        assert y >= page_y, tip  # under the header bar, on the page
         assert y + h <= page_y + page_h, tip
     x, y, w, _h = rect(found["Troubleshoot"])
-    assert page_x + page_w - (x + w) <= NEAR       # at the right edge of the page...
-    assert y - page_y <= NEAR                      # ...and at its top
+    assert page_x + page_w - (x + w) <= NEAR  # at the right edge of the page...
+    assert y - page_y <= NEAR  # ...and at its top
 
 
 def test_troubleshoot_stays_where_it_is_when_the_other_two_come_and_go(win, gtk):
@@ -156,7 +163,10 @@ def test_troubleshoot_stays_where_it_is_when_the_other_two_come_and_go(win, gtk)
 
 
 def test_they_are_on_the_main_page_only_not_on_the_pages_they_open(win, gtk):
-    for show, page in ((win.show_programs, lambda: win.programs.view), (win.show_troubleshoot, lambda: win.troubleshoot.view)):
+    for show, page in (
+        (win.show_programs, lambda: win.programs.view),
+        (win.show_troubleshoot, lambda: win.troubleshoot.view),
+    ):
         show()
         assert {b.get_tooltip_text() for b in buttons(page(), gtk)} & set(ICON_BUTTONS) == set()
         win.nav.pop()
@@ -166,6 +176,7 @@ def things_on_the_page(win, rect, Gtk):
     """What the visible page shows or lets the player press, as [(description, rectangle)], not counting the icon buttons.
     A label counts for the room its text takes: a centred label has a box as wide as the page, but its text does not."""
     from gi.repository import Adw
+
     kinds = (Gtk.Label, Gtk.Button, Gtk.CheckButton, Gtk.Image, Gtk.ProgressBar, Gtk.Spinner, Adw.Avatar)
     page = win.stack.get_visible_child()
     own = set()
@@ -199,7 +210,7 @@ def test_nothing_on_any_page_is_under_them_at_any_size_the_window_can_have(win, 
     page = win.root_page.get_child()
     across, down = gtk.Orientation.HORIZONTAL, gtk.Orientation.VERTICAL
     least_w = page.measure(across, -1)[0]
-    least_h = page.measure(down, least_w)[0]               # the smallest the window can be made, as it is now
+    least_h = page.measure(down, least_w)[0]  # the smallest the window can be made, as it is now
     for state in ("checking", "idle", "running", "waiting", "cancelled", "failed", "blocked", "removing", "done"):
         win.model.state = state
         win.model.removing = "arena" if state == "removing" else None
@@ -211,8 +222,9 @@ def test_nothing_on_any_page_is_under_them_at_any_size_the_window_can_have(win, 
                     continue
                 bx, by, bw, bh = rect(button)
                 for what, (x, y, w, h) in things_on_the_page(win, rect, gtk):
-                    assert not (x < bx + bw and bx < x + w and y < by + bh and by < y + h), \
+                    assert not (x < bx + bw and bx < x + w and y < by + bh and by < y + h), (
                         f"{state} at {width}x{height}: {what} at {(round(x), round(y), round(w), round(h))} is under the {tip} button"
+                    )
 
 
 def test_the_home_content_stays_centred_above_the_version_line_while_it_keeps_clear_of_them(win):
@@ -221,15 +233,21 @@ def test_the_home_content_stays_centred_above_the_version_line_while_it_keeps_cl
     _x, page_top, _w, _h = rect(win.stack)
     _x, content_y, _w, content_h = rect(win.home.content)
     _x, version_y, _w, _h = rect(win.home.version_label)
-    room_below = version_y - win.home.version_label.get_margin_top()      # where the room left for the content ends
+    room_below = version_y - win.home.version_label.get_margin_top()  # where the room left for the content ends
     assert content_y + content_h / 2 == pytest.approx((page_top + room_below) / 2, abs=1)
 
 
-@pytest.mark.parametrize("tip, icons_name", [("Install or remove programs", "PROGRAMS_ICONS"),
-                                             ("Game folders", "FOLDERS_ICONS"),
-                                             ("Troubleshoot", "TROUBLESHOOT_ICONS")])
+@pytest.mark.parametrize(
+    "tip, icons_name",
+    [
+        ("Install or remove programs", "PROGRAMS_ICONS"),
+        ("Game folders", "FOLDERS_ICONS"),
+        ("Troubleshoot", "TROUBLESHOOT_ICONS"),
+    ],
+)
 def test_each_has_an_icon_and_no_text(win, gtk, tip, icons_name):
     from bfme_wizard import ui
+
     button = corner_buttons(win, gtk)[tip]
     assert button.get_icon_name() in getattr(ui, icons_name)
     assert button.get_label() is None
@@ -237,10 +255,15 @@ def test_each_has_an_icon_and_no_text(win, gtk, tip, icons_name):
 
 def test_the_icons_are_the_ones_the_flatpaks_runtime_has(gtk):
     # The host's icon theme has more than the GNOME runtime: a name only the host knows shows a broken image there.
-    runtime = glob.glob(os.path.expanduser("~/.local/share/flatpak/runtime/org.gnome.Platform/x86_64/*/*/files/share/icons/Adwaita/symbolic"))
+    runtime = glob.glob(
+        os.path.expanduser(
+            "~/.local/share/flatpak/runtime/org.gnome.Platform/x86_64/*/*/files/share/icons/Adwaita/symbolic"
+        )
+    )
     if not runtime:
         pytest.skip("the GNOME runtime is not installed here")
     from bfme_wizard import ui
+
     available = {os.path.basename(p)[:-4] for p in glob.glob(runtime[0] + "/**/*.svg", recursive=True)}
     for icons in (ui.PROGRAMS_ICONS, ui.FOLDERS_ICONS, ui.TROUBLESHOOT_ICONS):
         assert icons[0] in available, f"{icons[0]} is first in its list, so it is the one most players see"
@@ -250,9 +273,11 @@ def test_the_old_menu_button_is_gone(win, gtk):
     assert not [w for w in descendants(win.root_page.get_child()) if isinstance(w, gtk.MenuButton)]
 
 
-@pytest.mark.parametrize("state", ["checking", "idle", "running", "waiting", "cancelled", "failed", "blocked", "removing", "done"])
+@pytest.mark.parametrize(
+    "state", ["checking", "idle", "running", "waiting", "cancelled", "failed", "blocked", "removing", "done"]
+)
 def test_troubleshoot_is_always_there_and_the_other_two_belong_to_the_home_screen(win, gtk, state):
-    win.model.begin_plan(["aio-launcher"])          # the run page shows a step of the plan
+    win.model.begin_plan(["aio-launcher"])  # the run page shows a step of the plan
     win.model.state = state
     win.model.removing = "arena" if state == "removing" else None
     win.render()
@@ -267,9 +292,15 @@ def test_the_old_buttons_are_gone_from_the_home_screen(win, gtk):
 
 # Pages
 
-@pytest.mark.parametrize("tip, title, attribute", [("Install or remove programs", "Programs", "programs"),
-                                                   ("Troubleshoot", "Troubleshoot", "troubleshoot"),
-                                                   ("Game folders", "Game folders", None)])
+
+@pytest.mark.parametrize(
+    "tip, title, attribute",
+    [
+        ("Install or remove programs", "Programs", "programs"),
+        ("Troubleshoot", "Troubleshoot", "troubleshoot"),
+        ("Game folders", "Game folders", None),
+    ],
+)
 def test_the_buttons_open_their_pages_and_going_back_forgets_them(win, gtk, tip, title, attribute):
     corner_buttons(win, gtk)[tip].emit("clicked")
     assert win.nav.get_visible_page().get_title() == title
@@ -295,7 +326,7 @@ def test_popping_a_page_does_not_forget_the_one_underneath_it(win):
     win.nav.pop()
     assert win.programs is None
     assert win.troubleshoot is not None
-    win.show_troubleshoot()                                   # still open: nothing new is pushed
+    win.show_troubleshoot()  # still open: nothing new is pushed
     assert win.nav.get_navigation_stack().get_n_items() == 2
     win.nav.pop()
     assert win.troubleshoot is None
@@ -309,7 +340,7 @@ def test_installing_from_the_programs_page_goes_back_to_the_main_page_and_instal
     win.install_program("aotr")
     assert win.nav.get_visible_page() is win.root_page
     assert asked == [["aotr"]]
-    win.install_program("arena")       # the Arena installs with the AIO Launcher
+    win.install_program("arena")  # the Arena installs with the AIO Launcher
     assert asked[-1] == ["aio-launcher"]
 
 
@@ -337,12 +368,14 @@ def test_its_rows_hold_still_while_the_answer_is_awaited(win):
     # installed, which must not flash across the rows ("Not installed" three times) before the real answer is there.
     win.show_programs()
     before = [(r.get_title(), r.get_subtitle()) for r in win.programs.rows()]
-    win.model.installed.clear()                 # what Controller.start does
+    win.model.installed.clear()  # what Controller.start does
     win.model.state = "checking"
     win.render()
     assert [(r.get_title(), r.get_subtitle()) for r in win.programs.rows()] == before
-    assert not win._programs_page.get_can_pop()      # it is still the removal finishing: no way out yet
-    win.model.installed.update({"aio-launcher": "installed", "arena": "installed"})      # the answer: Age of the Ring is gone
+    assert not win._programs_page.get_can_pop()  # it is still the removal finishing: no way out yet
+    win.model.installed.update(
+        {"aio-launcher": "installed", "arena": "installed"}
+    )  # the answer: Age of the Ring is gone
     win.model.state = "done"
     win.render()
     assert [r.get_subtitle()[:13] for r in win.programs.rows()] == ["Installed", "Installed", "Not installed"]
@@ -363,7 +396,10 @@ def test_the_page_cannot_be_left_while_a_program_is_removed(win):
 def test_its_rows_follow_the_model(make_window):
     win = make_window(installed={"aio-launcher": "installed", "arena": "installed"})
     win.show_programs()
-    titles = lambda: [(r.get_title(), r.get_subtitle()) for r in win.programs.rows()]
+
+    def titles():
+        return [(r.get_title(), r.get_subtitle()) for r in win.programs.rows()]
+
     assert titles()[2][0] == "Age of the Ring"
     win.model.installed["aotr"] = "installed"
     win.render()
@@ -371,6 +407,7 @@ def test_its_rows_follow_the_model(make_window):
 
 
 # Removal
+
 
 def dialog_for(win, dialogs, program):
     win.confirm_remove(program)
@@ -381,10 +418,13 @@ def row_button(row, Gtk):
     return [b.get_label() for b in buttons(row, Gtk)][0]
 
 
-@pytest.mark.parametrize("program, heading", [("aio-launcher", "Remove the AIO Launcher?"), ("arena", "Remove the Arena?"),
-                                              ("aotr", "Remove Age of the Ring?")])
+@pytest.mark.parametrize(
+    "program, heading",
+    [("aio-launcher", "Remove the AIO Launcher?"), ("arena", "Remove the Arena?"), ("aotr", "Remove Age of the Ring?")],
+)
 def test_the_confirmation_names_the_program_says_what_stays_and_offers_a_way_out(win, dialogs, program, heading):
     from gi.repository import Adw
+
     dialog = dialog_for(win, dialogs, program)
     assert dialog.get_heading() == heading
     assert "not touched" in dialog.get_body()
@@ -409,9 +449,14 @@ def test_a_removal_toast_says_the_aio_launcher_in_full(win, toasts):
 
 def test_what_stays_is_named_with_the_aio_launcher_in_full(win, dialogs):
     # Age of the Ring has a launcher of its own, so "the Launcher" in these sentences could be either one.
-    assert "The AIO Launcher, the games and Age of the Ring are not touched." in dialog_for(win, dialogs, "arena").get_body()
-    assert "The AIO Launcher, the Arena and the games you installed with the AIO Launcher are not touched." in \
-        dialog_for(win, dialogs, "aotr").get_body()
+    assert (
+        "The AIO Launcher, the games and Age of the Ring are not touched."
+        in dialog_for(win, dialogs, "arena").get_body()
+    )
+    assert (
+        "The AIO Launcher, the Arena and the games you installed with the AIO Launcher are not touched."
+        in dialog_for(win, dialogs, "aotr").get_body()
+    )
 
 
 def test_age_of_the_ring_says_how_much_room_it_gives_back_and_what_it_keeps(win, dialogs):
@@ -450,10 +495,13 @@ def test_the_whole_removal_ends_on_the_home_screen_with_a_toast(make_window, gtk
     assert not win._programs_page.get_can_pop()
     wait_for(8000, lambda: win.model.state == "done" and not win.controller.runner.busy)
     assert shown == ["The Arena was removed."]
-    assert win.nav.get_visible_page().get_title() == "Programs"     # still there, now with the Arena as missing
+    assert win.nav.get_visible_page().get_title() == "Programs"  # still there, now with the Arena as missing
     assert win._programs_page.get_can_pop()
-    assert [(r.get_title(), row_button(r, gtk)) for r in win.programs.rows()] == \
-        [("AIO Launcher", "Remove"), ("Arena", "Install"), ("Age of the Ring", "Remove")]
+    assert [(r.get_title(), row_button(r, gtk)) for r in win.programs.rows()] == [
+        ("AIO Launcher", "Remove"),
+        ("Arena", "Install"),
+        ("Age of the Ring", "Remove"),
+    ]
     assert labels(win.home.content, gtk, "title-2") == ["AIO Launcher", "Age of the Ring"]
 
 
@@ -467,7 +515,7 @@ def test_removing_the_last_program_lands_on_the_start_page(make_window, fake):
     wait_for(8000, lambda: win.model.state == "idle" and not win.controller.runner.busy)
     assert win.nav.get_visible_page() is win.root_page
     assert win.stack.get_visible_child_name() == "start"
-    assert win.start.view.get_title() == "Choose what to install"      # the game environment is still ready
+    assert win.start.view.get_title() == "Choose what to install"  # the game environment is still ready
 
 
 def test_a_removal_that_fails_says_so_and_nothing_changes(make_window, fake, toasts):
@@ -491,7 +539,7 @@ def test_the_page_shown_while_it_runs_says_what_is_going(win):
 
 def test_closing_the_window_in_the_middle_of_a_removal_asks_first(win, dialogs):
     win.model.state, win.model.removing = "removing", "arena"
-    assert win._on_close_request(win)                  # the window stays
+    assert win._on_close_request(win)  # the window stays
     dialog = dialogs[-1]
     assert dialog.get_heading() == "A program is still being removed"
     assert (dialog.get_default_response(), dialog.get_response_label("stop")) == ("wait", "Close anyway")
@@ -507,6 +555,7 @@ def test_closing_the_window_otherwise_just_closes(win, dialogs):
 
 # The Age of the Ring download page, when the app cannot download it itself
 
+
 def test_the_download_page_says_why_the_app_could_not(win, gtk):
     win.model.begin_plan(["aotr"])
     win.model.wait_for_file("ModDB did not offer a download link.")
@@ -520,6 +569,7 @@ def test_the_download_page_says_why_the_app_could_not(win, gtk):
 
 
 # Download speed on the running page
+
 
 def test_a_download_shows_its_percent_and_speed(win):
     from bfme_wizard.engine.events import Progress, Speed, Step

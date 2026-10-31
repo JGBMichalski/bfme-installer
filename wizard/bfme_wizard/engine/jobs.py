@@ -3,6 +3,7 @@ where things stand when it ends, and its errors.
 
 Every job takes (emit, cancel) and returns an exit status: 0 done, 1 failed, 130 stopped by the player.
 """
+
 from __future__ import annotations
 
 import threading
@@ -30,7 +31,7 @@ from .prefix import (
 
 OK = 0
 FAILED = 1
-NEEDS_FILE = 2      # the app cannot download Age of the Ring itself: the player downloads it and chooses the file
+NEEDS_FILE = 2  # the app cannot download Age of the Ring itself: the player downloads it and chooses the file
 STOPPED = 130
 SET_UP_FIRST = "Set up the game environment first."
 AIO_LAUNCHER_DONE = [
@@ -40,9 +41,11 @@ AIO_LAUNCHER_DONE = [
 
 LABELS = {"aio-launcher": "the AIO Launcher", "workshop": "Workshop Studio", "mission-control": "Mission Control"}
 
+
 @dataclass
 class Job:
     """What a running job works with, and the step it is on (an error names it)."""
+
     paths: Paths
     config: Config
     emit: Emit
@@ -81,8 +84,9 @@ class Job:
         return setup_lock(self.paths, self.environ)
 
 
-def _run(body: Callable[[Job], None], emit: Emit, cancel: threading.Event | None,
-         environ: dict[str, str] | None) -> int:
+def _run(
+    body: Callable[[Job], None], emit: Emit, cancel: threading.Event | None, environ: dict[str, str] | None
+) -> int:
     """Run a job's body and turn how it ended into events and an exit status."""
     paths = paths_for(environ)
 
@@ -153,6 +157,7 @@ def status(emit: Emit, cancel: threading.Event | None = None, environ: dict[str,
 
 def check(emit: Emit, cancel: threading.Event | None = None, environ: dict[str, str] | None = None) -> int:
     """Run the system check alone."""
+
     def body(job: Job) -> None:
         if not doctor.run_checks(job.paths, job.config, job.emit):
             raise SetupError("The system check found a problem.")
@@ -162,6 +167,7 @@ def check(emit: Emit, cancel: threading.Event | None = None, environ: dict[str, 
 
 def sync_shortcuts(emit: Emit, cancel: threading.Event | None = None, environ: dict[str, str] | None = None) -> int:
     """Synchronize the game shortcuts."""
+
     def body(job: Job) -> None:
         if not shortcuts.sync(job.paths, job.emit, job.environ):
             raise SetupError("The shortcuts could not be updated.")
@@ -171,6 +177,7 @@ def sync_shortcuts(emit: Emit, cancel: threading.Event | None = None, environ: d
 
 def prepare(emit: Emit, cancel: threading.Event | None = None, environ: dict[str, str] | None = None) -> int:
     """Prepare the game environment: the system check, Proton, and the prefix."""
+
     def body(job: Job) -> None:
         job.start("doctor")
 
@@ -195,8 +202,11 @@ def prepare(emit: Emit, cancel: threading.Event | None = None, environ: dict[str
     return _run(body, emit, cancel, environ)
 
 
-def aio_launcher_install(emit: Emit, cancel: threading.Event | None = None, environ: dict[str, str] | None = None) -> int:
+def aio_launcher_install(
+    emit: Emit, cancel: threading.Event | None = None, environ: dict[str, str] | None = None
+) -> int:
     """Install the AIO Launcher and the Arena, with their shortcuts. Needs the game environment."""
+
     def body(job: Job) -> None:
         if not prefix_ready(job.paths):
             raise SetupError(SET_UP_FIRST)
@@ -224,10 +234,12 @@ def aio_launcher_install(emit: Emit, cancel: threading.Event | None = None, envi
     return _run(body, emit, cancel, environ)
 
 
-def aotr_install(zip_path: str | None, emit: Emit, cancel: threading.Event | None = None,
-                 environ: dict[str, str] | None = None) -> int:
+def aotr_install(
+    zip_path: str | None, emit: Emit, cancel: threading.Event | None = None, environ: dict[str, str] | None = None
+) -> int:
     """Install Age of the Ring. Without a zip from the player, the app downloads it from ModDB; when it cannot, the job
     ends with NEEDS_FILE and the player downloads it in a browser. Needs the game environment."""
+
     def body(job: Job) -> None:
         if not prefix_ready(job.paths):
             raise SetupError(SET_UP_FIRST)
@@ -237,7 +249,7 @@ def aotr_install(zip_path: str | None, emit: Emit, cancel: threading.Event | Non
             resumed = None
 
             if zip_path:
-                job.emit(Step("aotr-download", "done"))   # the player did this step
+                job.emit(Step("aotr-download", "done"))  # the player did this step
                 aotr_zip_path = Path(zip_path)
             else:
                 job.start("aotr-download")
@@ -291,9 +303,11 @@ def aotr_install(zip_path: str | None, emit: Emit, cancel: threading.Event | Non
     return _run(body, emit, cancel, environ)
 
 
-def tool_install(tool: str, emit: Emit, cancel: threading.Event | None = None,
-                 environ: dict[str, str] | None = None) -> int:
+def tool_install(
+    tool: str, emit: Emit, cancel: threading.Event | None = None, environ: dict[str, str] | None = None
+) -> int:
     """Install Workshop Studio or Mission Control. Needs the game environment."""
+
     def body(job: Job) -> None:
         if tool not in programs.TOOLS:
             raise SetupError(f"Unknown tool: {tool}.")
@@ -313,9 +327,11 @@ def tool_install(tool: str, emit: Emit, cancel: threading.Event | None = None,
     return _run(body, emit, cancel, environ)
 
 
-def remove(program: str, emit: Emit, cancel: threading.Event | None = None,
-           environ: dict[str, str] | None = None) -> int:
+def remove(
+    program: str, emit: Emit, cancel: threading.Event | None = None, environ: dict[str, str] | None = None
+) -> int:
     """Remove one program from the game environment, with its shortcut."""
+
     def body(job: Job) -> None:
         with job.lock():
             programs.remove(job.paths, job.config, program, job.emit)
@@ -325,9 +341,11 @@ def remove(program: str, emit: Emit, cancel: threading.Event | None = None,
     return _run(body, emit, cancel, environ)
 
 
-def switch_graphics(backend: str, emit: Emit, cancel: threading.Event | None = None,
-                    environ: dict[str, str] | None = None) -> int:
+def switch_graphics(
+    backend: str, emit: Emit, cancel: threading.Event | None = None, environ: dict[str, str] | None = None
+) -> int:
     """Switch the graphics backend for the game environment."""
+
     def body(job: Job) -> None:
         with job.lock():
             job.config = set_graphics(job.paths, job.config, backend, job.emit)
@@ -337,9 +355,15 @@ def switch_graphics(backend: str, emit: Emit, cancel: threading.Event | None = N
     return _run(body, emit, cancel, environ)
 
 
-def change_option(option: str, value: str | int, emit: Emit, cancel: threading.Event | None = None,
-                  environ: dict[str, str] | None = None) -> int:
+def change_option(
+    option: str,
+    value: str | int,
+    emit: Emit,
+    cancel: threading.Event | None = None,
+    environ: dict[str, str] | None = None,
+) -> int:
     """Save the graphics card or the FPS counter."""
+
     def body(job: Job) -> None:
         with job.lock():
             job.config = set_option(job.paths, job.config, option, value, job.emit)
@@ -351,6 +375,7 @@ def change_option(option: str, value: str | int, emit: Emit, cancel: threading.E
 
 def reset(emit: Emit, cancel: threading.Event | None = None, environ: dict[str, str] | None = None) -> int:
     """Reset the game environment, deleting every game and program in it."""
+
     def body(job: Job) -> None:
         with job.lock():
             reset_prefix(job.paths, job.config, job.emit)
@@ -359,10 +384,12 @@ def reset(emit: Emit, cancel: threading.Event | None = None, environ: dict[str, 
     return _run(body, emit, cancel, environ)
 
 
-def open_program(program: str, emit: Emit, cancel: threading.Event | None = None,
-                 environ: dict[str, str] | None = None) -> int:
+def open_program(
+    program: str, emit: Emit, cancel: threading.Event | None = None, environ: dict[str, str] | None = None
+) -> int:
     """Open a program and wait until it ends. The AIO Launcher is installed first if it is missing, and the Arena updated.
     The lock is held only while the game environment is got ready, not while the program runs."""
+
     def body(job: Job) -> None:
         if program in programs.TOOLS or program == "aotr":
             if not programs.installed(job.paths, program):
@@ -380,8 +407,15 @@ def open_program(program: str, emit: Emit, cancel: threading.Event | None = None
             if program == "arena":
                 programs.install_or_update_arena(job.paths, job.emit, job.cancel)
 
-        launch.start_program(job.paths, job.config, proton_path, program, _exe(job.paths, program),
-                             LABELS.get(program, program), job.emit)
+        launch.start_program(
+            job.paths,
+            job.config,
+            proton_path,
+            program,
+            _exe(job.paths, program),
+            LABELS.get(program, program),
+            job.emit,
+        )
 
     return _run(body, emit, cancel, environ)
 
@@ -416,4 +450,3 @@ def setup_complete(environ: dict[str, str] | None = None) -> bool:
         config = Config()
 
     return programs.status(paths, config)["complete"] == "yes"
-

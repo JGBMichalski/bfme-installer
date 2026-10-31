@@ -1,4 +1,5 @@
 """engine.aotr: the Age of the Ring download, unpacking and installer."""
+
 import os
 import shutil
 import subprocess
@@ -58,9 +59,12 @@ def env(tmp_path, monkeypatch):
     executable(tmp_path / "bin" / "umu-run", FAKE_UMU)
     executable(tmp_path / "bin" / "lspci", "#!/bin/sh\n")
     values = {
-        "PATH": f"{tmp_path / 'bin'}:/usr/bin:/bin", "HOME": str(tmp_path), "BFME_HOME": str(tmp_path / "data"),
+        "PATH": f"{tmp_path / 'bin'}:/usr/bin:/bin",
+        "HOME": str(tmp_path),
+        "BFME_HOME": str(tmp_path / "data"),
         "BFME_PROTONPATH": "fake-proton",
-        "UMU_LOG": str(tmp_path / "umu.log"), "SESSION_PID": str(tmp_path / "session.pid"),
+        "UMU_LOG": str(tmp_path / "umu.log"),
+        "SESSION_PID": str(tmp_path / "session.pid"),
         "XDG_DATA_HOME": str(tmp_path / "xdg"),
     }
 
@@ -88,8 +92,11 @@ def make_zip(tmp_path, files, name=ZIP):
     return zip_path
 
 
-GOOD = {EXE: b"installer", "AotR_Standalone_9.3.0_Installer-1a.bin": os.urandom(4096),
-        "AotR_Standalone_9.3.0_Installer-1b.bin": os.urandom(2048)}
+GOOD = {
+    EXE: b"installer",
+    "AotR_Standalone_9.3.0_Installer-1a.bin": os.urandom(4096),
+    "AotR_Standalone_9.3.0_Installer-1b.bin": os.urandom(2048),
+}
 
 
 def progress(events):
@@ -170,11 +177,14 @@ def test_without_7zip_it_says_what_to_install(tmp_path, monkeypatch):
 
 # Free space
 
+
 def test_too_little_space_says_how_much_more_is_needed(paths, monkeypatch):
     monkeypatch.setattr(aotr.shutil, "disk_usage", lambda path: Usage(0, 0, 3_500_000_000))
     aotr_zip = aotr.AotrZip(Path(ZIP), EXE, unpacked_bytes=2_000_000_000)
 
-    with pytest.raises(SetupError, match="^Not enough free space: Age of the Ring needs 6 GB more, but only 3 GB is free.$"):
+    with pytest.raises(
+        SetupError, match="^Not enough free space: Age of the Ring needs 6 GB more, but only 3 GB is free.$"
+    ):
         aotr.check_space(paths, aotr_zip)
 
 
@@ -190,6 +200,7 @@ def test_what_is_already_unpacked_or_installed_counts(paths, monkeypatch):
 
 
 # Unpacking
+
 
 @needs_7zip
 def test_unpacking_reports_progress_and_is_not_repeated(tmp_path, paths):
@@ -246,6 +257,7 @@ def test_unpacking_stops_when_cancelled(tmp_path, paths, monkeypatch):
 
 # The installer's progress
 
+
 def test_progress_is_how_far_the_installer_has_read_its_data_files(tmp_path):
     for name, size in (("X-1a.bin", 1000), ("X-1b.bin", 1000), ("X-2a.bin", 2000), ("notes.bin", 500)):
         (tmp_path / name).write_bytes(b"x" * size)
@@ -253,9 +265,16 @@ def test_progress_is_how_far_the_installer_has_read_its_data_files(tmp_path):
     assert aotr.install_percent(tmp_path) is None
 
     # A process reading the third file, 500 bytes in: 1000 + 1000 + 500 of 4000.
-    reader = subprocess.Popen([sys.executable, "-c", "import sys, time\nf = open(sys.argv[1], 'rb')\nf.seek(500)\n"
-                               "print('ready', flush=True)\ntime.sleep(30)", str(tmp_path / "X-2a.bin")],
-                              stdout=subprocess.PIPE, text=True)
+    reader = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            "import sys, time\nf = open(sys.argv[1], 'rb')\nf.seek(500)\nprint('ready', flush=True)\ntime.sleep(30)",
+            str(tmp_path / "X-2a.bin"),
+        ],
+        stdout=subprocess.PIPE,
+        text=True,
+    )
 
     try:
         assert reader.stdout.readline() == "ready\n"
@@ -279,6 +298,7 @@ def test_data_files_are_read_by_number_then_letter(tmp_path):
 
 # Running the installer
 
+
 def unpacked(paths):
     paths.aotr_unpack.mkdir(parents=True, exist_ok=True)
     (paths.aotr_unpack / EXE).write_text("installer")
@@ -291,8 +311,10 @@ def test_the_installer_runs_silently_in_the_unpack_folder(env, paths):
 
     aotr.run_installer(paths, Config(), "fake-proton", unpacked(paths), events.append)
 
-    assert Path(env["UMU_LOG"]).read_text() == \
-        f"./{EXE} /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /LOG=C:\\aotr-install.log|{paths.aotr_unpack}\n"
+    assert (
+        Path(env["UMU_LOG"]).read_text()
+        == f"./{EXE} /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /LOG=C:\\aotr-install.log|{paths.aotr_unpack}\n"
+    )
     assert programs.aotr_installed(paths)
     assert (paths.logs / "aotr-installer.log").read_text() == "installer log"
     assert not (paths.drive_c / "aotr-install.log").exists()
@@ -313,8 +335,10 @@ def test_cancelling_the_installer_ends_the_wine_session(tmp_path, env, paths, mo
     make_prefix(paths)
     monkeypatch.setenv("HANG", "1")
     log = tmp_path / "wineserver.log"
-    executable(tmp_path / "proton/files/bin/wineserver",
-               f"#!/bin/sh\necho \"$*\" >> '{log}'\n[ \"$1\" = -k ] && kill \"$(cat \"$SESSION_PID\")\" 2>/dev/null\nexit 0\n")
+    executable(
+        tmp_path / "proton/files/bin/wineserver",
+        f'#!/bin/sh\necho "$*" >> \'{log}\'\n[ "$1" = -k ] && kill "$(cat "$SESSION_PID")" 2>/dev/null\nexit 0\n',
+    )
     cancel = threading.Event()
     threading.Timer(0.3, cancel.set).start()
 
@@ -326,6 +350,7 @@ def test_cancelling_the_installer_ends_the_wine_session(tmp_path, env, paths, mo
 
 
 # The whole install
+
 
 def tree(paths):
     found = set()
@@ -374,7 +399,9 @@ def test_a_whole_install_leaves_the_game_and_cleans_up(tmp_path, env, paths):
     for setting in PREFIX_SETTINGS:
         expected_calls.append(f"{setting}|{os.getcwd()}")
 
-    expected_calls.append(f"./{EXE} /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /LOG=C:\\aotr-install.log|{paths.aotr_unpack}")
+    expected_calls.append(
+        f"./{EXE} /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /LOG=C:\\aotr-install.log|{paths.aotr_unpack}"
+    )
 
     assert tree(paths) == WHOLE_INSTALL_TREE
     assert Path(env["UMU_LOG"]).read_text().splitlines() == expected_calls
@@ -382,14 +409,18 @@ def test_a_whole_install_leaves_the_game_and_cleans_up(tmp_path, env, paths):
 
 # Downloading it from ModDB
 
+
 def remote_for(data, md5=None, url="http://127.0.0.1:1/never"):
     import hashlib
+
     from bfme_wizard.engine.moddb import RemoteFile
+
     return RemoteFile(name=ZIP, size=len(data), md5=md5 or hashlib.md5(data).hexdigest(), url=url)
 
 
 def test_the_download_is_checked_against_moddbs_md5(paths, moddb):
     from bfme_wizard.engine.moddb import find_aotr
+
     data = os.urandom(8192)
     moddb.publish(data, name=ZIP)
     events = []
@@ -403,6 +434,7 @@ def test_the_download_is_checked_against_moddbs_md5(paths, moddb):
 
 def test_a_download_with_the_wrong_md5_is_deleted(paths, moddb):
     from bfme_wizard.engine.moddb import find_aotr
+
     moddb.publish(b"what was uploaded", name=ZIP, md5="0" * 32)
 
     with pytest.raises(SetupError, match="Checksum mismatch"):
@@ -424,7 +456,7 @@ def test_before_downloading_there_must_be_room_for_the_unpacked_installer_and_th
     remote = remote_for(b"")
     remote = remote.__class__(remote.name, 1_000_000_000, remote.md5, remote.url)
 
-    aotr.check_download_space(paths, Config(), remote)    # 1 GB unpacked + 1.6 GB installed
+    aotr.check_download_space(paths, Config(), remote)  # 1 GB unpacked + 1.6 GB installed
 
     monkeypatch.setattr(aotr.shutil, "disk_usage", lambda path: Usage(0, 0, 2_000_000_000))
 
@@ -448,7 +480,7 @@ def test_an_unpacked_installer_of_the_same_zip_is_used_again(paths):
     unpacked(paths)
     (paths.aotr_unpack / "AotR_Standalone_9.3.0_Installer-1a.bin").write_bytes(b"x" * 10)
 
-    assert aotr.from_unpacked(paths, ZIP) is None                 # its unpack did not finish
+    assert aotr.from_unpacked(paths, ZIP) is None  # its unpack did not finish
     (paths.aotr_unpack / ".complete").write_text(ZIP + "\n")
     found = aotr.from_unpacked(paths, ZIP)
 

@@ -3,6 +3,7 @@
 A program that ends within seconds is the only sign that it failed to start, since Wine reports no error. It is reported
 softly, since a player may close it that fast on purpose.
 """
+
 from __future__ import annotations
 
 import threading
@@ -25,8 +26,13 @@ OpenProgram = Callable[..., int]
 class AppLauncher:
     """state per app: idle | running | quick (ended within QUICK_EXIT_SECONDS)"""
 
-    def __init__(self, open_program: OpenProgram, on_change: Callable[[], None], quick_seconds: float = QUICK_EXIT_SECONDS,
-                 clock: Callable[[], float] = time.monotonic) -> None:
+    def __init__(
+        self,
+        open_program: OpenProgram,
+        on_change: Callable[[], None],
+        quick_seconds: float = QUICK_EXIT_SECONDS,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
         self.open_program = open_program
         self.on_change = on_change
         self.quick_seconds = quick_seconds
@@ -46,7 +52,7 @@ class AppLauncher:
             quick = code != 0 or self._clock() - started < self.quick_seconds
             self.state[name] = "quick" if quick else "idle"
             self.on_change()
-            return False   # an idle callback that returns True would run again
+            return False  # an idle callback that returns True would run again
 
         def work() -> None:
             """Run the app and report its exit code."""

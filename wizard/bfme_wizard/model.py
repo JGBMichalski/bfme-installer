@@ -19,6 +19,7 @@ States:
   blocked    the system itself needs a change (a failed system check); the user must act, then recheck
   done       the setup is complete: the home screen
 """
+
 from __future__ import annotations
 
 from collections.abc import Iterable
@@ -46,7 +47,11 @@ JOB_STEPS: dict[str, list[tuple[str, str, str]]] = {
         ("shortcuts", "Add menu shortcuts", "Adding the AIO Launcher and the Arena to your application menu."),
     ],
     "aotr": [
-        ("aotr-download", "Download Age of the Ring", "Downloading the file from ModDB. It is large and can take a while."),
+        (
+            "aotr-download",
+            "Download Age of the Ring",
+            "Downloading the file from ModDB. It is large and can take a while.",
+        ),
         ("aotr-check", "Check the download", "Making sure the file is complete and there is room for it."),
         ("aotr-unpack", "Unpack the download", "Extracting the installer files. This takes a few minutes."),
         ("aotr-install", "Install Age of the Ring", "Copying the game and the mod. This can take an hour."),
@@ -59,6 +64,8 @@ JOB_STEPS: dict[str, list[tuple[str, str, str]]] = {
         ("mission-control", "Download Mission Control", "Fetching Mission Control from the BFME Arena site."),
     ],
 }
+
+
 def _games() -> list[tuple[str, str]]:
     """(key, name) of each game, in order. The names live with the games' folders, in engine/paths.py."""
     games = []
@@ -100,6 +107,7 @@ def plan_for(programs: Iterable[str], environment_ready: bool) -> list[str]:
 @dataclass(frozen=True)
 class Problem:
     """A failed system check and its fix command, if there is one."""
+
     message: str
     command: str | None
 
@@ -109,13 +117,13 @@ class SetupModel:
         self.state = "checking"
         self.log: list[str] = []
         self.installed: dict[str, str] = {}
-        self.selection: tuple[str, ...] = ()   # what the player chose to install (see PROGRAMS)
-        self.plan: list[str] = []              # the jobs that choice takes
-        self.job: str | None = None            # the job that is running, waiting for the player, or failed
-        self.started_from_home = False         # the plan began on the home screen: stopping it goes back there
-        self.just_finished = False             # this session ran a plan to the end
-        self.removing: str | None = None       # the program being removed, while the state is "removing"
-        self.file_note: str | None = None      # why the app could not download the file itself
+        self.selection: tuple[str, ...] = ()  # what the player chose to install (see PROGRAMS)
+        self.plan: list[str] = []  # the jobs that choice takes
+        self.job: str | None = None  # the job that is running, waiting for the player, or failed
+        self.started_from_home = False  # the plan began on the home screen: stopping it goes back there
+        self.just_finished = False  # this session ran a plan to the end
+        self.removing: str | None = None  # the program being removed, while the state is "removing"
+        self.file_note: str | None = None  # why the app could not download the file itself
         self.steps: dict[str, str] = {}
         self._reset_run()
 
@@ -181,7 +189,7 @@ class SetupModel:
         """Forget what the last script run reported. Step results stay."""
         self.current: str | None = None
         self.progress: int | None = None
-        self.speed: int | None = None          # bytes per second of the download that is running
+        self.speed: int | None = None  # bytes per second of the download that is running
         if not keep_checks:
             self.checks: dict[str, events.Check] = {}
             self.fixes: dict[str, str] = {}
@@ -354,7 +362,7 @@ class SetupModel:
         ids = self.step_ids
         if self.current in ids:
             return ids.index(self.current) + 1
-        return max(1, min(self.done_count + 1, len(ids)))   # not past the last step, while the script is finishing up
+        return max(1, min(self.done_count + 1, len(ids)))  # not past the last step, while the script is finishing up
 
     @property
     def last_check_message(self) -> str:
@@ -384,8 +392,7 @@ class SetupModel:
     def check_rows(self) -> list[tuple[str, str, str, str | None]]:
         """Return a list of shown checks as (id, level, message, fix command) tuples, problems first."""
         rows = [
-            (cid, c.level, c.message, self.fixes.get(cid))
-            for cid, c in self.checks.items() if cid not in HIDDEN_CHECKS
+            (cid, c.level, c.message, self.fixes.get(cid)) for cid, c in self.checks.items() if cid not in HIDDEN_CHECKS
         ]
         order = {"fail": 0, "warn": 1, "ok": 2}
         return sorted(rows, key=lambda r: order[r[1]])
@@ -410,7 +417,7 @@ def games_line(model: SetupModel) -> str:
 
 
 def speed_text(bytes_per_second: int) -> str:
-    """"3.2 MB/s" or "640 KB/s"."""
+    """ "3.2 MB/s" or "640 KB/s"."""
     if bytes_per_second >= 1_000_000:
         return f"{bytes_per_second / 1_000_000:.1f} MB/s"
 

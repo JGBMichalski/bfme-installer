@@ -3,6 +3,7 @@
 The lock is an flock on <data dir>/.setup.lock, the same file and kind of lock the setup script took, so the two keep each other
 out while both exist.
 """
+
 from __future__ import annotations
 
 import fcntl
@@ -19,8 +20,10 @@ def busy_message(environ: dict[str, str] | None = None) -> str:
     app_id = env.get("FLATPAK_ID")
 
     if app_id:
-        return (f"Another setup is already running. Wait for it to finish. If you stopped one earlier and it is stuck, run: "
-                f"flatpak kill {app_id}")
+        return (
+            f"Another setup is already running. Wait for it to finish. If you stopped one earlier and it is stuck, run: "
+            f"flatpak kill {app_id}"
+        )
 
     return "Another setup is already running. Wait for it to finish."
 

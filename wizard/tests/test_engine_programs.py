@@ -1,4 +1,5 @@
 """engine.programs: installing, updating and removing the programs, and the status report."""
+
 import hashlib
 import os
 import threading
@@ -11,6 +12,7 @@ from bfme_wizard.engine.config import Config
 from bfme_wizard.engine.errors import JobCancelled, SetupError
 from bfme_wizard.engine.events import Log, Warn
 from bfme_wizard.engine.paths import Paths
+
 
 def executable(path, text):
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -65,8 +67,23 @@ LAYOUTS = {
     "a game folder without its program": ["prefix", "bfme2-folder"],
 }
 
-STATUS_KEYS = ["runner", "graphics", "gpu", "fps-counter", "graphics-cards", "prefix", "aio-launcher", "arena",
-               "aotr", "workshop", "mission-control", "bfme1", "bfme2", "rotwk", "complete"]
+STATUS_KEYS = [
+    "runner",
+    "graphics",
+    "gpu",
+    "fps-counter",
+    "graphics-cards",
+    "prefix",
+    "aio-launcher",
+    "arena",
+    "aotr",
+    "workshop",
+    "mission-control",
+    "bfme1",
+    "bfme2",
+    "rotwk",
+    "complete",
+]
 
 # What differs, per layout, from a status where nothing is there. An unfinished install counts as missing, and only a
 # prefix with a launcher or AotR in it is complete.
@@ -80,8 +97,14 @@ STATUS_CHANGES = {
     "aotr still installing": {"prefix": "ready"},
     "programs without a prefix": {"aio-launcher": "installed", "aotr": "installed"},
     "tools only": {"prefix": "ready", "workshop": "installed", "mission-control": "installed"},
-    "games": {"prefix": "ready", "aio-launcher": "installed", "bfme1": "installed", "bfme2": "installed",
-              "rotwk": "installed", "complete": "yes"},
+    "games": {
+        "prefix": "ready",
+        "aio-launcher": "installed",
+        "bfme1": "installed",
+        "bfme2": "installed",
+        "rotwk": "installed",
+        "complete": "yes",
+    },
     "a game folder without its program": {"prefix": "ready"},
 }
 
@@ -142,6 +165,7 @@ def test_the_status_of_each_layout(paths, layout, tmp_path, monkeypatch):
 
 # Waiting for a file
 
+
 def test_a_file_that_stops_growing_is_done(tmp_path):
     path = tmp_path / "f"
     timer = threading.Timer(0.1, put, [path])
@@ -201,17 +225,21 @@ def aio_launcher_env(tmp_path, paths, monkeypatch, file_server):
 def test_the_aio_launcher_setup_runs_once_and_the_session_is_ended(paths, aio_launcher_env):
     events = []
 
-    programs.install_aio_launcher(paths, Config(), aio_launcher_env["proton"], events.append, url=aio_launcher_env["url"])
+    programs.install_aio_launcher(
+        paths, Config(), aio_launcher_env["proton"], events.append, url=aio_launcher_env["url"]
+    )
 
     tmp = aio_launcher_env["tmp"]
     setup = paths.downloads / "AllInOneLauncherSetup.exe"
     assert programs.aio_launcher_installed(paths)
-    assert (tmp / "umu.log").read_text() == f"{setup}|\n"      # the first start is not runinprefix
+    assert (tmp / "umu.log").read_text() == f"{setup}|\n"  # the first start is not runinprefix
     assert (tmp / "wineserver.log").read_text() == "-k\n-w\n"
     assert not setup.exists()
     assert (paths.logs / "aio-launcher-setup.log").exists()
-    assert logs(events) == ["Downloading AllInOneLauncherSetup.exe.",
-                            "Installing the AIO Launcher. It may open for a moment; the setup closes it again."]
+    assert logs(events) == [
+        "Downloading AllInOneLauncherSetup.exe.",
+        "Installing the AIO Launcher. It may open for a moment; the setup closes it again.",
+    ]
 
 
 def test_an_installed_aio_launcher_is_left_alone(paths, aio_launcher_env, file_server):
@@ -240,7 +268,9 @@ def test_a_setup_that_installs_nothing_fails_and_stays_unfinished(paths, aio_lau
     monkeypatch.setattr(programs, "AIO_LAUNCHER_WAIT_SEC", 0.3)
 
     with pytest.raises(SetupError, match="The AIO Launcher was not installed. See .*aio-launcher-setup.log"):
-        programs.install_aio_launcher(paths, Config(), aio_launcher_env["proton"], [].append, url=aio_launcher_env["url"])
+        programs.install_aio_launcher(
+            paths, Config(), aio_launcher_env["proton"], [].append, url=aio_launcher_env["url"]
+        )
 
     assert (paths.prefix / programs.AIO_LAUNCHER_INSTALLING).exists()
     assert (aio_launcher_env["tmp"] / "wineserver.log").read_text() == "-k\n-w\n"
@@ -248,12 +278,22 @@ def test_a_setup_that_installs_nothing_fails_and_stays_unfinished(paths, aio_lau
 
 def test_without_a_wine_server_it_warns(paths, aio_launcher_env, tmp_path):
     os.remove(tmp_path / "proton/files/bin/wineserver")
-    executable(tmp_path / "bin" / "umu-run", "#!/bin/sh\nmkdir -p \"$(dirname \"$AIO_LAUNCHER_EXE\")\"; echo x > \"$AIO_LAUNCHER_EXE\"\n")
+    executable(
+        tmp_path / "bin" / "umu-run",
+        '#!/bin/sh\nmkdir -p "$(dirname "$AIO_LAUNCHER_EXE")"; echo x > "$AIO_LAUNCHER_EXE"\n',
+    )
     events = []
 
-    programs.install_aio_launcher(paths, Config(), aio_launcher_env["proton"], events.append, url=aio_launcher_env["url"])
+    programs.install_aio_launcher(
+        paths, Config(), aio_launcher_env["proton"], events.append, url=aio_launcher_env["url"]
+    )
 
-    assert Warn("Could not find the Wine server to close the programs in the game environment. Close any that are still open.") in events
+    assert (
+        Warn(
+            "Could not find the Wine server to close the programs in the game environment. Close any that are still open."
+        )
+        in events
+    )
 
 
 # The Arena
@@ -273,7 +313,9 @@ def arena_server(file_server):
 
 
 def install_arena(paths, host, events=None):
-    programs.install_or_update_arena(paths, (events if events is not None else []).append, files_host=host, server_host=host)
+    programs.install_or_update_arena(
+        paths, (events if events is not None else []).append, files_host=host, server_host=host
+    )
 
 
 def test_a_missing_arena_is_downloaded_and_checked(paths, arena_server):
@@ -334,7 +376,9 @@ def test_a_download_with_the_wrong_checksum_keeps_the_old_arena(paths, arena_ser
     server.files[HASH_PATH] = b"0" * 32
     put(paths.arena_exe, "old build")
 
-    with pytest.raises(SetupError, match=f"Arena download failed its checksum check \\(expected {'0' * 32}, got {ARENA_MD5}\\)."):
+    with pytest.raises(
+        SetupError, match=f"Arena download failed its checksum check \\(expected {'0' * 32}, got {ARENA_MD5}\\)."
+    ):
         install_arena(paths, host)
 
     assert paths.arena_exe.read_text() == "old build"
@@ -342,6 +386,7 @@ def test_a_download_with_the_wrong_checksum_keeps_the_old_arena(paths, arena_ser
 
 
 # The tools
+
 
 @pytest.mark.parametrize("tool", programs.TOOLS)
 def test_a_tool_is_downloaded_into_its_folder(paths, file_server, tool):
@@ -356,11 +401,21 @@ def test_a_tool_is_downloaded_into_its_folder(paths, file_server, tool):
 
 # Removing
 
+
 def everything(paths):
     """Every program, the games, a player's settings and what interrupted installs leave behind."""
     make_prefix(paths)
 
-    for part in ("aio-launcher", "arena", "aotr", "workshop", "mission-control", "bfme2", "aio-launcher-marker", "aotr-marker"):
+    for part in (
+        "aio-launcher",
+        "arena",
+        "aotr",
+        "workshop",
+        "mission-control",
+        "bfme2",
+        "aio-launcher-marker",
+        "aotr-marker",
+    ):
         build(paths, [part])
 
     put(paths.drive_c / "users/steamuser/AppData/Roaming/Age of the Ring/Options.ini")

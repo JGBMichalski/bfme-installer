@@ -1,4 +1,5 @@
 """Connects the model to the setup's jobs. No GTK: the UI calls these methods and re-renders on `on_change`."""
+
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
@@ -21,15 +22,20 @@ PROGRAM_OF = {
 
 
 class Controller:
-    def __init__(self, runner: JobRunner, on_change: Callable[[], None], offer: str | None = None,
-                 jobs: ModuleType | object = engine_jobs) -> None:
+    def __init__(
+        self,
+        runner: JobRunner,
+        on_change: Callable[[], None],
+        offer: str | None = None,
+        jobs: ModuleType | object = engine_jobs,
+    ) -> None:
         self.runner = runner
-        self.jobs = jobs   # engine/jobs.py; the tests give a stand-in
+        self.jobs = jobs  # engine/jobs.py; the tests give a stand-in
         self.model = SetupModel()
         self._on_change = on_change
         self.apps = AppLauncher(jobs.open_program, on_change)
-        self._aotr_zip: str | None = None   # the file the player chose for Age of the Ring, kept for Retry and Resume
-        self._offer = offer                 # what the shortcut that opened the wizard wanted, used once (see start)
+        self._aotr_zip: str | None = None  # the file the player chose for Age of the Ring, kept for Retry and Resume
+        self._offer = offer  # what the shortcut that opened the wizard wanted, used once (see start)
 
     def start(self) -> None:
         """Check what is installed. The old plan is dropped, the choice stays."""
@@ -37,7 +43,7 @@ class Controller:
             return
         self._aotr_zip = None
         self.model.begin_check()
-        self.model.installed.clear()   # what the status job reports now replaces what was known before (a reset, say)
+        self.model.installed.clear()  # what the status job reports now replaces what was known before (a reset, say)
         self._on_change()
         self.runner.run(self.jobs.status, self._event, self._status_done)
 
@@ -50,7 +56,7 @@ class Controller:
             return
         if not self.model.begin_plan(programs):
             return
-        self._aotr_zip = None   # a new choice asks for the file again
+        self._aotr_zip = None  # a new choice asks for the file again
         self._run_job(self.model.first_unfinished_job())
 
     def resume(self) -> None:
@@ -137,7 +143,7 @@ class Controller:
 
         def finished(code: int) -> None:
             on_done(code == 0)
-            self.start()   # show the setup from the beginning (or the error, if the reset failed)
+            self.start()  # show the setup from the beginning (or the error, if the reset failed)
 
         self.model.begin_check()
         self._on_change()
@@ -152,7 +158,7 @@ class Controller:
         def finished(code: int) -> None:
             if on_done is not None:
                 on_done(code == 0)
-            self.start()   # the saved backend, and the checks that may depend on it
+            self.start()  # the saved backend, and the checks that may depend on it
 
         self.runner.run(partial(self.jobs.switch_graphics, backend), self._event, finished)
         return True
@@ -166,7 +172,7 @@ class Controller:
         def finished(code: int) -> None:
             if on_done is not None:
                 on_done(code == 0)
-            self.start()   # the saved settings
+            self.start()  # the saved settings
 
         self.runner.run(partial(self.jobs.change_option, option, value), self._event, finished)
         return True
@@ -178,7 +184,7 @@ class Controller:
 
         def finished(code: int) -> None:
             on_done(code == 0)
-            self.start()   # the home screen without it, or the start page when it was the last one
+            self.start()  # the home screen without it, or the start page when it was the last one
 
         self.model.begin_remove(program)
         self._on_change()
@@ -211,7 +217,7 @@ class Controller:
         """Handle the completion of the status job."""
         self.model.finish_status(code)
         offered = PROGRAM_OF.get(self._offer or "")
-        self._offer = None   # a shortcut is answered once, not every time the player comes back to the home screen
+        self._offer = None  # a shortcut is answered once, not every time the player comes back to the home screen
         done = self.model.state == "done"
         wants_aotr = done and offered == "aotr" and not self.model.aotr_installed
         if offered and not done:
@@ -221,11 +227,11 @@ class Controller:
     def _after_status(self, done: bool, wants_aotr: bool) -> None:
         """Handle the state after the status job has completed."""
         if wants_aotr:
-            self.install(["aotr"])   # the shortcut of a mod that is not installed: go and install it
+            self.install(["aotr"])  # the shortcut of a mod that is not installed: go and install it
             return
         self._on_change()
         if done:
-            self.run_checks()        # quietly: a failed check shows a banner on the home screen
+            self.run_checks()  # quietly: a failed check shows a banner on the home screen
 
     def _sync_shortcuts(self, then: Callable[[], None]) -> None:
         """Sync shortcuts with what is installed, then continue. Call `then` when done."""
@@ -233,7 +239,7 @@ class Controller:
 
     def _checks_done(self, code: int) -> None:
         """Handle the completion of the checks job."""
-        self.model.error = None   # a failing check job ends with an error; it is not a setup error
+        self.model.error = None  # a failing check job ends with an error; it is not a setup error
         self._on_change()
 
     def _job_done(self, code: int) -> None:

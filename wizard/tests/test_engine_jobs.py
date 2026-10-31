@@ -1,4 +1,5 @@
 """engine.jobs: each job's events, written out as status lines."""
+
 import hashlib
 import shutil
 import subprocess
@@ -6,7 +7,8 @@ import threading
 from pathlib import Path
 
 import pytest
-from bfme_wizard.engine import aotr, download, doctor, graphics, jobs, programs, shortcuts
+
+from bfme_wizard.engine import aotr, doctor, download, graphics, jobs, programs, shortcuts
 from bfme_wizard.engine.events import (
     Cancelled,
     Check,
@@ -39,6 +41,8 @@ esac
 echo "umu $*" >> "$UMU_LOG"
 exit 0
 """
+
+
 def executable(path, text):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text)
@@ -56,8 +60,11 @@ class World:
         executable(bin_dir / "lspci", "#!/bin/sh\n")
         self.home = tmp_path / "home"
         self.env = {
-            "PATH": f"{bin_dir}:/usr/bin:/bin", "HOME": str(self.home), "BFME_HOME": str(self.paths.base),
-            "XDG_DATA_HOME": str(tmp_path / "xdg"), "BFME_PROTONPATH": "fake-proton",
+            "PATH": f"{bin_dir}:/usr/bin:/bin",
+            "HOME": str(self.home),
+            "BFME_HOME": str(self.paths.base),
+            "XDG_DATA_HOME": str(tmp_path / "xdg"),
+            "BFME_PROTONPATH": "fake-proton",
             "UMU_LOG": str(tmp_path / "umu.log"),
         }
 
@@ -69,14 +76,18 @@ class World:
         # The downloads come from the local server.
         file_server.files["/setup.exe"] = b"fake-download"
         file_server.files["/tool.exe"] = b"fake-download"
-        file_server.files["/api/applications/versionHash?name=online-arena&version=main"] = \
+        file_server.files["/api/applications/versionHash?name=online-arena&version=main"] = (
             hashlib.md5(b"arena-binary").hexdigest().encode()
+        )
         file_server.files["/application-builds/online-arena-main"] = b"arena-binary"
         monkeypatch.setattr(programs, "AIO_LAUNCHER_URL", file_server.url("/setup.exe"))
         monkeypatch.setattr(programs, "ARENA_FILES_HOST", file_server.url(""))
         monkeypatch.setattr(programs, "ARENA_SERVER_HOST", file_server.url(""))
-        monkeypatch.setattr(programs, "TOOL_URLS", {"workshop": file_server.url("/tool.exe"),
-                                                    "mission-control": file_server.url("/tool.exe")})
+        monkeypatch.setattr(
+            programs,
+            "TOOL_URLS",
+            {"workshop": file_server.url("/tool.exe"), "mission-control": file_server.url("/tool.exe")},
+        )
 
         # The 32-bit extensions are there, the menu folder is shared, and the computer suits Vulkan.
         lib = tmp_path / "lib"
@@ -145,11 +156,21 @@ def world(tmp_path, monkeypatch, file_server):
 def status_lines(**changed):
     """The STATUS lines every job ends with: nothing installed, unless changed (use _ for -)."""
     values = {
-        "runner": "proton", "graphics": "vulkan", "gpu": "auto", "fps-counter": "0",
+        "runner": "proton",
+        "graphics": "vulkan",
+        "gpu": "auto",
+        "fps-counter": "0",
         "graphics-cards": "0",
-        "prefix": "ready", "aio-launcher": "missing",
-        "arena": "missing", "aotr": "missing", "workshop": "missing", "mission-control": "missing",
-        "bfme1": "missing", "bfme2": "missing", "rotwk": "missing", "complete": "no",
+        "prefix": "ready",
+        "aio-launcher": "missing",
+        "arena": "missing",
+        "aotr": "missing",
+        "workshop": "missing",
+        "mission-control": "missing",
+        "bfme1": "missing",
+        "bfme2": "missing",
+        "rotwk": "missing",
+        "complete": "no",
     }
 
     for key, value in changed.items():
@@ -167,6 +188,7 @@ NO_WINE_SERVER = "@bfme WARN Could not find the Wine server to close the program
 
 
 # What is there
+
 
 def test_status_of_nothing(world):
     code, events = world.engine(jobs.status)
@@ -200,6 +222,7 @@ def test_setup_complete_and_ready_to_open(world):
 
 # Installing
 
+
 def test_prepare(world):
     code, events = world.engine(jobs.prepare)
 
@@ -224,7 +247,10 @@ def test_prepare_stops_at_a_failed_check(world, monkeypatch):
     code, events = world.engine(jobs.prepare)
 
     assert code == jobs.FAILED
-    assert lines(events)[-1] == "@bfme ERROR doctor Your system needs a change first. Fix the problems above, then try again."
+    assert (
+        lines(events)[-1]
+        == "@bfme ERROR doctor Your system needs a change first. Fix the problems above, then try again."
+    )
     assert not world.paths.prefix.exists()
 
 
@@ -315,7 +341,7 @@ def test_age_of_the_ring_from_the_players_file(world):
         *status_lines(aotr="installed", complete="yes"),
         "@bfme DONE",
     ]
-    assert zip_path.exists()                    # the player's own file is never deleted
+    assert zip_path.exists()  # the player's own file is never deleted
 
 
 @needs_7zip
@@ -328,8 +354,8 @@ def test_age_of_the_ring_downloaded_by_the_app(world, moddb):
     assert code == jobs.OK
     assert lines(events)[:2] == ["@bfme STEP aotr-download start", "@bfme STEP aotr-download done"]
     assert Status("aotr", "installed") in events
-    assert not (world.paths.downloads / name).exists()        # deleted once unpacked
-    assert any(isinstance(event, Speed) for event in events)   # the download reported its speed
+    assert not (world.paths.downloads / name).exists()  # deleted once unpacked
+    assert any(isinstance(event, Speed) for event in events)  # the download reported its speed
     assert Log("Age of the Ring is installed.") in events
 
 
@@ -362,8 +388,13 @@ def test_a_retry_after_a_failed_install_does_not_download_again(world, moddb, mo
     moddb.publish(aotr_zip(world).read_bytes())
     world.make_prefix()
     monkeypatch.setenv("NO_INSTALL", "1")
-    executable(world.tmp / "bin" / "umu-run", FAKE_UMU.replace('  *AotR_Standalone*Installer.exe)\n',
-                                                                 '  *AotR_Standalone*Installer.exe)\n      [ -n "$NO_INSTALL" ] && exit 3\n'))
+    executable(
+        world.tmp / "bin" / "umu-run",
+        FAKE_UMU.replace(
+            "  *AotR_Standalone*Installer.exe)\n",
+            '  *AotR_Standalone*Installer.exe)\n      [ -n "$NO_INSTALL" ] && exit 3\n',
+        ),
+    )
 
     code, _events = world.engine(jobs.aotr_install, None)
     assert code == jobs.FAILED
@@ -380,20 +411,30 @@ def test_a_retry_after_a_failed_install_does_not_download_again(world, moddb, mo
 
 # Changing what is there
 
+
 @pytest.mark.parametrize("program", ["aio-launcher", "arena", "aotr", "workshop", "mission-control"])
 def test_remove(world, program):
     world.make_prefix()
 
-    for exe in (world.paths.aio_launcher_exe, world.paths.arena_exe, world.paths.aotr_exe,
-                world.paths.tool_exe("workshop"), world.paths.tool_exe("mission-control")):
+    for exe in (
+        world.paths.aio_launcher_exe,
+        world.paths.arena_exe,
+        world.paths.aotr_exe,
+        world.paths.tool_exe("workshop"),
+        world.paths.tool_exe("mission-control"),
+    ):
         exe.parent.mkdir(parents=True, exist_ok=True)
         exe.write_text("x")
 
     code, events = world.engine(jobs.remove, program)
 
     everything_but_this = {
-        "aio_launcher": "installed", "arena": "installed", "aotr": "installed", "workshop": "installed",
-        "mission_control": "installed", "complete": "yes",
+        "aio_launcher": "installed",
+        "arena": "installed",
+        "aotr": "installed",
+        "workshop": "installed",
+        "mission_control": "installed",
+        "complete": "yes",
     }
     everything_but_this[program.replace("-", "_")] = "missing"
 
@@ -429,6 +470,7 @@ def test_reset(world):
 
 
 # What only the engine does
+
 
 def test_a_stop_takes_effect_before_the_next_step(world):
     cancel = threading.Event()
@@ -492,6 +534,7 @@ def test_progress_is_reported_while_proton_downloads(world, monkeypatch, file_se
 
 
 # Opening a program
+
 
 def test_opening_age_of_the_ring_starts_it_from_its_folder(world):
     world.make_prefix()

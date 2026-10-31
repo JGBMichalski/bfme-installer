@@ -3,6 +3,7 @@ itself (a bot check, a changed page, no connection).
 
 The system file chooser works in the Flatpak sandbox without extra permission.
 """
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -15,10 +16,9 @@ from gi.repository import Adw, GLib, Gtk  # noqa: E402
 
 from .catalog import AOTR_DOWNLOAD_GB as DOWNLOAD_GB
 from .catalog import AOTR_INSTALLED_GB
-from .engine.moddb import AOTR_PAGE_URL as MODDB_URL
 from .widgets import pill
 
-SPACE_GB = DOWNLOAD_GB + AOTR_INSTALLED_GB   # the unpacked download (about as big as the zip), then the installed game
+SPACE_GB = DOWNLOAD_GB + AOTR_INSTALLED_GB  # the unpacked download (about as big as the zip), then the installed game
 INTRO = (
     "It comes with its own launcher and its own copy of the games, so the games you already have stay as they are. "
     "This app could not download it itself, so you do that part in your web browser and this app does the rest."
@@ -26,41 +26,54 @@ INTRO = (
 
 
 class AotrDownloadPage:
-    def __init__(self, open_moddb: Callable[[], None], choose_file: Callable[[], None],
-                 leave: Callable[[], None]) -> None:
+    def __init__(
+        self, open_moddb: Callable[[], None], choose_file: Callable[[], None], leave: Callable[[], None]
+    ) -> None:
         self.view = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER)
         clamp = Adw.Clamp(maximum_size=560, margin_top=16, margin_bottom=16, margin_start=18, margin_end=18)
         # Keep tight so Choose file stays visible at the default window height.
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         self.count = Gtk.Label(css_classes=["dim-label"])
         box.append(self.count)
-        box.append(Gtk.Label(label="Download Age of the Ring", css_classes=["title-1"], wrap=True,
-                             justify=Gtk.Justification.CENTER))
-        box.append(Gtk.Label(
-            label=f"The download is {DOWNLOAD_GB} GB, and installing needs about {SPACE_GB} GB more free space.",
-            css_classes=["heading"], wrap=True, justify=Gtk.Justification.CENTER,
-        ))
+        box.append(
+            Gtk.Label(
+                label="Download Age of the Ring", css_classes=["title-1"], wrap=True, justify=Gtk.Justification.CENTER
+            )
+        )
+        box.append(
+            Gtk.Label(
+                label=f"The download is {DOWNLOAD_GB} GB, and installing needs about {SPACE_GB} GB more free space.",
+                css_classes=["heading"],
+                wrap=True,
+                justify=Gtk.Justification.CENTER,
+            )
+        )
         box.append(Gtk.Label(label=INTRO, wrap=True, justify=Gtk.Justification.CENTER, css_classes=["dim-label"]))
-        self.why = Gtk.Label(wrap=True, justify=Gtk.Justification.CENTER, css_classes=["dim-label", "caption"], visible=False)
+        self.why = Gtk.Label(
+            wrap=True, justify=Gtk.Justification.CENTER, css_classes=["dim-label", "caption"], visible=False
+        )
         box.append(self.why)
 
         steps = Adw.PreferencesGroup()
         first = Adw.ActionRow(
             title="1. Open the download page",
-            subtitle="It opens in your web browser.", subtitle_lines=2,
+            subtitle="It opens in your web browser.",
+            subtitle_lines=2,
         )
         button = Gtk.Button(label="Open ModDB", valign=Gtk.Align.CENTER, css_classes=["pill"])
         button.connect("clicked", lambda *_: open_moddb())
         first.add_suffix(button)
         steps.add(first)
-        steps.add(Adw.ActionRow(
-            title="2. Click Download Now",
-            subtitle=(
-                "Wait until your browser has finished the whole file. If ModDB asks you to prove you are "
-                "human, do that first."
-            ),
-            subtitle_lines=4,
-        ))
+        steps.add(
+            Adw.ActionRow(
+                title="2. Click Download Now",
+                subtitle=(
+                    "Wait until your browser has finished the whole file. If ModDB asks you to prove you are "
+                    "human, do that first."
+                ),
+                subtitle_lines=4,
+            )
+        )
         third = Adw.ActionRow(
             title="3. Choose the file you downloaded",
             subtitle=GLib.markup_escape_text(

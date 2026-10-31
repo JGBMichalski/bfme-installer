@@ -2,6 +2,7 @@
 
 The file holds plain `KEY=value` lines, as the setup script wrote them. Its values win over the environment.
 """
+
 from __future__ import annotations
 
 import os
@@ -10,26 +11,29 @@ from pathlib import Path
 
 DEFAULT_PROTONPATH = "UMU-Proton-10.0-4"
 GRAPHICS = ("vulkan", "opengl")
-GPUS = ("auto", "dedicated", "integrated")   # which graphics card, on a computer with two
+GPUS = ("auto", "dedicated", "integrated")  # which graphics card, on a computer with two
+
 
 class ConfigError(ValueError):
     pass
 
+
 @dataclass(frozen=True)
 class Config:
     graphics: str = "vulkan"
-    graphics_chosen: bool = False     # set by the player or an earlier setup; detection never overrides it
+    graphics_chosen: bool = False  # set by the player or an earlier setup; detection never overrides it
     protonpath: str = DEFAULT_PROTONPATH
     extra_env: dict[str, str] = field(default_factory=dict)
     keep_aotr_download: bool = False  # keep the Age of the Ring zip the app downloaded, after unpacking it
     gpu: str = "auto"
+
 
 def _parse(line: str) -> tuple[str, str] | None:
     """(key, value) for a `KEY=value` or `export KEY=value` line, else None. Quotes around the value are removed."""
     line = line.strip()
 
     if line.startswith("export "):
-        line = line[len("export "):].lstrip()
+        line = line[len("export ") :].lstrip()
 
     key, sep, value = line.partition("=")
 
@@ -44,14 +48,17 @@ def _parse(line: str) -> tuple[str, str] | None:
 
     return key, value
 
+
 def _lines(path: Path) -> list[str]:
     try:
         return path.read_text(encoding="utf-8").splitlines()
     except FileNotFoundError:
         return []
 
+
 def read_file(path: Path) -> dict[str, str]:
     return dict(pair for pair in map(_parse, _lines(path)) if pair)
+
 
 def load(path: Path, environ: dict[str, str] | None = None) -> Config:
     env = os.environ if environ is None else environ
@@ -90,7 +97,6 @@ def load(path: Path, environ: dict[str, str] | None = None) -> Config:
         keep_aotr_download=values.get("BFME_KEEP_AOTR_DOWNLOAD", "") in ("1", "yes", "true"),
         gpu=gpu,
     )
-
 
 
 def save(path: Path, key: str, value: str) -> None:

@@ -2,6 +2,7 @@
 
 The build puts CHANGELOG.md in the app. The last version whose notes were shown is kept in the data folder.
 """
+
 from __future__ import annotations
 
 import re

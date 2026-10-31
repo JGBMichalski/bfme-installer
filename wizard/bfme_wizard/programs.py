@@ -2,6 +2,7 @@
 
 It only shows the model and asks the window to act. The window asks the player to confirm a removal, because that deletes files.
 """
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -24,13 +25,19 @@ DESCRIPTION = (
 
 
 def _join(names: list[str]) -> str:
-    """"the Arena", "the AIO Launcher and the Arena", "the AIO Launcher, the Arena and Age of the Ring"."""
+    """ "the Arena", "the AIO Launcher and the Arena", "the AIO Launcher, the Arena and Age of the Ring"."""
     return names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
 
 
 class ProgramsPage:
-    def __init__(self, controller: Controller, *, install: Callable[[str], None], remove: Callable[[str], None],
-                 open_app: Callable[[str], None]) -> None:
+    def __init__(
+        self,
+        controller: Controller,
+        *,
+        install: Callable[[str], None],
+        remove: Callable[[str], None],
+        open_app: Callable[[str], None],
+    ) -> None:
         self.controller = controller
         self._install, self._remove, self._open = install, remove, open_app
         self._items = (*CATALOG, *TOOLS)
@@ -42,18 +49,23 @@ class ProgramsPage:
 
     def rows(self) -> list[Adw.ActionRow]:
         """The rows of the programs as they are now, one each."""
-        return list(self._rows[:len(CATALOG)])
+        return list(self._rows[: len(CATALOG)])
 
     def tool_rows(self) -> list[Adw.ActionRow]:
         """The rows of the tools as they are now, one each."""
-        return list(self._rows[len(CATALOG):])
+        return list(self._rows[len(CATALOG) :])
 
     def refresh(self) -> None:
         """Rebuild the rows when what they show has changed, and not on every line of output: a button pressed or a dialog
         opened from a row must not be pulled away from under the player."""
         c, m = self.controller, self.controller.model
-        key = (tuple(m.is_installed(p.key) for p in self._items), tuple(c.apps.state[p.key] for p in self._items),
-               m.state, m.removing, c.checking)
+        key = (
+            tuple(m.is_installed(p.key) for p in self._items),
+            tuple(c.apps.state[p.key] for p in self._items),
+            m.state,
+            m.removing,
+            c.checking,
+        )
         if key == self._key:
             return
         self._key = key
@@ -61,7 +73,7 @@ class ProgramsPage:
         self._rows = [self._row(info, running) for info in self._items]
         programs = Adw.PreferencesGroup()
         tools = Adw.PreferencesGroup(title="Tools")
-        for info, row in zip(self._items, self._rows):
+        for info, row in zip(self._items, self._rows, strict=True):
             (tools if info in TOOLS else programs).add(row)
         page = Adw.PreferencesPage(description=DESCRIPTION)
         page.add(programs)
@@ -90,7 +102,7 @@ class ProgramsPage:
         else:
             row.set_subtitle(GLib.markup_escape_text(self._missing_text(info)))
             button = Gtk.Button(label="Install", valign=Gtk.Align.CENTER, css_classes=["suggested-action"])
-            button.set_sensitive(not c.checking)   # the script ignores a click while it is busy
+            button.set_sensitive(not c.checking)  # the script ignores a click while it is busy
             button.connect("clicked", lambda *_: self._install(info.key))
         row.add_suffix(button)
         return row

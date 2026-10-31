@@ -5,7 +5,12 @@ import pytest
 from gi.repository import GLib
 
 from bfme_wizard.updater import (
-    Updater, installed_version, is_newer, parse_version, restart_command, version_from_redirect,
+    Updater,
+    installed_version,
+    is_newer,
+    parse_version,
+    restart_command,
+    version_from_redirect,
 )
 
 
@@ -36,7 +41,9 @@ def test_redirect():
 
 
 def test_installed_version_from_the_metainfo(tmp_path):
-    (tmp_path / "x.Y.metainfo.xml").write_text('<releases>\n  <release version="0.2.2" date="2026-10-06"/>\n</releases>')
+    (tmp_path / "x.Y.metainfo.xml").write_text(
+        '<releases>\n  <release version="0.2.2" date="2026-10-06"/>\n</releases>'
+    )
     assert installed_version("x.Y", str(tmp_path)) == "0.2.2"
     assert installed_version("missing.App", str(tmp_path)) is None
     (tmp_path / "dev.App.metainfo.xml").write_text('<release version="dev" date="2026-10-06"/>')
@@ -69,6 +76,7 @@ def run_check(tmp_path, monkeypatch):
         GLib.timeout_add(1500, loop.quit)
         loop.run()
         return updater, states
+
     return run
 
 
@@ -123,7 +131,16 @@ class FakeBus:
         self.unsubscribed = True
 
     def emit(self, **info):
-        self.callback(None, None, None, None, "Progress", GLib.Variant("(a{sv})", ({k: GLib.Variant("u" if isinstance(v, int) else "s", v) for k, v in info.items()},)))
+        self.callback(
+            None,
+            None,
+            None,
+            None,
+            "Progress",
+            GLib.Variant(
+                "(a{sv})", ({k: GLib.Variant("u" if isinstance(v, int) else "s", v) for k, v in info.items()},)
+            ),
+        )
 
 
 def make(bus):
@@ -134,7 +151,8 @@ def make(bus):
 
 
 def test_a_successful_update():
-    bus = FakeBus(); u, states = make(bus)
+    bus = FakeBus()
+    u, states = make(bus)
     u.install()
     bus.emit(op=0, n_ops=1, progress=40, status=0)
     assert (u.state, u.progress) == ("updating", 40)
@@ -145,21 +163,26 @@ def test_a_successful_update():
 
 
 def test_the_repository_does_not_have_the_release_yet():
-    bus = FakeBus(); u, _ = make(bus)
-    u.install(); bus.emit(status=1)
+    bus = FakeBus()
+    u, _ = make(bus)
+    u.install()
+    bus.emit(status=1)
     assert u.state == "empty"
     u.install()  # "try again" is allowed
     assert u.state == "updating"
 
 
 def test_a_failed_update_keeps_the_portals_message():
-    bus = FakeBus(); u, _ = make(bus)
-    u.install(); bus.emit(status=3, error_message="Disk is full")
+    bus = FakeBus()
+    u, _ = make(bus)
+    u.install()
+    bus.emit(status=3, error_message="Disk is full")
     assert (u.state, u.error) == ("failed", "Disk is full")
 
 
 def test_new_permissions_mean_the_portal_refuses():
-    bus = FakeBus(fail_update="org.freedesktop.DBus.Error.NotSupported: new permissions"); u, _ = make(bus)
+    bus = FakeBus(fail_update="org.freedesktop.DBus.Error.NotSupported: new permissions")
+    u, _ = make(bus)
     u.install()
     assert u.state == "failed"
     assert "NotSupported" in u.error
@@ -167,16 +190,20 @@ def test_new_permissions_mean_the_portal_refuses():
 
 
 def test_no_portal_fails_cleanly():
-    bus = FakeBus(fail_create="no such service"); u, _ = make(bus)
+    bus = FakeBus(fail_create="no such service")
+    u, _ = make(bus)
     u.install()
     assert (u.state, u.error) == ("failed", "no such service")
 
 
 def test_install_does_nothing_unless_an_update_is_available():
-    bus = FakeBus(); u, _ = make(bus); u.state = "idle"
+    bus = FakeBus()
+    u, _ = make(bus)
+    u.state = "idle"
     u.install()
     assert (u.state, bus.calls) == ("idle", [])
-    u.state = "updating"; u.install()
+    u.state = "updating"
+    u.install()
     assert bus.calls == []
 
 

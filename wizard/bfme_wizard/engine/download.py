@@ -1,4 +1,5 @@
 """Downloads with progress, resume and retries, and checksum checks."""
+
 from __future__ import annotations
 
 import hashlib
@@ -16,14 +17,19 @@ RETRY_DELAY_SEC = 2
 TIMEOUT_SEC = 30
 CHUNK = 64 * 1024
 USER_AGENT = "bfme-installer"
-SPEED_INTERVAL_SEC = 1.0   # how often the speed is measured and reported
+SPEED_INTERVAL_SEC = 1.0  # how often the speed is measured and reported
 
 Progress = Callable[[int], None]
-Speed = Callable[[int], None]   # bytes per second
+Speed = Callable[[int], None]  # bytes per second
 
 
-def download(url: str, dest: Path, on_progress: Progress | None = None, cancel: threading.Event | None = None,
-             on_speed: Speed | None = None) -> None:
+def download(
+    url: str,
+    dest: Path,
+    on_progress: Progress | None = None,
+    cancel: threading.Event | None = None,
+    on_speed: Speed | None = None,
+) -> None:
     """Fetch url to dest. The data goes to dest.part first, so an interrupted download is never taken for the file.
     on_progress gets the percent done when the server gives the size; on_speed gets the speed, about once a second."""
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -54,8 +60,9 @@ def download(url: str, dest: Path, on_progress: Progress | None = None, cancel: 
         time.sleep(RETRY_DELAY_SEC)
 
 
-def _fetch(url: str, part: Path, on_progress: Progress | None, cancel: threading.Event | None,
-           on_speed: Speed | None = None) -> None:
+def _fetch(
+    url: str, part: Path, on_progress: Progress | None, cancel: threading.Event | None, on_speed: Speed | None = None
+) -> None:
     """One try. Carries on from what an earlier try left in the part file."""
     start = part.stat().st_size if part.exists() else 0
     headers = {"User-Agent": USER_AGENT}

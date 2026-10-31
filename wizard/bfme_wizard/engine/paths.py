@@ -1,4 +1,5 @@
 """Where everything lives: the data folder, the game environment (prefix) and the programs in it."""
+
 from __future__ import annotations
 
 import os
@@ -18,6 +19,7 @@ TOOL_FILES = {
     "mission-control": ("Mission Control", "MissionControl.exe"),
 }
 
+
 def data_dir(environ: dict[str, str] | None = None) -> Path:
     """BFME_HOME, else XDG_DATA_HOME/bfme-installer. In the Flatpak XDG_DATA_HOME is the app's own data folder."""
     env = os.environ if environ is None else environ
@@ -25,7 +27,11 @@ def data_dir(environ: dict[str, str] | None = None) -> Path:
     if env.get("BFME_HOME"):
         return Path(env["BFME_HOME"])
 
-    base = Path(env["XDG_DATA_HOME"]) if env.get("XDG_DATA_HOME") else Path(env.get("HOME") or Path.home()) / ".local/share"
+    base = (
+        Path(env["XDG_DATA_HOME"])
+        if env.get("XDG_DATA_HOME")
+        else Path(env.get("HOME") or Path.home()) / ".local/share"
+    )
     return base / "bfme-installer"
 
 
@@ -82,7 +88,7 @@ class Paths:
 
     @property
     def roaming(self) -> Path:
-        return self.drive_c / "users/steamuser/AppData/Roaming"   # Proton always names the user steamuser
+        return self.drive_c / "users/steamuser/AppData/Roaming"  # Proton always names the user steamuser
 
     @property
     def aio_launcher_exe(self) -> Path:
@@ -108,21 +114,25 @@ class Paths:
         games = []
 
         for key, (name, folder, user_data) in GAME_DIRS.items():
-            games.append(GameFolders(
+            games.append(
+                GameFolders(
+                    key=key,
+                    name=name,
+                    game=self.drive_c / folder,
+                    user_data=self.roaming / user_data,
+                )
+            )
+
+        key, name, folder, user_data, maps_dir = AOTR
+        games.append(
+            GameFolders(
                 key=key,
                 name=name,
                 game=self.drive_c / folder,
                 user_data=self.roaming / user_data,
-            ))
-
-        key, name, folder, user_data, maps_dir = AOTR
-        games.append(GameFolders(
-            key=key,
-            name=name,
-            game=self.drive_c / folder,
-            user_data=self.roaming / user_data,
-            maps_dir=maps_dir,
-        ))
+                maps_dir=maps_dir,
+            )
+        )
 
         return games
 

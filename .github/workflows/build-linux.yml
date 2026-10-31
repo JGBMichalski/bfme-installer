@@ -33,6 +33,19 @@ jobs:
       - name: shellcheck
         run: shellcheck -x "$FLATPAK_DIR/install-flatpak.sh" dev/*.sh
 
+  ruff:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Lint
+        run: pipx run ruff==0.17.3 check --output-format=github .
+        working-directory: wizard
+
+      - name: Format
+        run: pipx run ruff==0.17.3 format --check --diff .
+        working-directory: wizard
+
   # The wizard's logic (protocol, state model, script runner, controller) runs without a display.
   wizard-tests:
     runs-on: ubuntu-24.04
@@ -47,7 +60,7 @@ jobs:
         working-directory: wizard
 
   flatpak:
-    needs: [shellcheck, wizard-tests]
+    needs: [shellcheck, ruff, wizard-tests]
     runs-on: ubuntu-24.04
     container:
       image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-49

@@ -2,6 +2,7 @@
 
 Two jobs because the portal can only install; it cannot say whether an update exists.
 """
+
 from __future__ import annotations
 
 import os
@@ -30,8 +31,8 @@ def parse_version(text: str | None) -> tuple[int, int, int] | None:
 
 
 def is_newer(remote: str | None, local: str | None) -> bool:
-    r, l = parse_version(remote), parse_version(local)
-    return r is not None and l is not None and r > l
+    new, old = parse_version(remote), parse_version(local)
+    return new is not None and old is not None and new > old
 
 
 def installed_version(app_id: str, metainfo_dir: str = "/app/share/metainfo") -> str | None:
@@ -116,21 +117,45 @@ class Updater:
         try:
             bus = self._bus_factory()
             reply = bus.call_sync(
-                PORTAL, PORTAL_PATH, PORTAL, "CreateUpdateMonitor",
-                GLib.Variant("(a{sv})", ({},)), GLib.VariantType("(o)"), Gio.DBusCallFlags.NONE, 10000, None,
+                PORTAL,
+                PORTAL_PATH,
+                PORTAL,
+                "CreateUpdateMonitor",
+                GLib.Variant("(a{sv})", ({},)),
+                GLib.VariantType("(o)"),
+                Gio.DBusCallFlags.NONE,
+                10000,
+                None,
             )
             handle = reply.unpack()[0]
         except GLib.Error as error:
             self._fail(error.message)
             return
-        self._subscription = (bus, bus.signal_subscribe(
-            PORTAL, MONITOR_IFACE, "Progress", handle, None, Gio.DBusSignalFlags.NONE, self._progress,
-        ))
+        self._subscription = (
+            bus,
+            bus.signal_subscribe(
+                PORTAL,
+                MONITOR_IFACE,
+                "Progress",
+                handle,
+                None,
+                Gio.DBusSignalFlags.NONE,
+                self._progress,
+            ),
+        )
         self._monitor = handle
         self._set("updating")
         bus.call(
-            PORTAL, handle, MONITOR_IFACE, "Update", GLib.Variant("(sa{sv})", ("", {})), None,
-            Gio.DBusCallFlags.NONE, 10000, None, self._update_called,
+            PORTAL,
+            handle,
+            MONITOR_IFACE,
+            "Update",
+            GLib.Variant("(sa{sv})", ("", {})),
+            None,
+            Gio.DBusCallFlags.NONE,
+            10000,
+            None,
+            self._update_called,
         )
 
     def _update_called(self, bus: Gio.DBusConnection, result: Gio.AsyncResult) -> None:
@@ -161,7 +186,9 @@ class Updater:
             bus, ident = self._subscription
             self._subscription = None
             bus.signal_unsubscribe(ident)
-            bus.call(PORTAL, self._monitor, MONITOR_IFACE, "Close", None, None, Gio.DBusCallFlags.NONE, 5000, None, None)
+            bus.call(
+                PORTAL, self._monitor, MONITOR_IFACE, "Close", None, None, Gio.DBusCallFlags.NONE, 5000, None, None
+            )
         self._set(state)
 
 

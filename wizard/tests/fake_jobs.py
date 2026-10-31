@@ -14,6 +14,7 @@ What is installed lives in flag files in `dir`; every job that runs is added to 
   reset-fails             `reset` fails and deletes nothing
   two-cards               the computer has two graphics cards
 """
+
 from __future__ import annotations
 
 import tempfile
@@ -40,7 +41,7 @@ class FakeJobs:
     def __init__(self, dir):
         self.dir = Path(dir)
         self.calls: list[str] = []
-        self.app_seconds = 0.0     # how long a program opened by open_program runs
+        self.app_seconds = 0.0  # how long a program opened by open_program runs
 
     # The flags
 
@@ -130,7 +131,9 @@ class FakeJobs:
         emit(Step("doctor", "start"))
 
         if self._checks(emit) != 0:
-            return self.fail(emit, "doctor", "Your system needs a change first. Fix the problems above, then try again.")
+            return self.fail(
+                emit, "doctor", "Your system needs a change first. Fix the problems above, then try again."
+            )
 
         emit(Step("doctor", "done"))
         emit(Step("runner", "start"))
