@@ -4,6 +4,32 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.0]
+
+### Added
+
+- The app downloads Age of the Ring from ModDB itself. If it cannot, it says why and you download the file in your browser as before. Set `BFME_KEEP_AOTR_DOWNLOAD=1` in `config.env` to keep the zip.
+- Each download writes a "Downloading …" line to the log.
+
+### Changed
+
+- The setup now runs in Python inside the app instead of a separate shell script.
+- Applying the game environment's settings, and switching between Vulkan and OpenGL, takes a few seconds instead of about a minute.
+- The AIO Launcher's menu shortcut and icon are now `<app id>.AioLauncher`.
+- Error messages no longer tell you to run terminal commands.
+- Age of the Ring sizes are updated for 10.0.0: about 19 GB to download, 28 GB installed, and about 47 GB of free space while installing.
+- **Stop now** works like Cancel: downloads, unpacking and installers stop at once, and other steps finish first.
+
+### Removed
+
+- The terminal script (`bfme-linux-setup.sh`) and its commands. Without a display, the app says so and exits; `install-flatpak.sh` asks you to finish the setup from the desktop.
+- The system Wine option. The setup always uses Proton. `config.env` no longer reads `BFME_RUNNER`, `BFME_ARENA_BRANCH`, `BFME_NVIDIA` or `BFME_UMU_RUN`.
+- Desktop notifications. The window shows the same.
+
+### Fixed
+
+- Rotating the AIO Launcher's logs no longer deletes its setup log.
+
 ## [2.1.0]
 
 ### Added
