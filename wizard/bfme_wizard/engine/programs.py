@@ -11,7 +11,7 @@ from pathlib import Path
 
 from . import proton
 from .config import Config
-from .download import download
+from .download import USER_AGENT, download
 from .errors import JobCancelled, SetupError
 from .events import Emit, Log, Warn
 from .paths import Paths
@@ -186,7 +186,9 @@ def arena_remote_hash(server_host: str | None = None) -> str:
     url = f"{server_host}/api/applications/versionHash?name=online-arena&version={ARENA_BRANCH}"
 
     try:
-        with urllib.request.urlopen(url, timeout=HASH_TIMEOUT_SEC) as response:
+        request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+
+        with urllib.request.urlopen(request, timeout=HASH_TIMEOUT_SEC) as response:
             return response.read().decode(errors="replace").strip()
     except (urllib.error.URLError, OSError):
         return ""

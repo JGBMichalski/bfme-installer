@@ -15,6 +15,7 @@ RETRIES = 3
 RETRY_DELAY_SEC = 2
 TIMEOUT_SEC = 30
 CHUNK = 64 * 1024
+USER_AGENT = "bfme-installer"
 
 Progress = Callable[[int], None]
 
@@ -52,7 +53,7 @@ def download(url: str, dest: Path, on_progress: Progress | None = None, cancel: 
 def _fetch(url: str, part: Path, on_progress: Progress | None, cancel: threading.Event | None) -> None:
     """One try. Carries on from what an earlier try left in the part file."""
     start = part.stat().st_size if part.exists() else 0
-    headers = {}
+    headers = {"User-Agent": USER_AGENT}
 
     if start:
         headers["Range"] = f"bytes={start}-"

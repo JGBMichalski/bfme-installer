@@ -389,3 +389,12 @@ def test_removing_is_the_scripts(tmp_path, paths, program):
 def test_an_unknown_program_is_refused(paths):
     with pytest.raises(SetupError, match="Use: remove aio-launcher|arena|aotr|workshop|mission-control"):
         programs.remove(paths, Config(), "bfme2", [].append)
+
+
+def test_the_arena_update_check_names_the_app_not_python(paths, arena_server):
+    server, host = arena_server
+    put(paths.arena_exe, ARENA.decode())
+
+    install_arena(paths, host)
+
+    assert server.agents == ["bfme-installer"]

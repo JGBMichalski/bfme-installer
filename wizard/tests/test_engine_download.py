@@ -130,3 +130,13 @@ def test_a_wrong_checksum_deletes_the_file(tmp_path):
         verify_sha256(path, "0" * 64)
 
     assert not path.exists()
+
+
+def test_every_request_names_the_app_not_python(file_server, tmp_path):
+    # The AIO Launcher's server answers Python's own User-Agent with 403 Forbidden.
+    file_server.files["/f.bin"] = DATA
+    (tmp_path / "f.bin.part").write_bytes(DATA[:1000])
+
+    download(file_server.url("/f.bin"), tmp_path / "f.bin")
+
+    assert file_server.agents == ["bfme-installer"]

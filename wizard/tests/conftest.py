@@ -31,6 +31,7 @@ class FileServer:
         self.files = {}
         self.failures = []
         self.requests = []
+        self.agents = []   # the User-Agent of every request
         self.ignore_range = False
         self.no_length = False
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), self._handler())
@@ -48,6 +49,7 @@ class FileServer:
 
             def do_GET(self):
                 owner.requests.append((self.path, self.headers.get("Range")))
+                owner.agents.append(self.headers.get("User-Agent"))
 
                 if owner.failures:
                     self.send_error(owner.failures.pop(0))
