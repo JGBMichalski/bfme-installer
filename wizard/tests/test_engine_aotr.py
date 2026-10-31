@@ -352,18 +352,8 @@ WHOLE_INSTALL_TREE = {
     "prefix/drive_c/windows",
 }
 
-PREFIX_SETTINGS = [
-    "reg add HKCU\\Software\\Wine\\DllOverrides /v mfc71 /t REG_SZ /d native,builtin /f",
-    "reg add HKCU\\Software\\Wine\\DllOverrides /v msvcp71 /t REG_SZ /d native,builtin /f",
-    "reg add HKCU\\Software\\Wine\\DllOverrides /v msvcr71 /t REG_SZ /d native,builtin /f",
-    "reg add HKCU\\Software\\Wine\\DllOverrides /v dinput8 /t REG_SZ /d native,builtin /f",
-    "reg add HKCU\\Software\\Microsoft\\Avalon.Graphics /v DisableHWAcceleration /t REG_DWORD /d 1 /f",
-    "reg add HKCU\\Software\\Wine\\DllOverrides /v d3d8 /t REG_SZ /d native,builtin /f",
-    "reg add HKCU\\Software\\Wine\\DllOverrides /v d3d9 /t REG_SZ /d native,builtin /f",
-    "reg add HKCU\\Software\\Wine\\DllOverrides /v d3d10core /t REG_SZ /d native,builtin /f",
-    "reg add HKCU\\Software\\Wine\\DllOverrides /v d3d11 /t REG_SZ /d native,builtin /f",
-    "reg add HKCU\\Software\\Wine\\DllOverrides /v dxgi /t REG_SZ /d native,builtin /f",
-]
+# The prefix settings: one import of all of them.
+PREFIX_SETTINGS = ["reg import C:\\bfme-settings.reg"]
 
 
 @needs_7zip

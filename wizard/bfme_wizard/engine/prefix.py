@@ -15,6 +15,7 @@ from .paths import Paths
 # Raise it to roll out a new setting: every prefix gets the settings again once.
 SETTINGS_VERSION = 4
 CREATING_MARKER = ".bfme-creating"
+SETTINGS_FILE = "bfme-settings.reg"   # in drive_c while it is imported
 D3D_DLLS = ("d3d8", "d3d9", "d3d10core", "d3d11", "dxgi")
 DLL_OVERRIDES = r"HKCU\Software\Wine\DllOverrides"
 
@@ -75,8 +76,35 @@ def settings(graphics_backend: str) -> list[tuple[str, str, str, str]]:
     return out
 
 
+def reg_file(graphics_backend: str) -> str:
+    """The settings as a .reg file for `reg import`, in the plain REGEDIT4 format, which Wine reads as it is."""
+    lines = ["REGEDIT4", ""]
+    current_key = None
+
+    for key, name, kind, data in settings(graphics_backend):
+        full_key = key.replace("HKCU\\", "HKEY_CURRENT_USER\\", 1)
+
+        if full_key != current_key:
+            if current_key is not None:
+                lines.append("")
+
+            lines.append(f"[{full_key}]")
+            current_key = full_key
+
+        if kind == "REG_DWORD":
+            lines.append(f'"{name}"=dword:{int(data):08x}')
+        else:
+            lines.append(f'"{name}"="{data}"')
+
+    return "\r\n".join(lines) + "\r\n"
+
+
 def apply_settings(paths: Paths, config: Config, proton_path: str, emit: Emit, force: bool = False) -> None:
-    """Set the registry settings, once per SETTINGS_VERSION unless forced."""
+    """Set the registry settings, once per SETTINGS_VERSION unless forced.
+
+    All of them go in one `reg import`: each Proton start takes seconds, so setting them one by one took about a minute.
+    If the import fails, they are set one by one, so a warning can name the one that failed.
+    """
     marker = paths.prefix / f".bfme-settings-v{SETTINGS_VERSION}"
 
     if marker.exists() and not force:
@@ -85,13 +113,21 @@ def apply_settings(paths: Paths, config: Config, proton_path: str, emit: Emit, f
     emit(Log("Applying prefix settings."))
     paths.logs.mkdir(parents=True, exist_ok=True)
     log = paths.logs / "prefix-settings.log"
+    reg = paths.drive_c / SETTINGS_FILE
+    reg.write_text(reg_file(config.graphics), encoding="ascii")
 
     with open(log, "w", encoding="utf-8") as out:
-        for key, name, kind, data in settings(config.graphics):
-            args = ["reg", "add", key, "/v", name, "/t", kind, "/d", data, "/f"]
+        args = ["reg", "import", f"C:\\{SETTINGS_FILE}"]
+        code = proton.run(paths, config, proton_path, args, inprefix=True, output=out)
 
-            if proton.run(paths, config, proton_path, args, inprefix=True, output=out) != 0:
-                emit(Warn(f"Could not set {name}. See {log}"))
+        if code != 0:
+            for key, name, kind, data in settings(config.graphics):
+                args = ["reg", "add", key, "/v", name, "/t", kind, "/d", data, "/f"]
+
+                if proton.run(paths, config, proton_path, args, inprefix=True, output=out) != 0:
+                    emit(Warn(f"Could not set {name}. See {log}"))
+
+    reg.unlink(missing_ok=True)
 
     for old in paths.prefix.glob(".bfme-settings-v*"):
         old.unlink()

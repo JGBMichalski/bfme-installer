@@ -9,7 +9,8 @@ from bfme_wizard.engine.errors import SetupError
 from bfme_wizard.engine.events import Log, Warn
 from bfme_wizard.engine.paths import Paths
 
-# Logs each call's arguments. Called with "" (the first start) it makes the prefix as umu would. REG_FAIL makes `reg add`
+# Logs each call's arguments. Called with "" (the first start) it makes the prefix as umu would. `reg import` keeps a copy of
+# the file in REG_COPY, and fails with IMPORT_FAIL. REG_FAIL makes `reg add`
 # fail for that value name.
 FAKE_UMU = r"""#!/bin/sh
 printf '%s\n' "$*" >> "$UMU_LOG"
@@ -17,6 +18,11 @@ if [ "$1" = "" ]; then
   [ -n "$UMU_BROKEN" ] && { echo "umu: something broke"; exit 1; }
   mkdir -p "$WINEPREFIX/drive_c/windows" "$WINEPREFIX/drive_c/users/steamuser"
   exit 1
+fi
+if [ "$1" = "reg" ] && [ "$2" = "import" ]; then
+  cp "$WINEPREFIX/drive_c/bfme-settings.reg" "$REG_COPY"
+  [ -n "$IMPORT_FAIL" ] && exit 1
+  exit 0
 fi
 [ -n "$REG_FAIL" ] && [ "$5" = "$REG_FAIL" ] && exit 1
 exit 0
@@ -37,7 +43,7 @@ def env(tmp_path, monkeypatch):
     values = {
         "PATH": f"{tmp_path / 'bin'}:/usr/bin:/bin", "HOME": str(tmp_path), "BFME_HOME": str(tmp_path / "data"),
         "BFME_PROTONPATH": "fake-proton",
-        "UMU_LOG": str(tmp_path / "umu.log"),
+        "UMU_LOG": str(tmp_path / "umu.log"), "REG_COPY": str(tmp_path / "imported.reg"),
     }
 
     for name, value in values.items():
@@ -133,16 +139,41 @@ SETTINGS_OPENGL = SETTINGS_ALWAYS + [
     f"reg add {DLL_OVERRIDES} /v d3d11 /t REG_SZ /d builtin /f",
     f"reg add {DLL_OVERRIDES} /v dxgi /t REG_SZ /d builtin /f",
 ]
+# One by one, when the import fails.
 SETTINGS = {"vulkan": SETTINGS_VULKAN, "opengl": SETTINGS_OPENGL}
+IMPORT = "reg import C:\\bfme-settings.reg"
+
+REG_FILE_START = (
+    "REGEDIT4\r\n"
+    "\r\n"
+    "[HKEY_CURRENT_USER\\Software\\Wine\\DllOverrides]\r\n"
+    '"mfc71"="native,builtin"\r\n'
+    '"msvcp71"="native,builtin"\r\n'
+    '"msvcr71"="native,builtin"\r\n'
+    '"dinput8"="native,builtin"\r\n'
+    "\r\n"
+    "[HKEY_CURRENT_USER\\Software\\Microsoft\\Avalon.Graphics]\r\n"
+    '"DisableHWAcceleration"=dword:00000001\r\n'
+    "\r\n"
+    "[HKEY_CURRENT_USER\\Software\\Wine\\DllOverrides]\r\n"
+)
+REG_FILE = {
+    "vulkan": REG_FILE_START + '"d3d8"="native,builtin"\r\n"d3d9"="native,builtin"\r\n"d3d10core"="native,builtin"\r\n'
+                               '"d3d11"="native,builtin"\r\n"dxgi"="native,builtin"\r\n',
+    "opengl": REG_FILE_START + '"d3d8"="builtin"\r\n"d3d9"="builtin"\r\n"d3d10core"="builtin"\r\n"d3d11"="builtin"\r\n'
+                               '"dxgi"="builtin"\r\n',
+}
 
 
 @pytest.mark.parametrize("backend", ["vulkan", "opengl"])
-def test_the_settings_for_each_backend(env, paths, backend):
+def test_the_settings_for_each_backend_are_imported_at_once(env, paths, backend):
     make_prefix(paths)
 
     prefix.apply_settings(paths, Config(graphics=backend), "fake-proton", [].append, force=True)
 
-    assert umu_calls(env) == SETTINGS[backend]
+    assert umu_calls(env) == [IMPORT]
+    assert Path(env["REG_COPY"]).read_bytes().decode("ascii") == REG_FILE[backend]
+    assert not (paths.drive_c / "bfme-settings.reg").exists()
     assert sorted(p.name for p in paths.prefix.glob(".bfme-settings-v*")) == [".bfme-settings-v4"]
 
 
@@ -151,18 +182,32 @@ def test_the_settings_are_applied_once_per_version(env, paths):
     (paths.prefix / ".bfme-settings-v3").touch()
 
     prefix.apply_settings(paths, Config(), "fake-proton", [].append)
-    assert len(umu_calls(env)) == 10
+    assert umu_calls(env) == [IMPORT]
     assert [p.name for p in paths.prefix.glob(".bfme-settings-v*")] == [f".bfme-settings-v{prefix.SETTINGS_VERSION}"]
 
     prefix.apply_settings(paths, Config(), "fake-proton", [].append)
     assert umu_calls(env) == []
 
     prefix.apply_settings(paths, Config(), "fake-proton", [].append, force=True)
-    assert len(umu_calls(env)) == 10
+    assert umu_calls(env) == [IMPORT]
 
 
-def test_a_setting_that_fails_is_a_warning(env, paths, monkeypatch):
+@pytest.mark.parametrize("backend", ["vulkan", "opengl"])
+def test_when_the_import_fails_they_are_set_one_by_one(env, paths, monkeypatch, backend):
     make_prefix(paths)
+    monkeypatch.setenv("IMPORT_FAIL", "1")
+    events = []
+
+    prefix.apply_settings(paths, Config(graphics=backend), "fake-proton", events.append)
+
+    assert umu_calls(env) == [IMPORT, *SETTINGS[backend]]
+    assert [e for e in events if isinstance(e, Warn)] == []
+    assert not (paths.drive_c / "bfme-settings.reg").exists()
+
+
+def test_a_setting_that_fails_one_by_one_is_a_warning(env, paths, monkeypatch):
+    make_prefix(paths)
+    monkeypatch.setenv("IMPORT_FAIL", "1")
     monkeypatch.setenv("REG_FAIL", "DisableHWAcceleration")
     events = []
 
@@ -176,9 +221,7 @@ def test_a_setting_that_fails_is_a_warning(env, paths, monkeypatch):
 def test_prepare_creates_a_missing_prefix_then_applies_the_settings(env, paths):
     prefix.prepare_prefix(paths, Config(), "fake-proton", [].append)
 
-    calls = umu_calls(env)
-    assert calls[0] == ""
-    assert len(calls) == 11
+    assert umu_calls(env) == ["", IMPORT]
 
     prefix.prepare_prefix(paths, Config(), "fake-proton", [].append)
     assert umu_calls(env) == []
@@ -266,7 +309,8 @@ def test_switching(env, paths, ready, saved, wanted):
     assert paths.config.read_text() == f"BFME_NVIDIA=1\n# keep me\nBFME_GRAPHICS={wanted}\n"
 
     if ready:
-        assert umu_calls(env) == SETTINGS[wanted]
+        assert umu_calls(env) == [IMPORT]
+        assert Path(env["REG_COPY"]).read_bytes().decode("ascii") == REG_FILE[wanted]
     else:
         assert umu_calls(env) == []
 
