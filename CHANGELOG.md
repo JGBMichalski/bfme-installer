@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - The app downloads Age of the Ring from ModDB itself. If it cannot, it says why and you download the file in your browser as before. Set `BFME_KEEP_AOTR_DOWNLOAD=1` in `config.env` to keep the zip.
 - Each download writes a "Downloading …" line to the log, and the running page shows its speed next to the percentage.
 - Troubleshoot's **Graphics** section can choose the graphics card on a computer with two, and show an FPS counter.
+- After an update, the app shows once what changed since the version you last used.
 
 ### Changed
 

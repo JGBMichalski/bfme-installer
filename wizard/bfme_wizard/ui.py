@@ -9,11 +9,12 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, Gdk, Gio, GLib, GObject, Gtk  # noqa: E402
 
+from . import whatsnew
 from .aotr import MODDB_URL, AotrDownloadPage
 from .catalog import program
 from .controller import PROGRAM_OF, Controller
 from .diagnostics import any_log, build_report
-from .engine.paths import data_dir
+from .engine.paths import data_dir, paths
 from .home import GameFoldersPage, HomePage, TroubleshootPage
 from .model import description_of, speed_text, title_of
 from .programs import ProgramsPage
@@ -529,6 +530,29 @@ class WizardWindow(Adw.ApplicationWindow):
             self.destroy()
 
 
+def show_whats_new(window: Gtk.Window, notes: list[tuple[str, str]]) -> Adw.AlertDialog:
+    """The changelog's notes for each new version, newest first, in one dialog."""
+    parts = []
+
+    for version, text in notes:
+        body = whatsnew.markup(text)
+
+        # With more than one version, each says which it is.
+        if len(notes) > 1:
+            body = f"<big><b>{version}</b></big>\n{body}"
+
+        parts.append(body)
+
+    label = Gtk.Label(label="\n\n".join(parts), use_markup=True, wrap=True, xalign=0, selectable=True,
+                      margin_start=6, margin_end=6)
+    scroll = Gtk.ScrolledWindow(child=label, hscrollbar_policy=Gtk.PolicyType.NEVER, min_content_height=320,
+                                propagate_natural_height=True, max_content_height=420)
+    dialog = Adw.AlertDialog(heading=f"What's new in {notes[0][0]}", extra_child=scroll)
+    dialog.add_response("close", "Close")
+    dialog.present(window)
+    return dialog
+
+
 class WizardApp(Adw.Application):
     def __init__(self, runner, offer: str | None = None, jobs=None) -> None:
         super().__init__(application_id=APP_ID)
@@ -549,4 +573,13 @@ class WizardApp(Adw.Application):
 
             window = WizardWindow(self, controller)
             window.controller.start()
+            window.present()
+            # Once, after an update: what changed since the version the player last saw.
+            notes = whatsnew.to_show(paths(), window.updater.local)
+
+            if notes:
+                show_whats_new(window, notes)
+
+            return
+
         window.present()
