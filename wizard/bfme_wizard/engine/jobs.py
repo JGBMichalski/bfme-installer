@@ -25,6 +25,7 @@ from .prefix import (
     prepare_prefix,
     reset_prefix,
     set_graphics,
+    set_option,
 )
 
 OK = 0
@@ -331,6 +332,18 @@ def switch_graphics(backend: str, emit: Emit, cancel: threading.Event | None = N
         with job.lock():
             job.config = set_graphics(job.paths, job.config, backend, job.emit)
             job.emit(Status("graphics", job.config.graphics))
+            job.emit(Done())
+
+    return _run(body, emit, cancel, environ)
+
+
+def change_option(option: str, value: str | int, emit: Emit, cancel: threading.Event | None = None,
+                  environ: dict[str, str] | None = None) -> int:
+    """Save the graphics card or the FPS counter."""
+    def body(job: Job) -> None:
+        with job.lock():
+            job.config = set_option(job.paths, job.config, option, value, job.emit)
+            job.report_status()
             job.emit(Done())
 
     return _run(body, emit, cancel, environ)

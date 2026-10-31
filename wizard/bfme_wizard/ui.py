@@ -153,6 +153,7 @@ class WizardWindow(Adw.ApplicationWindow):
         self.troubleshoot = TroubleshootPage(
             self.controller, copy_text=self.copy, copy_diagnostics=self.copy_diagnostics,
             open_logs=self.open_logs, confirm_reset=self.confirm_reset, change_graphics=self.change_graphics,
+            change_option=self.change_option,
         )
         self._troubleshoot_page = Adw.NavigationPage.new(self.troubleshoot.view, "Troubleshoot")
         self.nav.push(self._troubleshoot_page)
@@ -312,6 +313,20 @@ class WizardWindow(Adw.ApplicationWindow):
 
         if not self.controller.set_graphics(backend, done):
             self.toasts.add_toast(Adw.Toast.new(self.controller.blocked_reason() or "Not now."))
+
+    def change_option(self, option: str, value: str | int) -> None:
+        """Save one of the other graphics settings. The page shows it once the setup has saved it."""
+        def done(ok: bool) -> None:
+            text = "Saved. It takes effect the next time you open a program."
+
+            if not ok:
+                text = "Could not save the setting. Open the logs folder from Troubleshoot."
+
+            self.toasts.add_toast(Adw.Toast.new(text))
+
+        if not self.controller.set_option(option, value, done):
+            self.toasts.add_toast(Adw.Toast.new(self.controller.blocked_reason() or "Not now."))
+            self.troubleshoot.refresh(force=True)   # puts the row back to what is saved
 
     def _render_update_banner(self) -> None:
         u = self.updater

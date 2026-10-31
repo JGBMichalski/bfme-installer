@@ -10,6 +10,7 @@ from pathlib import Path
 
 DEFAULT_PROTONPATH = "UMU-Proton-10.0-4"
 GRAPHICS = ("vulkan", "opengl")
+GPUS = ("auto", "dedicated", "integrated")   # which graphics card, on a computer with two
 
 class ConfigError(ValueError):
     pass
@@ -21,6 +22,7 @@ class Config:
     protonpath: str = DEFAULT_PROTONPATH
     extra_env: dict[str, str] = field(default_factory=dict)
     keep_aotr_download: bool = False  # keep the Age of the Ring zip the app downloaded, after unpacking it
+    gpu: str = "auto"
 
 def _parse(line: str) -> tuple[str, str] | None:
     """(key, value) for a `KEY=value` or `export KEY=value` line, else None. Quotes around the value are removed."""
@@ -67,6 +69,11 @@ def load(path: Path, environ: dict[str, str] | None = None) -> Config:
     if graphics and graphics not in GRAPHICS:
         raise ConfigError(f'BFME_GRAPHICS must be vulkan or opengl, not "{graphics}".')
 
+    gpu = values.get("BFME_GPU") or "auto"
+
+    if gpu not in GPUS:
+        raise ConfigError(f'BFME_GPU must be auto, dedicated or integrated, not "{gpu}".')
+
     extra: dict[str, str] = {}
 
     for word in values.get("BFME_EXTRA_ENV", "").split():
@@ -81,7 +88,9 @@ def load(path: Path, environ: dict[str, str] | None = None) -> Config:
         protonpath=values.get("BFME_PROTONPATH") or DEFAULT_PROTONPATH,
         extra_env=extra,
         keep_aotr_download=values.get("BFME_KEEP_AOTR_DOWNLOAD", "") in ("1", "yes", "true"),
+        gpu=gpu,
     )
+
 
 
 def save(path: Path, key: str, value: str) -> None:

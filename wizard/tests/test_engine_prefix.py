@@ -336,3 +336,69 @@ def test_reset_ends_the_wine_session_and_deletes_the_prefix(tmp_path, env, paths
     assert log.read_text() == "-k\n-w\n"
     assert logs(events) == ["Prefix deleted."]
     assert paths.base.exists()
+
+
+# The graphics card
+
+@pytest.mark.parametrize("option, value, key, field", [
+    ("gpu", "integrated", "BFME_GPU", "gpu"),
+])
+def test_the_card_is_only_saved(env, paths, option, value, key, field):
+    make_prefix(paths)
+    paths.base.mkdir(parents=True, exist_ok=True)
+
+    config = prefix.set_option(paths, Config(), option, value, [].append)
+
+    assert getattr(config, field) == value
+    assert paths.config.read_text() == f"{key}={value}\n"
+    assert umu_calls(env) == []                    # they apply when a program opens
+
+
+@pytest.mark.parametrize("option, value, message", [
+    ("gpu", "nvidia", "Graphics card cannot be nvidia."),
+    ("vsync", 1, "Unknown setting: vsync."),
+])
+def test_a_wrong_setting_is_refused(paths, option, value, message):
+    with pytest.raises(SetupError, match=message):
+        prefix.set_option(paths, Config(), option, value, [].append)
+
+    assert not paths.config.exists()
+
+
+
+# The FPS counter: DXVK_HUD=fps in BFME_EXTRA_ENV
+
+def test_the_fps_counter_is_added_to_the_extra_environment_and_keeps_the_rest(paths):
+    paths.base.mkdir(parents=True)
+    paths.config.write_text('BFME_EXTRA_ENV="WINEDEBUG=-all"\n')
+
+    config = prefix.set_option(paths, load(paths.config, {}), "fps-counter", 1, [].append)
+
+    assert paths.config.read_text() == "BFME_EXTRA_ENV=WINEDEBUG=-all DXVK_HUD=fps\n"
+    assert config.extra_env == {"WINEDEBUG": "-all", "DXVK_HUD": "fps"}
+    assert prefix.fps_counter_on(config)
+    assert load(paths.config, {}).extra_env == {"WINEDEBUG": "-all", "DXVK_HUD": "fps"}
+
+
+def test_turning_it_off_removes_any_dxvk_hud_and_only_that(paths):
+    paths.base.mkdir(parents=True)
+    paths.config.write_text('BFME_EXTRA_ENV="DXVK_HUD=full WINEDEBUG=-all"\n')
+    config = load(paths.config, {})
+    assert prefix.fps_counter_on(config)       # any DXVK_HUD counts as on
+
+    config = prefix.set_option(paths, config, "fps-counter", 0, [].append)
+
+    assert paths.config.read_text() == "BFME_EXTRA_ENV=WINEDEBUG=-all\n"
+    assert not prefix.fps_counter_on(config)
+
+
+def test_turning_it_off_with_nothing_else_leaves_it_empty(paths):
+    paths.base.mkdir(parents=True)
+    paths.config.write_text("BFME_EXTRA_ENV=DXVK_HUD=fps\n")
+
+    events = []
+    config = prefix.set_option(paths, load(paths.config, {}), "fps-counter", 0, events.append)
+
+    assert paths.config.read_text() == "BFME_EXTRA_ENV=\n"
+    assert config.extra_env == {}
+    assert logs(events)[0] == "FPS counter: off. Saved for this game environment."

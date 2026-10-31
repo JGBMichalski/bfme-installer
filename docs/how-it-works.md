@@ -29,7 +29,8 @@ Set these in `config.env` in the data folder. The file wins over the environment
 | --- | --- |
 | `BFME_GRAPHICS` | `vulkan` or `opengl`. Picked on the first setup; the Troubleshoot switch changes it. |
 | `BFME_PROTONPATH` | Another Proton to use instead of the pinned one. |
-| `BFME_EXTRA_ENV` | Extra environment for the programs, for example `DXVK_HUD=fps`. |
+| `BFME_GPU` | `auto`, `dedicated` or `integrated`: which card runs the games on a computer with two. |
+| `BFME_EXTRA_ENV` | Extra environment for the programs. Troubleshoot's **Show FPS** adds or removes `DXVK_HUD=fps` here. |
 | `BFME_KEEP_AOTR_DOWNLOAD` | `1` keeps the Age of the Ring zip after unpacking it. |
 | `BFME_HOME` | Another data folder (for development). |
 
@@ -37,6 +38,7 @@ Set these in `config.env` in the data folder. The file wins over the environment
 
 - The first setup picks OpenGL if no graphics card supports Vulkan 1.3 (DXVK's minimum). A choice you made is never
   changed.
+- DXVK's fix for slowdowns in BFME 2 and Rise of the Witch-king (`d3d9.cachedWriteOnlyBuffers`) is always on.
 - Don't switch patches in the AIO Launcher once a game is installed. It once broke BFME 2 on Wine.
 - Start the Arena from its own shortcut. Opened from the AIO Launcher's Multiplayer tab it draws outside the window.
 - x86_64 only.

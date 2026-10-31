@@ -15,7 +15,7 @@ from .download import USER_AGENT, download
 from .errors import JobCancelled, SetupError
 from .events import Emit, Log, Warn, report_speed
 from .paths import Paths
-from .prefix import prefix_ready
+from .prefix import fps_counter_on, prefix_ready
 
 AIO_LAUNCHER_URL = "https://arena-files.bfmeladder.com/downloads/AllInOneLauncherSetup.exe"
 ARENA_FILES_HOST = "https://arena-files.bfmeladder.com"
@@ -84,6 +84,10 @@ def status(paths: Paths, config: Config) -> dict[str, str]:
     out = {
         "runner": "proton",
         "graphics": config.graphics,
+        "gpu": config.gpu,
+        "fps-counter": "1" if fps_counter_on(config) else "0",
+        # The window offers the choice of card only on a computer that has more than one.
+        "graphics-cards": str(len(proton.graphics_cards())),
         "prefix": "ready" if ready else "missing",
     }
     any_program = False

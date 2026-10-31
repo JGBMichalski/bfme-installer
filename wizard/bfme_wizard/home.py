@@ -25,6 +25,10 @@ QUICK_EXIT_NOTE = "Closed after a few seconds. If it didn't open, see Troublesho
 
 
 # The sandbox cannot see these. Advice only, never pass or fail. The drivers named depend on the chosen backend.
+# (value, label) of each choice in Troubleshoot's Graphics section.
+GPU_CHOICES: list[tuple[str | int, str]] = [("auto", "Automatic"), ("dedicated", "Dedicated card"), ("integrated", "Built-in card")]
+
+
 def cant_check(graphics: str) -> list[tuple[str, str, str]]:
     if graphics == "opengl":
         drivers = ("Graphics drivers", "The launchers/applications need working OpenGL drivers on your computer. If a game is slow "
@@ -129,20 +133,22 @@ class TroubleshootPage:
 
     def __init__(self, controller: Controller, *, copy_text: Callable[[str, str], None], copy_diagnostics: Callable[[], None],
                  open_logs: Callable[[], None], confirm_reset: Callable[[], None],
-                 change_graphics: Callable[[str], None]) -> None:
+                 change_graphics: Callable[[str], None], change_option: Callable[[str, str | int], None]) -> None:
         self.controller = controller
         self._cb = dict(copy_text=copy_text, copy_diagnostics=copy_diagnostics, open_logs=open_logs, confirm_reset=confirm_reset,
-                        change_graphics=change_graphics)
+                        change_graphics=change_graphics, change_option=change_option)
         self.view = Adw.ToolbarView()
         self.view.add_top_bar(Adw.HeaderBar())
         self._key = None
         self.refresh()
 
-    def refresh(self) -> None:
+    def refresh(self, force: bool = False) -> None:
+        """Rebuild the page if what it shows changed, or when forced (a row the player changed must show what is saved)."""
         c = self.controller
-        key = (tuple(c.model.check_rows), c.checking, c.model.state, tuple(c.apps.state.values()), c.blocked_reason(),
-               c.model.graphics)
-        if key == self._key:
+        m = c.model
+        key = (tuple(m.check_rows), c.checking, m.state, tuple(c.apps.state.values()), c.blocked_reason(), m.graphics,
+               m.gpu, m.fps_counter, m.graphics_cards)
+        if key == self._key and not force:
             return
         self._key = key
         page = Adw.PreferencesPage()
@@ -185,10 +191,12 @@ class TroubleshootPage:
     def _graphics_group(self) -> Adw.PreferencesGroup:
         group = Adw.PreferencesGroup(
             title="Graphics",
-            description="Vulkan is the default. OpenGL can work better on older graphics cards. It takes effect the next time "
-                        "you open a program.",
+            description="Vulkan is the default. OpenGL can work better on older graphics cards. Changes take effect the next "
+                        "time you open a program.",
         )
-        opengl = self.controller.model.graphics == "opengl"
+        m = self.controller.model
+        free = self.controller.blocked_reason() is None
+        opengl = m.graphics == "opengl"
         row = Adw.ActionRow(
             title="Backend",
             subtitle="OpenGL (WineD3D)" if opengl else "Vulkan (DXVK)",
@@ -198,7 +206,40 @@ class TroubleshootPage:
         button.connect("clicked", lambda *_: self._cb["change_graphics"]("vulkan" if opengl else "opengl"))
         row.add_suffix(button)
         group.add(row)
+
+        # The choice of card only means something on a computer that has two.
+        if m.graphics_cards > 1:
+            group.add(self._choice_row("Graphics card", "Which card runs the games, on a computer with two.", "gpu",
+                                       GPU_CHOICES, m.gpu, free))
+
+        counter = Adw.SwitchRow(title="Show FPS", subtitle="The frame rate in the corner of the game. Vulkan only.",
+                                active=m.fps_counter, sensitive=free)
+        counter.connect("notify::active", lambda row, _param: self._cb["change_option"]("fps-counter", int(row.get_active())))
+        group.add(counter)
+
         return group
+
+    def _choice_row(self, title: str, subtitle: str, option: str, choices: list[tuple[str | int, str]],
+                    current: str | int, sensitive: bool) -> Adw.ComboRow:
+        """A row to pick one of a few values. Picking one saves it."""
+        labels = []
+        selected = 0
+
+        for index, (value, label) in enumerate(choices):
+            labels.append(label)
+
+            if value == current:
+                selected = index
+
+        row = Adw.ComboRow(title=title, subtitle=subtitle, model=Gtk.StringList.new(labels), selected=selected,
+                           sensitive=sensitive)
+
+        # Connected after the current value is set, so building the row saves nothing.
+        def picked(combo: Adw.ComboRow, _param) -> None:
+            self._cb["change_option"](option, choices[combo.get_selected()][0])
+
+        row.connect("notify::selected", picked)
+        return row
 
     def _cant_check_group(self) -> Adw.PreferencesGroup:
         group = Adw.PreferencesGroup(

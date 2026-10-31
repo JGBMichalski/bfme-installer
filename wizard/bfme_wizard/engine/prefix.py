@@ -7,7 +7,7 @@ from pathlib import Path
 
 from . import config as config_file
 from . import graphics, proton
-from .config import GRAPHICS, Config
+from .config import GPUS, GRAPHICS, Config
 from .events import Emit, Log, Warn
 from .errors import SetupError
 from .paths import Paths
@@ -18,6 +18,12 @@ CREATING_MARKER = ".bfme-creating"
 SETTINGS_FILE = "bfme-settings.reg"   # in drive_c while it is imported
 D3D_DLLS = ("d3d8", "d3d9", "d3d10core", "d3d11", "dxgi")
 DLL_OVERRIDES = r"HKCU\Software\Wine\DllOverrides"
+
+# The player's other graphics settings: (config key, allowed values, what it is called).
+OPTIONS = {
+    "gpu": ("BFME_GPU", GPUS, "Graphics card"),
+    "fps-counter": ("BFME_EXTRA_ENV", (0, 1), "FPS counter"),
+}
 
 
 def _prefix_folders_exist(paths: Paths) -> bool:
@@ -188,6 +194,61 @@ def set_graphics(paths: Paths, config: Config, backend: str, emit: Emit) -> Conf
         emit(Log("The change applies the next time you open a program."))
     else:
         emit(Log("The settings were applied again."))
+
+    return config
+
+
+def fps_counter_on(config: Config) -> bool:
+    """Whether DXVK draws its frame counter: BFME_EXTRA_ENV sets DXVK_HUD, to anything."""
+    return "DXVK_HUD" in config.extra_env
+
+
+def _with_fps_counter(config: Config, on: bool) -> dict[str, str]:
+    """BFME_EXTRA_ENV with DXVK_HUD=fps in it or out of it. Everything else the player put there stays."""
+    extra = {}
+
+    for name, value in config.extra_env.items():
+        if name != "DXVK_HUD":
+            extra[name] = value
+
+    if on:
+        extra["DXVK_HUD"] = "fps"
+
+    return extra
+
+
+def set_option(paths: Paths, config: Config, option: str, value: str | int, emit: Emit) -> Config:
+    """Save one of the player's graphics settings in config.env. They apply the next time a program opens."""
+    if option not in OPTIONS:
+        raise SetupError(f"Unknown setting: {option}.")
+
+    key, allowed, label = OPTIONS[option]
+
+    if value not in allowed:
+        raise SetupError(f"{label} cannot be {value}.")
+
+    if option == "fps-counter":
+        extra = _with_fps_counter(config, bool(value))
+        words = []
+
+        for name, extra_value in extra.items():
+            words.append(f"{name}={extra_value}")
+
+        config_file.save(paths.config, key, " ".join(words))
+        config = dataclasses.replace(config, extra_env=extra)
+    else:
+        config_file.save(paths.config, key, str(value))
+
+    if option == "gpu":
+        config = dataclasses.replace(config, gpu=value)
+
+    shown = value
+
+    if option == "fps-counter":
+        shown = "on" if value else "off"
+
+    emit(Log(f"{label}: {shown}. Saved for this game environment."))
+    emit(Log("The change applies the next time you open a program."))
 
     return config
 

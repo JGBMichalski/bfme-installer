@@ -157,6 +157,20 @@ class Controller:
         self.runner.run(partial(self.jobs.switch_graphics, backend), self._event, finished)
         return True
 
+    def set_option(self, option: str, value: str | int, on_done: Callable[[bool], None] | None = None) -> bool:
+        """Save the graphics card or the FPS counter, then look at the setup again.
+        False if it cannot start now."""
+        if self.runner.busy or self.blocked_reason() is not None:
+            return False
+
+        def finished(code: int) -> None:
+            if on_done is not None:
+                on_done(code == 0)
+            self.start()   # the saved settings
+
+        self.runner.run(partial(self.jobs.change_option, option, value), self._event, finished)
+        return True
+
     def remove(self, program: str, on_done: Callable[[bool], None]) -> bool:
         """Remove a program (its files and its shortcut), then check the setup again. False if it cannot start now."""
         if program not in (*ALL_PROGRAMS, *TOOLS) or self.blocked_reason() is not None:

@@ -541,3 +541,25 @@ def test_choosing_a_file_instead_skips_the_download(fake):
     assert fake.c.model.file_note is None             # the player asked for it; nothing went wrong
     fake.run_until("done", lambda: fake.c.choose_aotr_file(ZIP))
     assert [c for c in fake.calls() if c.startswith("aotr")] == [f"aotr_install {ZIP}"]
+
+
+# The other graphics settings
+
+def test_a_setting_is_saved_then_the_setup_is_looked_at_again(fake):
+    fake.flag("prefix", "aio-launcher")
+    fake.run_until("done", fake.c.start)
+    results = []
+
+    fake.run_until("done", lambda: results.append(fake.c.set_option("fps-counter", 1, results.append)))
+
+    assert results == [True, True]
+    assert "change_option fps-counter 1" in fake.calls()
+    assert fake.c.model.fps_counter
+
+
+def test_a_setting_is_refused_while_the_setup_runs(fake):
+    fake.flag("prefix", "aio-launcher")
+    fake.run_until("done", fake.c.start)
+    fake.c.model.state = "running"
+
+    assert not fake.c.set_option("fps-counter", 1)

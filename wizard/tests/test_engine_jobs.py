@@ -145,7 +145,9 @@ def world(tmp_path, monkeypatch, file_server):
 def status_lines(**changed):
     """The STATUS lines every job ends with: nothing installed, unless changed (use _ for -)."""
     values = {
-        "runner": "proton", "graphics": "vulkan", "prefix": "ready", "aio-launcher": "missing",
+        "runner": "proton", "graphics": "vulkan", "gpu": "auto", "fps-counter": "0",
+        "graphics-cards": "0",
+        "prefix": "ready", "aio-launcher": "missing",
         "arena": "missing", "aotr": "missing", "workshop": "missing", "mission-control": "missing",
         "bfme1": "missing", "bfme2": "missing", "rotwk": "missing", "complete": "no",
     }
@@ -539,3 +541,12 @@ def test_the_lock_is_free_while_the_program_runs(world, monkeypatch):
     world.engine(jobs.open_program, "aotr")
 
     assert held == [True]
+
+
+def test_changing_a_setting_reports_where_things_stand(world):
+    world.make_prefix()
+
+    code, events = world.engine(jobs.change_option, "gpu", "integrated")
+
+    assert code == jobs.OK
+    assert lines(events) == [*status_lines(gpu="integrated"), "@bfme DONE"]

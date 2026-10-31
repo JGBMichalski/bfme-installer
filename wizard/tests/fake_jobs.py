@@ -12,6 +12,7 @@ What is installed lives in flag files in `dir`; every job that runs is added to 
   shortcuts-fails         `sync_shortcuts` fails (the permission is gone, say)
   remove-fails            `remove` fails and deletes nothing
   reset-fails             `reset` fails and deletes nothing
+  two-cards               the computer has two graphics cards
 """
 from __future__ import annotations
 
@@ -66,6 +67,12 @@ class FakeJobs:
 
     def report(self, emit):
         emit(Status("graphics", (self.dir / "graphics").read_text() if self.has("graphics") else "vulkan"))
+
+        for option, default in (("gpu", "auto"), ("fps-counter", "0")):
+            saved = self.dir / f"option-{option}"
+            emit(Status(option, saved.read_text() if saved.exists() else default))
+
+        emit(Status("graphics-cards", "2" if self.has("two-cards") else "1"))
         emit(Status("prefix", "ready" if self.has("prefix") else "missing"))
         any_program = False
 
@@ -196,6 +203,13 @@ class FakeJobs:
         emit(Step(tool, "start"))
         emit(Step(tool, "done"))
         self.flag(tool)
+        self.report(emit)
+        emit(Done())
+        return 0
+
+    def change_option(self, option, value, emit, cancel=None):
+        self.calls.append(f"change_option {option} {value}")
+        (self.dir / f"option-{option}").write_text(str(value))
         self.report(emit)
         emit(Done())
         return 0

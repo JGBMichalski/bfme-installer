@@ -2,6 +2,7 @@
 import os
 import signal
 import subprocess
+import time
 
 import pytest
 
@@ -62,5 +63,12 @@ def test_the_engine_is_kept_out_while_flock_holds_it(paths):
         os.killpg(holder.pid, signal.SIGKILL)
         holder.wait()
 
-    with setup_lock(paths, {}):
-        pass
+    # flock has exited, but its child may still be closing the file for a moment.
+    for _attempt in range(50):
+        try:
+            with setup_lock(paths, {}):
+                return
+        except SetupError:
+            time.sleep(0.05)
+
+    pytest.fail("the lock was never released")

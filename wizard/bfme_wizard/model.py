@@ -315,8 +315,23 @@ class SetupModel:
 
     @property
     def graphics(self) -> str:
-        """The graphics backend the script uses: `vulkan` (DXVK) or `opengl` (WineD3D). Known only after a status check."""
+        """The graphics backend: `vulkan` (DXVK) or `opengl` (WineD3D). Known only after a status check."""
         return self.installed.get("graphics", "vulkan")
+
+    @property
+    def gpu(self) -> str:
+        """Which graphics card the programs use: `auto`, `dedicated` or `integrated`."""
+        return self.installed.get("gpu", "auto")
+
+    @property
+    def fps_counter(self) -> bool:
+        """Whether the programs show DXVK's frame counter."""
+        return self.installed.get("fps-counter") == "1"
+
+    @property
+    def graphics_cards(self) -> int:
+        """How many graphics cards the computer has."""
+        return int(self.installed.get("graphics-cards", "1"))
 
     @property
     def graphics_label(self) -> str:

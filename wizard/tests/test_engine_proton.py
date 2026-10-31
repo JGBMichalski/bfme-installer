@@ -177,6 +177,7 @@ def test_the_environment(tmp_path, monkeypatch, graphics, lspci, extra_environ, 
     env = proton.runner_env(paths, config, "fake-proton", inprefix=True, environ=environ)
 
     every_run = {
+        "DXVK_CONFIG": "d3d9.cachedWriteOnlyBuffers = True",
         "DXVK_HUD": "fps",
         "DXVK_STATE_CACHE_PATH": str(paths.base / "dxvk-cache"),
         "GAMEID": "0",
@@ -266,3 +267,59 @@ def test_the_proton_download_says_so(paths, file_server):
                          emit=events.append)
 
     assert events == [Log(f"Downloading {DEFAULT_PROTONPATH}.tar.gz.")]
+
+
+
+# The graphics card and DXVK's settings
+
+def card_env(tmp_path, monkeypatch, gpu, lspci):
+    executable(tmp_path / "bin" / "lspci", f"#!/bin/sh\nprintf '%s' '{lspci}'\n")
+    monkeypatch.setenv("PATH", str(tmp_path / "bin"))
+    return proton.runner_env(Paths(tmp_path / "data"), Config(gpu=gpu), "p", inprefix=True, environ={})
+
+
+CARD_VARIABLES = ("__NV_PRIME_RENDER_OFFLOAD", "__GLX_VENDOR_LIBRARY_NAME", "__VK_LAYER_NV_optimus", "DRI_PRIME")
+
+
+def card_choice(env):
+    chosen = {}
+
+    for name in CARD_VARIABLES:
+        if name in env:
+            chosen[name] = env[name]
+
+    return chosen
+
+
+@pytest.mark.parametrize("gpu, lspci, expected", [
+    ("auto", LSPCI_TWO_CARDS, NVIDIA_OFFLOAD),
+    ("auto", LSPCI_ONE_CARD, {}),
+    ("dedicated", LSPCI_ONE_CARD, {**NVIDIA_OFFLOAD, "DRI_PRIME": "1"}),
+    ("dedicated", LSPCI_TWO_CARDS, {**NVIDIA_OFFLOAD, "DRI_PRIME": "1"}),
+    ("integrated", LSPCI_TWO_CARDS, {"__VK_LAYER_NV_optimus": "non_NVIDIA_only", "__GLX_VENDOR_LIBRARY_NAME": "mesa",
+                                     "DRI_PRIME": "0"}),
+])
+def test_the_graphics_card_the_player_chose(tmp_path, monkeypatch, gpu, lspci, expected):
+    assert card_choice(card_env(tmp_path, monkeypatch, gpu, lspci)) == expected
+
+
+def test_the_cards_are_listed_as_lspci_names_them(tmp_path, monkeypatch):
+    executable(tmp_path / "bin" / "lspci", f"#!/bin/sh\nprintf '%s' '{LSPCI_TWO_CARDS}'\n")
+    monkeypatch.setenv("PATH", str(tmp_path / "bin"))
+
+    assert len(proton.graphics_cards()) == 2
+
+
+@pytest.mark.parametrize("player, expected", [
+    (None, "d3d9.cachedWriteOnlyBuffers = True"),
+    ("dxgi.syncInterval = 0", "d3d9.cachedWriteOnlyBuffers = True; dxgi.syncInterval = 0"),
+])
+def test_dxvks_settings_and_the_players_own(paths, player, expected):
+    environ = {}
+
+    if player:
+        environ["DXVK_CONFIG"] = player
+
+    env = proton.runner_env(paths, Config(), "p", inprefix=True, environ=environ)
+
+    assert env["DXVK_CONFIG"] == expected

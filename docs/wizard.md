@@ -33,8 +33,9 @@ The first three are left out when the game environment is ready.
 - **Programs:** **Install** on the AIO Launcher or the Arena installs both. **Remove** asks first, ends the Wine session,
   and deletes only that program and its shortcut. It is inactive while a program runs. **Workshop Studio** and **Mission
   Control** are under **Tools**, with **Open**; they have no card and no shortcut.
-- **Troubleshoot** (lifebuoy, on every page): system checks, the **Vulkan**/**OpenGL** switch, **Copy diagnostics** (can
-  contain your home folder name), **Open logs folder**, and **Reset game environment**.
+- **Troubleshoot** (lifebuoy, on every page): system checks; **Graphics**, with the **Vulkan**/**OpenGL** switch, the
+  graphics card (only with two) and **Show FPS**; **Copy diagnostics** (can contain your home folder name); **Open logs
+  folder**; and **Reset game environment**.
 - **Shortcuts** run `bfme-installer --open aio-launcher|arena|aotr` and exist only while the program is installed. A
   shortcut whose program is ready opens it without the window.
 

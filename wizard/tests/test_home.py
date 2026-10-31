@@ -443,7 +443,7 @@ def troubleshoot_button_labels(Gtk, graphics):
     c.model.installed = {"graphics": graphics}
     page = TroubleshootPage(
         c, copy_text=lambda *_a: None, copy_diagnostics=lambda: None, open_logs=lambda: None,
-        confirm_reset=lambda: None, change_graphics=lambda _backend: None,
+        confirm_reset=lambda: None, change_graphics=lambda _backend: None, change_option=lambda _option, _value: None,
     )
     return [b.get_label() for b in buttons(page.view, Gtk)]
 
@@ -662,3 +662,67 @@ def test_the_button_installs_what_is_ticked(start):
     page._checks["aotr"].set_active(True)
     page.button.emit("clicked")
     assert asked == [("aio-launcher", "aotr")]
+
+
+# Troubleshoot: the graphics card and the FPS counter
+
+def troubleshoot(installed, state="done"):
+    from bfme_wizard.home import TroubleshootPage
+    c = idle_controller()
+    c.model.state = state
+    c.model.installed = dict(installed)
+    asked = []
+    page = TroubleshootPage(
+        c, copy_text=lambda *_a: None, copy_diagnostics=lambda: None, open_logs=lambda: None,
+        confirm_reset=lambda: None, change_graphics=lambda _backend: None,
+        change_option=lambda option, value: asked.append((option, value)),
+    )
+    return page, asked
+
+
+def rows_titled(page, kind):
+    found = {}
+
+    for widget in descendants(page.view):
+        if isinstance(widget, kind):
+            found[widget.get_title()] = widget
+
+    return found
+
+
+def test_the_choice_of_card_is_only_there_with_two_cards(gtk):
+    from gi.repository import Adw
+    one, _ = troubleshoot({"graphics-cards": "1"})
+    two, _ = troubleshoot({"graphics-cards": "2"})
+
+    assert "Graphics card" not in rows_titled(one, Adw.ComboRow)
+    assert "Graphics card" in rows_titled(two, Adw.ComboRow)
+
+
+def test_the_rows_show_what_is_saved_and_building_them_saves_nothing(gtk):
+    from gi.repository import Adw
+    page, asked = troubleshoot({"graphics-cards": "2", "gpu": "integrated", "fps-counter": "1"})
+    combos = rows_titled(page, Adw.ComboRow)
+
+    assert combos["Graphics card"].get_selected_item().get_string() == "Built-in card"
+    assert rows_titled(page, Adw.SwitchRow)["Show FPS"].get_active()
+    assert asked == []
+
+
+def test_changing_a_row_saves_that_setting(gtk):
+    from gi.repository import Adw
+    page, asked = troubleshoot({"graphics-cards": "2"})
+    combos = rows_titled(page, Adw.ComboRow)
+
+    combos["Graphics card"].set_selected(1)
+    rows_titled(page, Adw.SwitchRow)["Show FPS"].set_active(True)
+
+    assert asked == [("gpu", "dedicated"), ("fps-counter", 1)]
+
+
+def test_the_rows_wait_while_the_setup_runs(gtk):
+    from gi.repository import Adw
+    page, _ = troubleshoot({"graphics-cards": "2"}, state="running")
+
+    for row in [*rows_titled(page, Adw.ComboRow).values(), *rows_titled(page, Adw.SwitchRow).values()]:
+        assert not row.get_sensitive(), row.get_title()

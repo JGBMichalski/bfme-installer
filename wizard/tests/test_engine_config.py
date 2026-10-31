@@ -1,4 +1,5 @@
 """engine.config: reads and writes config.env."""
+import re
 import pytest
 
 from bfme_wizard.engine.config import DEFAULT_PROTONPATH, Config, ConfigError, load, read_file, save
@@ -86,3 +87,28 @@ def test_a_saved_choice_is_read_back(path):
 def test_the_backend_in_each_file_syntax(path, text, expected):
     path.write_text(text)
     assert load(path, {}).graphics == expected
+
+
+# The graphics card
+
+def test_the_other_graphics_settings_default_to_today(path):
+    config = load(path, {})
+
+    assert config.gpu == "auto"
+
+
+def test_the_other_graphics_settings_are_read(path):
+    path.write_text("BFME_GPU=integrated\n")
+    config = load(path, {})
+
+    assert config.gpu == "integrated"
+
+
+@pytest.mark.parametrize("text, message", [
+    ("BFME_GPU=nvidia\n", 'BFME_GPU must be auto, dedicated or integrated, not "nvidia".'),
+])
+def test_a_wrong_value_is_refused(path, text, message):
+    path.write_text(text)
+
+    with pytest.raises(ConfigError, match=re.escape(message)):
+        load(path, {})

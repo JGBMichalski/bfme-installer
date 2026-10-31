@@ -65,8 +65,8 @@ LAYOUTS = {
     "a game folder without its program": ["prefix", "bfme2-folder"],
 }
 
-STATUS_KEYS = ["runner", "graphics", "prefix", "aio-launcher", "arena", "aotr", "workshop", "mission-control",
-               "bfme1", "bfme2", "rotwk", "complete"]
+STATUS_KEYS = ["runner", "graphics", "gpu", "fps-counter", "graphics-cards", "prefix", "aio-launcher", "arena",
+               "aotr", "workshop", "mission-control", "bfme1", "bfme2", "rotwk", "complete"]
 
 # What differs, per layout, from a status where nothing is there. An unfinished install counts as missing, and only a
 # prefix with a launcher or AotR in it is complete.
@@ -109,12 +109,18 @@ def build(paths, parts):
 
 
 @pytest.mark.parametrize("layout", LAYOUTS)
-def test_the_status_of_each_layout(paths, layout):
+def test_the_status_of_each_layout(paths, layout, tmp_path, monkeypatch):
+    # One graphics card, whatever computer runs the test.
+    executable(tmp_path / "bin" / "lspci", "#!/bin/sh\necho '00:02.0 VGA compatible controller: Intel'\n")
+    monkeypatch.setenv("PATH", f"{tmp_path / 'bin'}:/usr/bin:/bin")
     build(paths, LAYOUTS[layout])
 
     expected = {
         "runner": "proton",
         "graphics": "vulkan",
+        "gpu": "auto",
+        "fps-counter": "0",
+        "graphics-cards": "1",
         "prefix": "missing",
         "aio-launcher": "missing",
         "arena": "missing",

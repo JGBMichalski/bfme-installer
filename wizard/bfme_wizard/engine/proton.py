@@ -84,17 +84,17 @@ def ensure_proton(paths: Paths, config: Config, on_progress: Progress | None = N
     return str(target)
 
 
-def use_nvidia() -> bool:
-    """Whether to send the games to an NVIDIA card: only on a computer with more than one graphics card, one of them NVIDIA."""
+def graphics_cards() -> list[str]:
+    """One line per graphics card, as `lspci` names it, in lower case. Empty without `lspci`."""
     lspci = shutil.which("lspci")
 
     if lspci is None:
-        return False
+        return []
 
     try:
         out = subprocess.run([lspci], capture_output=True, text=True, timeout=10, check=False).stdout
     except (OSError, subprocess.SubprocessError):
-        return False
+        return []
 
     cards = []
 
@@ -104,6 +104,12 @@ def use_nvidia() -> bool:
         if "vga" in lower or "3d" in lower:
             cards.append(lower)
 
+    return cards
+
+
+def use_nvidia() -> bool:
+    """Whether to send the games to an NVIDIA card: only on a computer with more than one graphics card, one of them NVIDIA."""
+    cards = graphics_cards()
     has_nvidia = False
 
     for card in cards:
@@ -113,16 +119,49 @@ def use_nvidia() -> bool:
     return len(cards) > 1 and has_nvidia
 
 
+def _dedicated_card(env: dict[str, str]) -> None:
+    """Send the programs to the dedicated card: NVIDIA's render offload, and DRI_PRIME for one that Mesa drives (AMD)."""
+    env["__NV_PRIME_RENDER_OFFLOAD"] = "1"
+    env["__GLX_VENDOR_LIBRARY_NAME"] = "nvidia"
+    env["__VK_LAYER_NV_optimus"] = "NVIDIA_only"
+    env["DRI_PRIME"] = "1"
+
+
+def _integrated_card(env: dict[str, str]) -> None:
+    """Keep the programs on the built-in card: hide NVIDIA from Vulkan and OpenGL, and no DRI_PRIME offload."""
+    env["__VK_LAYER_NV_optimus"] = "non_NVIDIA_only"
+    env["__GLX_VENDOR_LIBRARY_NAME"] = "mesa"
+    env["DRI_PRIME"] = "0"
+
+
+def _dxvk_config(config: Config, env: dict[str, str]) -> str:
+    """DXVK's settings for the games. Any the player set in DXVK_CONFIG come after, so theirs win."""
+    # DXVK has this for BFME 2 and Rise of the Witch-king against slowdowns, but matches only their retail folder names. The
+    # AIO Launcher and Age of the Ring install them elsewhere (C:\BFME2, C:\RotWK, C:\AgeoftheRing).
+    settings = ["d3d9.cachedWriteOnlyBuffers = True"]
+
+    if env.get("DXVK_CONFIG"):
+        settings.append(env["DXVK_CONFIG"])
+
+    return "; ".join(settings)
+
+
 def runner_env(paths: Paths, config: Config, proton: str, inprefix: bool, environ: dict[str, str] | None = None) -> dict[str, str]:
     """The environment umu runs a program with."""
     env = dict(os.environ if environ is None else environ)
     env["WINEPREFIX"] = str(paths.prefix)
     env["DXVK_STATE_CACHE_PATH"] = str(paths.base / "dxvk-cache")
 
-    if use_nvidia():
+    if config.gpu == "dedicated":
+        _dedicated_card(env)
+    elif config.gpu == "integrated":
+        _integrated_card(env)
+    elif use_nvidia():
         env["__NV_PRIME_RENDER_OFFLOAD"] = "1"
         env["__GLX_VENDOR_LIBRARY_NAME"] = "nvidia"
         env["__VK_LAYER_NV_optimus"] = "NVIDIA_only"
+
+    env["DXVK_CONFIG"] = _dxvk_config(config, env)
 
     env["PROTONPATH"] = proton
     env["GAMEID"] = "0"
