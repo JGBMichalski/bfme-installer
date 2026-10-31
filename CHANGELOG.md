@@ -15,7 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - The setup now runs in Python inside the app instead of a separate shell script.
 - Applying the game environment's settings, and switching between Vulkan and OpenGL, takes a few seconds instead of about a minute.
-- The AIO Launcher's menu shortcut and icon are now `<app id>.AioLauncher`.
+- The AIO Launcher's menu shortcut and icon are now `<app id>.AioLauncher`. A 2.x shortcut still opens it, and is replaced the first time it is used.
 - Error messages no longer tell you to run terminal commands.
 - Age of the Ring sizes are updated for 10.0.0: about 19 GB to download, 28 GB installed, and about 47 GB of free space while installing.
 - **Stop now** works like Cancel: downloads, unpacking and installers stop at once, and other steps finish first.

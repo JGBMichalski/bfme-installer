@@ -46,8 +46,10 @@ def print_event(event: Event) -> None:
 def main() -> int:
     offer = parse_args(sys.argv[1:])
 
-    # A shortcut whose program is there starts it without a window.
+    # A shortcut whose program is there starts it without a window. The shortcuts are brought in line first, so a player who
+    # only uses the menu still gets them renamed or removed. A failed sync is no reason not to open the program.
     if offer and jobs.ready_to_open(offer):
+        jobs.sync_shortcuts(print_event, threading.Event())
         return jobs.open_program(offer, print_event, threading.Event())
 
     if not has_display():
