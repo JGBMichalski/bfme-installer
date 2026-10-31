@@ -274,7 +274,7 @@ def test_switching(env, paths, ready, saved, wanted):
 
 
 def test_an_unknown_backend_is_refused(paths):
-    with pytest.raises(SetupError, match="Use: graphics vulkan|opengl"):
+    with pytest.raises(SetupError, match="Unknown graphics backend: direct3d."):
         prefix.set_graphics(paths, Config(), "direct3d", [].append)
 
 

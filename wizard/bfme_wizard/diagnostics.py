@@ -12,15 +12,21 @@ import subprocess
 from pathlib import Path
 
 from .engine import graphics
+from .engine.launch import program_logs
 from .model import GAMES, SetupModel
 
 LOG_LINES = 40
 
 
 def newest_log(log_dir: Path, prefix: str) -> Path | None:
-    """The most recent '<prefix>-<time>.log', or the plain '<prefix>.log'."""
-    candidates = sorted(log_dir.glob(f"{prefix}-*.log"), key=lambda p: p.stat().st_mtime) or sorted(log_dir.glob(f"{prefix}.log"))
-    return candidates[-1] if candidates else None
+    """The most recent '<prefix>-<date>-<time>.log', or else the plain '<prefix>.log'."""
+    started = program_logs(log_dir, prefix)
+
+    if started:
+        return started[0]
+
+    plain = log_dir / f"{prefix}.log"
+    return plain if plain.is_file() else None
 
 
 def any_log(log_dir: Path) -> Path | None:

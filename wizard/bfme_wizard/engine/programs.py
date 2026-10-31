@@ -135,6 +135,7 @@ def install_aio_launcher(paths: Paths, config: Config, proton_path: str, emit: E
     setup = paths.downloads / "AllInOneLauncherSetup.exe"
 
     if not setup.is_file():
+        emit(Log(f"Downloading {setup.name}."))
         download(url or AIO_LAUNCHER_URL, setup, cancel=cancel)
 
     emit(Log("Installing the AIO Launcher. It may open for a moment; the setup closes it again."))
@@ -216,6 +217,7 @@ def install_or_update_arena(paths: Paths, emit: Emit, cancel: threading.Event | 
     tmp = paths.downloads / "OnlineArena.exe"
     tmp.unlink(missing_ok=True)
     tmp.with_name(tmp.name + ".part").unlink(missing_ok=True)
+    emit(Log(f"Downloading {tmp.name}."))
     download(f"{files_host}/application-builds/online-arena-{ARENA_BRANCH}", tmp, cancel=cancel)
 
     if remote:
@@ -229,10 +231,14 @@ def install_or_update_arena(paths: Paths, emit: Emit, cancel: threading.Event | 
     paths.arena_exe.chmod(0o755)
 
 
-def install_tool(paths: Paths, tool: str, cancel: threading.Event | None = None, url: str | None = None) -> None:
+def install_tool(paths: Paths, tool: str, cancel: threading.Event | None = None, url: str | None = None,
+                 emit: Emit | None = None) -> None:
     """Workshop Studio and Mission Control are single programs, so they are downloaded straight into a folder of their
     own."""
     exe = paths.tool_exe(tool)
+    if emit is not None:
+        emit(Log(f"Downloading {exe.name}."))
+
     download(url or TOOL_URLS[tool], exe, cancel=cancel)
     exe.chmod(0o755)
 
@@ -251,7 +257,7 @@ def remove(paths: Paths, config: Config, program: str, emit: Emit) -> None:
     elif program in TOOLS:
         folder = paths.tool_exe(program).parent
     else:
-        raise SetupError("Use: remove aio-launcher|arena|aotr|workshop|mission-control")
+        raise SetupError(f"Unknown program: {program}.")
 
     # Whatever the settings say, never delete outside the game environment.
     if paths.drive_c not in folder.parents:

@@ -307,7 +307,7 @@ def test_each_start_gets_its_own_log_and_the_newest_ten_are_kept(tmp_path, paths
     paths.logs.mkdir(parents=True)
 
     for number in range(12):
-        old = paths.logs / f"aotr-2025010{number % 10}-00000{number}.log"
+        old = paths.logs / f"aotr-2025010{number % 10}-{number:06d}.log"
         old.write_text("old")
         os.utime(old, (1000 + number, 1000 + number))
 
@@ -323,3 +323,19 @@ def test_each_start_gets_its_own_log_and_the_newest_ten_are_kept(tmp_path, paths
     assert newest.read_text() == f"running {paths.aotr_exe}\n"
     assert (paths.logs / "arena-20250101-000000.log").exists()
     assert events == [Log(f"Starting Age of the Ring. Log: {newest}")]
+
+
+def test_only_the_logs_of_starts_are_rotated(paths, umu):
+    put(paths.aotr_exe)
+    paths.logs.mkdir(parents=True)
+    put(paths.logs / "aotr-setup.log", "a log of its own")       # like aio-launcher-setup.log
+
+    for number in range(12):
+        old = paths.logs / f"aotr-2025010{number % 10}-{number:06d}.log"
+        old.write_text("old")
+        os.utime(old, (1000 + number, 1000 + number))
+
+    launch.start_program(paths, Config(), "fake-proton", "aotr", paths.aotr_exe, "Age of the Ring", [].append)
+
+    assert (paths.logs / "aotr-setup.log").read_text() == "a log of its own"
+    assert len(launch.program_logs(paths.logs, "aotr")) == 10

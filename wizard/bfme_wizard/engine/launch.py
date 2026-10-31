@@ -1,6 +1,7 @@
 """Starting a program in the game environment, with a log of its own."""
 from __future__ import annotations
 
+import re
 import time
 from pathlib import Path
 
@@ -28,13 +29,25 @@ def start_program(paths: Paths, config: Config, proton_path: str, log_name: str,
     return code
 
 
-def _remove_old_logs(logs: Path, log_name: str) -> None:
+def program_logs(logs: Path, log_name: str) -> list[Path]:
+    """The logs of a program's starts, newest first. Only <name>-<date>-<time>.log: aio-launcher-setup.log is not one."""
+    pattern = re.compile(rf"{re.escape(log_name)}-\d{{8}}-\d{{6}}\.log")
     found = []
 
     for log in logs.glob(f"{log_name}-*.log"):
-        found.append((log.stat().st_mtime, log))
+        if pattern.fullmatch(log.name):
+            found.append((log.stat().st_mtime, log))
 
     found.sort(reverse=True)
+    newest_first = []
 
-    for _mtime, log in found[KEEP_LOGS:]:
+    for _mtime, log in found:
+        newest_first.append(log)
+
+    return newest_first
+
+
+def _remove_old_logs(logs: Path, log_name: str) -> None:
+    """Remove old logs, keeping only the newest KEEP_LOGS."""
+    for log in program_logs(logs, log_name)[KEEP_LOGS:]:
         log.unlink(missing_ok=True)

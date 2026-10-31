@@ -106,7 +106,7 @@ def progress(events):
 
 BAD_DOWNLOAD_MESSAGES = {
     "unfinished": "This download is not finished yet. Wait until your browser has finished, then choose the file again.",
-    "wrong name": "This is not the Age of the Ring installer. Choose the file named like AotR_Standalone_9.3.0_Installer.zip.",
+    "wrong name": "This is not the Age of the Ring installer. Choose the file named like AotR_Standalone_10.0.0_Installer.zip.",
     "damaged": "This file is incomplete or damaged. Download it again from ModDB.",
     "no installer": "The installer program is missing from this file. Download it again from ModDB.",
     "no data files": "The installer's data files are missing from this file. Download it again from ModDB.",

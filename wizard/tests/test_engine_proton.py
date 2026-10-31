@@ -9,6 +9,7 @@ from bfme_wizard.engine import download as download_module
 from bfme_wizard.engine import proton
 from bfme_wizard.engine.config import DEFAULT_PROTONPATH, Config, load
 from bfme_wizard.engine.errors import SetupError
+from bfme_wizard.engine.events import Log
 from bfme_wizard.engine.paths import Paths
 
 LSPCI_TWO_CARDS = ("00:02.0 VGA compatible controller: Intel Corporation CometLake-H GT2\n"
@@ -254,3 +255,14 @@ def test_without_a_game_environment_there_is_nothing_to_end(tmp_path, paths):
     proton.end_wine_session(paths, Config(protonpath=str(tmp_path / "my-proton")), {})
 
     assert not log.exists()
+
+
+def test_the_proton_download_says_so(paths, file_server):
+    data = proton_tarball()
+    file_server.files["/p.tar.gz"] = data
+    events = []
+
+    proton.ensure_proton(paths, Config(), url=file_server.url("/p.tar.gz"), sha256=hashlib.sha256(data).hexdigest(),
+                         emit=events.append)
+
+    assert events == [Log(f"Downloading {DEFAULT_PROTONPATH}.tar.gz.")]

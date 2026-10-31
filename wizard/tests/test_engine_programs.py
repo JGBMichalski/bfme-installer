@@ -204,7 +204,8 @@ def test_the_aio_launcher_setup_runs_once_and_the_session_is_ended(paths, aio_la
     assert (tmp / "wineserver.log").read_text() == "-k\n-w\n"
     assert not setup.exists()
     assert (paths.logs / "aio-launcher-setup.log").exists()
-    assert logs(events) == ["Installing the AIO Launcher. It may open for a moment; the setup closes it again."]
+    assert logs(events) == ["Downloading AllInOneLauncherSetup.exe.",
+                            "Installing the AIO Launcher. It may open for a moment; the setup closes it again."]
 
 
 def test_an_installed_aio_launcher_is_left_alone(paths, aio_launcher_env, file_server):
@@ -246,7 +247,7 @@ def test_without_a_wine_server_it_warns(paths, aio_launcher_env, tmp_path):
 
     programs.install_aio_launcher(paths, Config(), aio_launcher_env["proton"], events.append, url=aio_launcher_env["url"])
 
-    assert Warn("Could not find the Wine server. Close the AIO Launcher window to let the setup carry on.") in events
+    assert Warn("Could not find the Wine server to close the programs in the game environment. Close any that are still open.") in events
 
 
 # The Arena
@@ -278,7 +279,7 @@ def test_a_missing_arena_is_downloaded_and_checked(paths, arena_server):
     assert paths.arena_exe.read_bytes() == ARENA
     assert os.access(paths.arena_exe, os.X_OK)
     assert (paths.arena_exe.parent / "Data").is_dir()
-    assert logs(events) == ["The Arena is not installed yet."]
+    assert logs(events) == ["The Arena is not installed yet.", "Downloading OnlineArena.exe."]
 
 
 def test_an_up_to_date_arena_is_not_downloaded(paths, arena_server):
@@ -298,7 +299,7 @@ def test_a_newer_arena_replaces_the_old_one(paths, arena_server):
     install_arena(paths, host, events)
 
     assert paths.arena_exe.read_bytes() == ARENA
-    assert logs(events) == ["A new Arena version is available."]
+    assert logs(events) == ["A new Arena version is available.", "Downloading OnlineArena.exe."]
 
 
 def test_without_the_server_an_installed_arena_is_kept(paths, arena_server):
@@ -444,7 +445,7 @@ def test_removing_takes_away_only_the_programs_files(paths, program):
 
 
 def test_an_unknown_program_is_refused(paths):
-    with pytest.raises(SetupError, match="Use: remove aio-launcher|arena|aotr|workshop|mission-control"):
+    with pytest.raises(SetupError, match="Unknown program: bfme2."):
         programs.remove(paths, Config(), "bfme2", [].append)
 
 
@@ -455,3 +456,12 @@ def test_the_arena_update_check_names_the_app_not_python(paths, arena_server):
     install_arena(paths, host)
 
     assert server.agents == ["bfme-installer"]
+
+
+def test_a_tool_download_says_so(paths, file_server):
+    file_server.files["/tool.exe"] = b"tool"
+    events = []
+
+    programs.install_tool(paths, "workshop", url=file_server.url("/tool.exe"), emit=events.append)
+
+    assert logs(events) == ["Downloading WorkshopStudio.exe."]

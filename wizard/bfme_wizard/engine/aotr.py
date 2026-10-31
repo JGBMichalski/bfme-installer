@@ -92,7 +92,7 @@ def check_zip(zip_path: Path) -> AotrZip:
 
     if not re.fullmatch(r"AotR_Standalone_.*_Installer\.zip", zip_path.name):
         raise SetupError("This is not the Age of the Ring installer. Choose the file named like "
-                         "AotR_Standalone_9.3.0_Installer.zip.")
+                         "AotR_Standalone_10.0.0_Installer.zip.")
 
     entries = zip_entries(zip_path)
     exe_name = ""

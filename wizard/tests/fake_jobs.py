@@ -123,7 +123,7 @@ class FakeJobs:
         emit(Step("doctor", "start"))
 
         if self._checks(emit) != 0:
-            return self.fail(emit, "doctor", "Fix the problems above, then run prepare again.")
+            return self.fail(emit, "doctor", "Your system needs a change first. Fix the problems above, then try again.")
 
         emit(Step("doctor", "done"))
         emit(Step("runner", "start"))
@@ -215,7 +215,7 @@ class FakeJobs:
         self.calls.append(f"switch_graphics {backend}")
 
         if backend not in ("vulkan", "opengl"):
-            return self.fail(emit, None, "Use: graphics vulkan|opengl")
+            return self.fail(emit, None, "Unknown graphics backend: direct3d.")
 
         (self.dir / "graphics").write_text(backend)
         self.report(emit)

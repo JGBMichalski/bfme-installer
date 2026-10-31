@@ -31,7 +31,7 @@ OK = 0
 FAILED = 1
 NEEDS_FILE = 2      # the app cannot download Age of the Ring itself: the player downloads it and chooses the file
 STOPPED = 130
-SET_UP_FIRST = "Set up the game environment first. Run: prepare"
+SET_UP_FIRST = "Set up the game environment first."
 AIO_LAUNCHER_DONE = [
     "Done. Start 'BFME All-in-One Launcher' to install the games, and 'BFME Online Arena' to play online.",
     "Do not switch patches in the AIO Launcher after a game is installed. On Wine this once broke the BFME 2 files.",
@@ -126,7 +126,7 @@ def _ensure_runner(job: Job) -> str:
     def progress(percent: int) -> None:
         job.emit(Progress(percent))
 
-    return proton.ensure_proton(job.paths, job.config, progress, job.cancel)
+    return proton.ensure_proton(job.paths, job.config, progress, job.cancel, emit=job.emit)
 
 
 def _ensure_prefix(job: Job) -> str:
@@ -154,7 +154,7 @@ def check(emit: Emit, cancel: threading.Event | None = None, environ: dict[str, 
     """Run the system check alone."""
     def body(job: Job) -> None:
         if not doctor.run_checks(job.paths, job.config, job.emit):
-            raise SetupError(f"Failed (exit 1). See the logs in {job.paths.logs}")
+            raise SetupError("The system check found a problem.")
 
     return _run(body, emit, cancel, environ)
 
@@ -174,7 +174,7 @@ def prepare(emit: Emit, cancel: threading.Event | None = None, environ: dict[str
         job.start("doctor")
 
         if not doctor.run_checks(job.paths, job.config, job.emit):
-            raise SetupError("Fix the problems above, then run prepare again.")
+            raise SetupError("Your system needs a change first. Fix the problems above, then try again.")
 
         job.done("doctor")
 
@@ -295,7 +295,7 @@ def tool_install(tool: str, emit: Emit, cancel: threading.Event | None = None,
     """Install Workshop Studio or Mission Control. Needs the game environment."""
     def body(job: Job) -> None:
         if tool not in programs.TOOLS:
-            raise SetupError("Use: tool-install workshop|mission-control")
+            raise SetupError(f"Unknown tool: {tool}.")
 
         if not prefix_ready(job.paths):
             raise SetupError(SET_UP_FIRST)
@@ -305,7 +305,7 @@ def tool_install(tool: str, emit: Emit, cancel: threading.Event | None = None,
                 folder.mkdir(parents=True, exist_ok=True)
 
             job.start(tool)
-            programs.install_tool(job.paths, tool, job.cancel)
+            programs.install_tool(job.paths, tool, job.cancel, emit=job.emit)
             job.done(tool)
             _finish(job, f"{programs.NAMES[tool]} is installed.")
 
@@ -356,7 +356,7 @@ def open_program(program: str, emit: Emit, cancel: threading.Event | None = None
                 raise SetupError(f"{programs.NAMES[program]} is not installed.")
 
         elif program not in ("aio-launcher", "arena"):
-            raise SetupError("Use: open aio-launcher|arena|aotr|workshop|mission-control")
+            raise SetupError(f"Unknown program: {program}.")
 
         with job.lock():
             proton_path = _ensure_prefix(job)

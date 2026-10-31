@@ -127,7 +127,7 @@ def detect_graphics(paths: Paths, config: Config, emit: Emit) -> Config:
 def set_graphics(paths: Paths, config: Config, backend: str, emit: Emit) -> Config:
     """The player's switch. Saved in config.env, which the shortcuts read too, and applied to a ready prefix at once."""
     if backend not in GRAPHICS:
-        raise SetupError("Use: graphics vulkan|opengl")
+        raise SetupError(f"Unknown graphics backend: {backend}.")
 
     changed = backend != config.graphics
 

@@ -12,6 +12,7 @@ from typing import IO
 from .config import DEFAULT_PROTONPATH, Config
 from .download import Progress, download, verify_sha256
 from .errors import SetupError
+from .events import Emit, Log
 from .paths import Paths
 
 PROTON_URL = (f"https://github.com/Open-Wine-Components/umu-proton/releases/download/"
@@ -19,7 +20,8 @@ PROTON_URL = (f"https://github.com/Open-Wine-Components/umu-proton/releases/down
 PROTON_SHA256 = "62e99e029a18fa313e6fa63d42390918101730a940e3491c54d9d58cab887c69"
 D3D_DLLS = "d3d8,d3d9,d3d10core,d3d11,dxgi"
 
-NO_WINE_SERVER = "Could not find the Wine server. Close the AIO Launcher window to let the setup carry on."
+NO_WINE_SERVER = ("Could not find the Wine server to close the programs in the game environment. Close any that are still "
+                  "open.")
 
 
 def proton_dir(paths: Paths) -> Path:
@@ -36,7 +38,8 @@ def protonpath(paths: Paths, config: Config) -> str:
 
 
 def ensure_proton(paths: Paths, config: Config, on_progress: Progress | None = None,
-                  cancel: threading.Event | None = None, url: str = PROTON_URL, sha256: str = PROTON_SHA256) -> str:
+                  cancel: threading.Event | None = None, url: str = PROTON_URL, sha256: str = PROTON_SHA256,
+                  emit: Emit | None = None) -> str:
     """Download and unpack the pinned Proton if it is missing. Returns PROTONPATH for umu."""
     if config.protonpath != DEFAULT_PROTONPATH:
         return config.protonpath
@@ -47,6 +50,9 @@ def ensure_proton(paths: Paths, config: Config, on_progress: Progress | None = N
         return str(target)
 
     tarball = paths.downloads / f"{DEFAULT_PROTONPATH}.tar.gz"
+    if emit is not None:
+        emit(Log(f"Downloading {tarball.name}."))
+
     download(url, tarball, on_progress, cancel)
     verify_sha256(tarball, sha256)
 
@@ -61,7 +67,7 @@ def ensure_proton(paths: Paths, config: Config, on_progress: Progress | None = N
         with tarfile.open(tarball) as archive:
             archive.extractall(tmp, filter="tar")
     except (tarfile.TarError, OSError) as error:
-        raise SetupError("Proton could not be unpacked. Run install again.") from error
+        raise SetupError("Proton could not be unpacked. Try again.") from error
 
     unpacked = tmp / DEFAULT_PROTONPATH
 

@@ -159,7 +159,7 @@ def status_lines(**changed):
     return out
 
 
-NO_WINE_SERVER = "@bfme WARN Could not find the Wine server. Close the AIO Launcher window to let the setup carry on."
+NO_WINE_SERVER = "@bfme WARN Could not find the Wine server to close the programs in the game environment. Close any that are still open."
 
 
 # What is there
@@ -220,7 +220,7 @@ def test_prepare_stops_at_a_failed_check(world, monkeypatch):
     code, events = world.engine(jobs.prepare)
 
     assert code == jobs.FAILED
-    assert lines(events)[-1] == "@bfme ERROR doctor Fix the problems above, then run prepare again."
+    assert lines(events)[-1] == "@bfme ERROR doctor Your system needs a change first. Fix the problems above, then try again."
     assert not world.paths.prefix.exists()
 
 
@@ -251,7 +251,7 @@ def test_the_aio_launcher_needs_the_game_environment(world):
     code, events = world.engine(jobs.aio_launcher_install)
 
     assert code == jobs.FAILED
-    assert lines(events) == ["@bfme ERROR - Set up the game environment first. Run: prepare"]
+    assert lines(events) == ["@bfme ERROR - Set up the game environment first."]
 
 
 @pytest.mark.parametrize("tool", programs.TOOLS)
@@ -275,7 +275,7 @@ def test_an_unknown_tool(world):
     code, events = world.engine(jobs.tool_install, "bogus")
 
     assert code == jobs.FAILED
-    assert lines(events) == ["@bfme ERROR - Use: tool-install workshop|mission-control"]
+    assert lines(events) == ["@bfme ERROR - Unknown tool: bogus."]
 
 
 def aotr_zip(world, version="10.0.0"):
@@ -468,8 +468,13 @@ def test_a_bad_config_file_is_an_error(world):
 
 def test_progress_is_reported_while_proton_downloads(world, monkeypatch, file_server):
     seen = []
-    monkeypatch.setattr(jobs.proton, "ensure_proton",
-                        lambda paths, config, on_progress, cancel: (on_progress(50), on_progress(100), "fake-proton")[2])
+
+    def ensure_proton(paths, config, on_progress, cancel, emit=None):
+        on_progress(50)
+        on_progress(100)
+        return "fake-proton"
+
+    monkeypatch.setattr(jobs.proton, "ensure_proton", ensure_proton)
 
     code, events = world.engine(jobs.prepare)
 

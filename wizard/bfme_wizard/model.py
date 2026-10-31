@@ -25,6 +25,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 
 from .engine import events
+from .engine.paths import GAME_DIRS
 
 # Start page choices, in install order. The Arena is not one: it comes with the AIO Launcher.
 PROGRAMS = ("aio-launcher", "aotr")
@@ -58,7 +59,17 @@ JOB_STEPS: dict[str, list[tuple[str, str, str]]] = {
         ("mission-control", "Download Mission Control", "Fetching Mission Control from the BFME Arena site."),
     ],
 }
-GAMES = [("bfme1", "BFME"), ("bfme2", "BFME 2"), ("rotwk", "Rise of the Witch-king")]
+def _games() -> list[tuple[str, str]]:
+    """(key, name) of each game, in order. The names live with the games' folders, in engine/paths.py."""
+    games = []
+
+    for key, (name, _folder, _user_data) in GAME_DIRS.items():
+        games.append((key, name))
+
+    return games
+
+
+GAMES = _games()
 # The sandbox cannot see the firewall. Troubleshoot has a section for it.
 HIDDEN_CHECKS = {"firewall"}
 MAX_LOG_LINES = 2000
