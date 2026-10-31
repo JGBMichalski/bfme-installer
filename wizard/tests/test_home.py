@@ -443,7 +443,8 @@ def troubleshoot_button_labels(Gtk, graphics):
     c.model.installed = {"graphics": graphics}
     page = TroubleshootPage(
         c, copy_text=lambda *_a: None, copy_diagnostics=lambda: None, open_logs=lambda: None,
-        confirm_reset=lambda: None, change_graphics=lambda _backend: None, change_option=lambda _option, _value: None,
+        open_config=lambda: None, confirm_reset=lambda: None, change_graphics=lambda _backend: None,
+        change_option=lambda _option, _value: None,
     )
     return [b.get_label() for b in buttons(page.view, Gtk)]
 
@@ -674,6 +675,7 @@ def troubleshoot(installed, state="done"):
     asked = []
     page = TroubleshootPage(
         c, copy_text=lambda *_a: None, copy_diagnostics=lambda: None, open_logs=lambda: None,
+        open_config=lambda: asked.append(("open_config",)),
         confirm_reset=lambda: None, change_graphics=lambda _backend: None,
         change_option=lambda option, value: asked.append((option, value)),
     )
@@ -726,3 +728,12 @@ def test_the_rows_wait_while_the_setup_runs(gtk):
 
     for row in [*rows_titled(page, Adw.ComboRow).values(), *rows_titled(page, Adw.SwitchRow).values()]:
         assert not row.get_sensitive(), row.get_title()
+
+
+def test_the_settings_file_row_opens_it(gtk):
+    from gi.repository import Adw
+    page, asked = troubleshoot({})
+
+    rows_titled(page, Adw.ActionRow)["Open settings file"].emit("activated")
+
+    assert asked == [("open_config",)]

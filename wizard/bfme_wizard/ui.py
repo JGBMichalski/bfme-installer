@@ -153,7 +153,7 @@ class WizardWindow(Adw.ApplicationWindow):
             return
         self.troubleshoot = TroubleshootPage(
             self.controller, copy_text=self.copy, copy_diagnostics=self.copy_diagnostics,
-            open_logs=self.open_logs, confirm_reset=self.confirm_reset, change_graphics=self.change_graphics,
+            open_logs=self.open_logs, open_config=self.open_config, confirm_reset=self.confirm_reset, change_graphics=self.change_graphics,
             change_option=self.change_option,
         )
         self._troubleshoot_page = Adw.NavigationPage.new(self.troubleshoot.view, "Troubleshoot")
@@ -237,6 +237,24 @@ class WizardWindow(Adw.ApplicationWindow):
                 self.toasts.add_toast(Adw.Toast.new(f"Could not open it. The logs are in {logs}"))
 
         Gtk.FileLauncher.new(Gio.File.new_for_path(str(target))).open_containing_folder(self, None, opened)
+
+    def open_config(self) -> None:
+        config = paths().config
+
+        if not config.is_file():
+            self.toasts.add_toast(Adw.Toast.new("There is no settings file yet. The first setup creates it."))
+            return
+
+        def opened(launcher: Gtk.FileLauncher, result: Gio.AsyncResult) -> None:
+            try:
+                launcher.launch_finish(result)
+            except GLib.Error:
+                toast = Adw.Toast.new(f"Could not open it. The file is {config}")
+                toast.set_button_label("Copy path")
+                toast.connect("button-clicked", lambda *_: self.copy(str(config), "Path copied"))
+                self.toasts.add_toast(toast)
+
+        Gtk.FileLauncher.new(Gio.File.new_for_path(str(config))).launch(self, None, opened)
 
     def open_folder(self, folder) -> None:
         def opened(launcher: Gtk.FileLauncher, result: Gio.AsyncResult) -> None:

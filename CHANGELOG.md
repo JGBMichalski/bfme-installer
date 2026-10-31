@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Each download writes a "Downloading …" line to the log, and the running page shows its speed next to the percentage.
 - Troubleshoot's **Graphics** section can choose the graphics card on a computer with two, and show an FPS counter.
 - After an update, the app shows once what changed since the version you last used.
+- Troubleshoot can open the settings file, `config.env`, in your text editor.
 
 ### Changed
 

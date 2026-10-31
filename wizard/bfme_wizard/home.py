@@ -132,11 +132,11 @@ class TroubleshootPage:
     """Rebuilt only when its content changes, so expanded rows stay open."""
 
     def __init__(self, controller: Controller, *, copy_text: Callable[[str, str], None], copy_diagnostics: Callable[[], None],
-                 open_logs: Callable[[], None], confirm_reset: Callable[[], None],
+                 open_logs: Callable[[], None], open_config: Callable[[], None], confirm_reset: Callable[[], None],
                  change_graphics: Callable[[str], None], change_option: Callable[[str, str | int], None]) -> None:
         self.controller = controller
-        self._cb = dict(copy_text=copy_text, copy_diagnostics=copy_diagnostics, open_logs=open_logs, confirm_reset=confirm_reset,
-                        change_graphics=change_graphics, change_option=change_option)
+        self._cb = dict(copy_text=copy_text, copy_diagnostics=copy_diagnostics, open_logs=open_logs, open_config=open_config,
+                        confirm_reset=confirm_reset, change_graphics=change_graphics, change_option=change_option)
         self.view = Adw.ToolbarView()
         self.view.add_top_bar(Adw.HeaderBar())
         self._key = None
@@ -259,6 +259,8 @@ class TroubleshootPage:
         for title, subtitle, action in (
             ("Copy diagnostics", "Version, your computer's desktop and graphics card, system checks and the end of the latest logs. Check it before you share it.", "copy_diagnostics"),
             ("Open logs folder", "Opens the folder in your file manager.", "open_logs"),
+            ("Open settings file", "Opens config.env in your text editor. Changes apply the next time you open a program.",
+             "open_config"),
         ):
             row = Adw.ActionRow(title=title, subtitle=subtitle, subtitle_lines=2, activatable=True)
             row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
