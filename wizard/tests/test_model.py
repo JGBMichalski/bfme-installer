@@ -234,7 +234,16 @@ def test_age_of_the_ring_waits_for_the_player_to_choose_the_file():
     assert (m.state, m.job, m.current, m.step_number) == ("waiting", "aotr", "aotr-download", 1)
     assert m.steps["aotr-download"] == "running"
     m.begin_job("aotr")   # the file was chosen
+    feed(m, Step("aotr-download", "done"))   # the job says the player did this step
     assert (m.state, m.steps["aotr-download"], m.steps["aotr-check"]) == ("running", "done", "pending")
+
+
+def test_the_app_can_say_why_the_player_must_download_it():
+    m = planned("aotr", environment_ready=True)
+    m.wait_for_file("ModDB did not offer a download link.")
+    assert m.file_note == "ModDB did not offer a download link."
+    m.wait_for_file()
+    assert m.file_note is None
 
 def test_the_counter_never_runs_past_the_last_step():
     # Between the last step finishing and the script exiting, every step is done: "Step 4 of 3" would show for a moment.

@@ -377,7 +377,7 @@ class WizardWindow(Adw.ApplicationWindow):
             self._render_run()
             self.stack.set_visible_child_name("run")
         elif m.state == "waiting":
-            self.aotr.refresh(m.step_number, len(m.step_defs), self._leave_label())
+            self.aotr.refresh(m.step_number, len(m.step_defs), self._leave_label(), m.file_note)
             self.stack.set_visible_child_name("aotr")
         elif m.state in ("blocked", "failed"):
             self._render_problem()
@@ -452,8 +452,9 @@ class WizardWindow(Adw.ApplicationWindow):
             # One row: four stacked buttons do not fit.
             others = Gtk.Box(spacing=12, halign=Gtk.Align.CENTER)
             if m.job == "aotr":
-                # Most Age of the Ring failures come from the file.
-                others.append(pill("Choose another file", self.controller.choose_another_aotr_file, suggested=False))
+                # Most Age of the Ring failures come from the file. A failed download can be done in a browser instead.
+                label = "Choose a file instead" if m.failed_step == "aotr-download" else "Choose another file"
+                others.append(pill(label, self.controller.choose_another_aotr_file, suggested=False))
             others.append(pill(self._leave_label(), self.controller.back_home, suggested=False))
             others.append(pill("Copy log", lambda: self.copy(m.log_text(), "Log copied"), suggested=False))
             self.problem_box.append(others)

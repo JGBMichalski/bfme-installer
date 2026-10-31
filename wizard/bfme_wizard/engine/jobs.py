@@ -16,6 +16,7 @@ from .config import load as load_config
 from .errors import JobCancelled, SetupError
 from .events import Cancelled, Done, Emit, Error, Log, Progress, Status, Step
 from .lock import setup_lock
+from .moddb import ModdbUnavailable, find_aotr
 from .paths import Paths
 from .paths import paths as paths_for
 from .prefix import (
@@ -28,6 +29,7 @@ from .prefix import (
 
 OK = 0
 FAILED = 1
+NEEDS_FILE = 2      # the app cannot download Age of the Ring itself: the player downloads it and chooses the file
 STOPPED = 130
 SET_UP_FIRST = "Set up the game environment first. Run: prepare"
 AIO_LAUNCHER_DONE = [
@@ -101,6 +103,10 @@ def _run(body: Callable[[Job], None], emit: Emit, cancel: threading.Event | None
         emit(Log(f"ERROR: {error}"))
         emit(Error(job.step, str(error)))
         return FAILED
+    except ModdbUnavailable as error:
+        emit(Log(f"The app cannot download it itself: {error}"))
+        emit(Error(job.step, str(error)))
+        return NEEDS_FILE
 
     return OK
 
@@ -217,27 +223,54 @@ def aio_launcher_install(emit: Emit, cancel: threading.Event | None = None, envi
     return _run(body, emit, cancel, environ)
 
 
-def aotr_install(zip_path: str, emit: Emit, cancel: threading.Event | None = None,
+def aotr_install(zip_path: str | None, emit: Emit, cancel: threading.Event | None = None,
                  environ: dict[str, str] | None = None) -> int:
-    """Install Age of the Ring, from the zip the player downloaded. Needs the game environment."""
+    """Install Age of the Ring. Without a zip from the player, the app downloads it from ModDB; when it cannot, the job
+    ends with NEEDS_FILE and the player downloads it in a browser. Needs the game environment."""
     def body(job: Job) -> None:
-        if not zip_path:
-            raise SetupError(f"Use: aotr-install <path to AotR_Standalone_..._Installer.zip>. Download it from "
-                             f"{aotr.AOTR_PAGE_URL}")
-
         if not prefix_ready(job.paths):
             raise SetupError(SET_UP_FIRST)
 
         with job.lock():
-            job.start("aotr-check")
-            aotr_zip = aotr.check_zip(Path(zip_path))
-            aotr.check_space(job.paths, aotr_zip)
-            proton_path = _ensure_prefix(job)
-            job.done("aotr-check")
+            downloaded = not zip_path
+            resumed = None
 
-            job.start("aotr-unpack")
-            aotr.unpack(job.paths, aotr_zip, job.emit, job.cancel)
-            job.done("aotr-unpack")
+            if zip_path:
+                job.emit(Step("aotr-download", "done"))   # the player did this step
+                aotr_zip_path = Path(zip_path)
+            else:
+                job.start("aotr-download")
+                remote = find_aotr()
+                # A retry after a failed install needs no download when the installer is still unpacked.
+                resumed = aotr.from_unpacked(job.paths, remote.name)
+
+                if resumed is None:
+                    aotr_zip_path = aotr.download_zip(job.paths, job.config, remote, job.emit, job.cancel)
+                else:
+                    aotr_zip_path = resumed.path
+
+                job.done("aotr-download")
+
+            if resumed is None:
+                job.start("aotr-check")
+                aotr_zip = aotr.check_zip(aotr_zip_path)
+                aotr.check_space(job.paths, aotr_zip)
+                proton_path = _ensure_prefix(job)
+                job.done("aotr-check")
+
+                job.start("aotr-unpack")
+                aotr.unpack(job.paths, aotr_zip, job.emit, job.cancel)
+
+                # The zip the app downloaded goes once it is unpacked, unless the player keeps it. The player's own stays.
+                if downloaded and not job.config.keep_aotr_download:
+                    aotr_zip.path.unlink(missing_ok=True)
+
+                job.done("aotr-unpack")
+            else:
+                aotr_zip = resumed
+                job.skip("aotr-check")
+                proton_path = _ensure_prefix(job)
+                job.skip("aotr-unpack")
 
             job.start("aotr-install")
             aotr.run_installer(job.paths, job.config, proton_path, aotr_zip, job.emit, job.cancel)
@@ -248,7 +281,11 @@ def aotr_install(zip_path: str, emit: Emit, cancel: threading.Event | None = Non
             job.done("aotr-settings")
 
             shortcuts.sync(job.paths, job.emit, job.environ)
-            _finish(job, f"Age of the Ring is installed. You can delete {Path(zip_path).name} now.")
+
+            if downloaded:
+                _finish(job, "Age of the Ring is installed.")
+            else:
+                _finish(job, f"Age of the Ring is installed. You can delete {aotr_zip_path.name} now.")
 
     return _run(body, emit, cancel, environ)
 

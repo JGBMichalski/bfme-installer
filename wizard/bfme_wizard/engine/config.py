@@ -20,6 +20,7 @@ class Config:
     graphics_chosen: bool = False     # set by the player or an earlier setup; detection never overrides it
     protonpath: str = DEFAULT_PROTONPATH
     extra_env: dict[str, str] = field(default_factory=dict)
+    keep_aotr_download: bool = False  # keep the Age of the Ring zip the app downloaded, after unpacking it
 
 def _parse(line: str) -> tuple[str, str] | None:
     """(key, value) for a `KEY=value` or `export KEY=value` line, else None. Quotes around the value are removed."""
@@ -79,6 +80,7 @@ def load(path: Path, environ: dict[str, str] | None = None) -> Config:
         graphics_chosen=bool(graphics),
         protonpath=values.get("BFME_PROTONPATH") or DEFAULT_PROTONPATH,
         extra_env=extra,
+        keep_aotr_download=values.get("BFME_KEEP_AOTR_DOWNLOAD", "") in ("1", "yes", "true"),
     )
 
 

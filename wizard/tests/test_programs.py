@@ -1,4 +1,5 @@
 """The Programs page: one row per program, with Install when it is missing and Remove when it is installed."""
+from bfme_wizard.catalog import AOTR_DOWNLOAD_GB
 from tests.fake_jobs import idle_controller
 from tests.helpers import buttons, descendants, wait_for
 
@@ -63,7 +64,7 @@ def test_each_row_says_whether_the_program_is_there(gtk):
     assert rows[0].get_subtitle() == "Installed"
     assert rows[1].get_subtitle() == "Installed"
     assert rows[2].get_subtitle().startswith("Not installed.")
-    assert "14 GB" in rows[2].get_subtitle()       # Age of the Ring is a big download the player makes first
+    assert f"{AOTR_DOWNLOAD_GB} GB" in rows[2].get_subtitle()       # Age of the Ring is a big download
 
 
 def test_a_missing_program_says_what_installing_it_installs_with_it(gtk):

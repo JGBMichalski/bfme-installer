@@ -4,14 +4,15 @@ The player's choice on the start page becomes a plan: jobs run one after the oth
 
   environment   prepare                doctor, runner, prefix                   left out when it is already ready
   aio-launcher  aio_launcher_install   aio-launcher, arena, shortcuts
-  aotr          aotr_install           aotr-check, aotr-unpack, aotr-install, aotr-settings, once the player has
-                                       downloaded the file and chosen it (aotr-download: a step no job reports)
+  aotr          aotr_install           aotr-download, aotr-check, aotr-unpack, aotr-install, aotr-settings. The job
+                                       downloads the file itself, or the player does and chooses it (waiting)
 
 States:
   checking   asking the setup what is already installed (or re-checking the system)
   idle       nothing running; the setup is not complete: the start page
   running    a job of the plan is running
-  waiting    the plan needs the player: download Age of the Ring from ModDB and choose the file
+  waiting    the plan needs the player: the app cannot download Age of the Ring itself, so the player downloads it
+             from ModDB and chooses the file
   removing   a program is being taken out of the game environment
   cancelled  the plan stopped cleanly between steps
   failed     a step failed; retrying may help
@@ -44,7 +45,7 @@ JOB_STEPS: dict[str, list[tuple[str, str, str]]] = {
         ("shortcuts", "Add menu shortcuts", "Adding the AIO Launcher and the Arena to your application menu."),
     ],
     "aotr": [
-        ("aotr-download", "Download Age of the Ring", "Getting the file from ModDB, then choosing it here."),
+        ("aotr-download", "Download Age of the Ring", "Downloading the file from ModDB. It is large and can take a while."),
         ("aotr-check", "Check the download", "Making sure the file is complete and there is room for it."),
         ("aotr-unpack", "Unpack the download", "Extracting the installer files. This takes a few minutes."),
         ("aotr-install", "Install Age of the Ring", "Copying the game and the mod. This can take an hour."),
@@ -57,8 +58,6 @@ JOB_STEPS: dict[str, list[tuple[str, str, str]]] = {
         ("mission-control", "Download Mission Control", "Fetching Mission Control from the BFME Arena site."),
     ],
 }
-# Steps the player does. The script never reports them.
-PLAYER_STEPS = {"aotr-download"}
 GAMES = [("bfme1", "BFME"), ("bfme2", "BFME 2"), ("rotwk", "Rise of the Witch-king")]
 # The sandbox cannot see the firewall. Troubleshoot has a section for it.
 HIDDEN_CHECKS = {"firewall"}
@@ -105,6 +104,7 @@ class SetupModel:
         self.started_from_home = False         # the plan began on the home screen: stopping it goes back there
         self.just_finished = False             # this session ran a plan to the end
         self.removing: str | None = None       # the program being removed, while the state is "removing"
+        self.file_note: str | None = None      # why the app could not download the file itself
         self.steps: dict[str, str] = {}
         self._reset_run()
 
@@ -151,15 +151,17 @@ class SetupModel:
         """A job starts. Its steps start over."""
         self.job = name
         for sid, _t, _d in JOB_STEPS[name]:
-            self.steps[sid] = "done" if sid in PLAYER_STEPS else "pending"
+            self.steps[sid] = "pending"
         # Only the environment job runs system checks. Troubleshoot keeps showing the last ones.
         self._reset_run(keep_checks=name != "environment")
         self.state = "running"
 
-    def wait_for_file(self) -> None:
-        """The plan waits for the player to download and choose the Age of the Ring file."""
+    def wait_for_file(self, why: str | None = None) -> None:
+        """The plan waits for the player to download and choose the Age of the Ring file. `why`: why the app could not
+        download it itself, if it tried."""
         self.job = "aotr"
         self._reset_run(keep_checks=True)
+        self.file_note = why
         self.steps["aotr-download"] = "running"
         self.current = "aotr-download"
         self.state = "waiting"

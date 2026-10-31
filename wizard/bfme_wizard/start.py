@@ -7,6 +7,7 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, GLib, Gtk  # noqa: E402
 
+from .catalog import AOTR_DOWNLOAD_GB
 from .controller import Controller
 from .widgets import first_icon, pill
 
@@ -15,7 +16,7 @@ CHOICES = [
     ("aio-launcher", "All-in-One Launcher",
      "Install, patch and play the BFME games. Includes the Online Arena for multiplayer."),
     ("aotr", "Age of the Ring",
-     "A large mod with its own launcher and its own copy of the games. You download it from ModDB, about 14 GB."),
+     f"A large mod with its own launcher and its own copy of the games. It downloads from ModDB, about {AOTR_DOWNLOAD_GB} GB."),
 ]
 FRESH = ("Set up BFME on Linux", "Choose what to install.")
 READY = ("Choose what to install", "Your game environment is ready.")

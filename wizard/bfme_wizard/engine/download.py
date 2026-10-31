@@ -93,9 +93,17 @@ def _fetch(url: str, part: Path, on_progress: Progress | None, cancel: threading
 
 
 def verify_sha256(path: Path, expected: str) -> None:
-    """Delete the file and fail when its checksum is not the expected one."""
-    digest = hashlib.sha256()
+    """Delete the file and fail when its SHA-256 is not the expected one."""
+    _verify(path, expected, hashlib.sha256())
 
+
+def verify_md5(path: Path, expected: str) -> None:
+    """Delete the file and fail when its MD5 is not the expected one. ModDB gives only an MD5."""
+    _verify(path, expected, hashlib.md5())
+
+
+def _verify(path: Path, expected: str, digest) -> None:
+    """Verify the file's checksum. Delete it and raise an error if it does not match the expected value."""
     with open(path, "rb") as f:
         while True:
             block = f.read(1024 * 1024)

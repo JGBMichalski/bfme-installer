@@ -98,12 +98,11 @@ Each program you install gets a shortcut in your application menu, and only whil
 
 [Age of the Ring](https://www.moddb.com/mods/the-horse-lords-a-total-modification-for-bfme) is not part of the AIO Launcher. It has its own launcher and its own copies of BFME 2 and the Rise of the Witch-king, so it does not touch the games you already have. It does not need the AIO Launcher or the Arena either.
 
-1. Tick **Age of the Ring** on the first page, or press **Install** next to it on the Programs page later. The setup prepares the game environment first, then stops at the download step.
-2. Press **Open ModDB**, click **Download Now**, and wait until your browser has finished the file (about 14 GB). ModDB only lets a web browser download it, so the app cannot do this step for you.
-3. Back in the app, press **Choose file...** and pick the zip you downloaded. Do not unpack it. The app checks it, unpacks it, installs the mod and shows its progress. You need about 40 GB of free space, and the install can take an hour.
-4. When it is done you can delete the zip. The card now says **Open**. The Age of the Ring Launcher updates the mod itself.
+1. Tick **Age of the Ring** on the first page, or press **Install** next to it on the Programs page later.
+2. The app downloads it from ModDB (about 19 GB), checks it, unpacks it and installs it. You need about 47 GB of free space, and it can take an hour or more. The download resumes if it is stopped. The app deletes the zip once it is unpacked; set `BFME_KEEP_AOTR_DOWNLOAD=1` in `config.env` to keep it.
+3. If the app cannot download it (ModDB asks for a browser, say), it shows why. Press **Open ModDB**, download the file in your browser, then **Choose file...** and pick the zip. Do not unpack it. You can delete it once the install is done.
 
-Not ready to download 14 GB? Press **Back to start** (or **Back to home**) on the download step. Whatever finished before it stays installed. If the file turns out to be unfinished or damaged, the app says so and offers **Choose another file**.
+The card then says **Open**. The Age of the Ring Launcher updates the mod itself.
 
 Resetting the game environment also deletes Age of the Ring. To take out only Age of the Ring, use **Remove** on the Programs page.
 

@@ -1,7 +1,7 @@
 """Age of the Ring: checking the download, unpacking it, and running its installer in the game environment.
 
-ModDB only lets a browser download the installer, so the player gives us the zip. It is a ZIP64 archive (~14 GB, Deflate64)
-that only 7-Zip can open.
+The zip comes from ModDB: the app downloads it (see moddb.py), or the player does and chooses it. It is a ZIP64 archive
+(~19 GB, Deflate64) that only 7-Zip can open.
 """
 from __future__ import annotations
 
@@ -17,13 +17,16 @@ from pathlib import Path
 
 from . import proton
 from .config import Config
+from .download import download, verify_md5
 from .errors import JobCancelled, SetupError
-from .events import Emit, Progress
+from .events import Emit, Log, Progress
+from .moddb import RemoteFile
 from .paths import Paths
 from .programs import AOTR_INSTALLING
 
-AOTR_PAGE_URL = "https://www.moddb.com/mods/the-horse-lords-a-total-modification-for-bfme/downloads/age-of-the-ring-version-90"
-INSTALL_RATIO_PERCENT = 160   # the installed game is about this much bigger than the unpacked installer
+# The installed game is about this much bigger than the unpacked installer, with a little room to spare. Measured for 10.0.0:
+# 18.87 GB unpacked, 27.51 GB installed (146%), so an install needs 46.4 GB at its peak and this asks for 47.2 GB.
+INSTALL_RATIO_PERCENT = 150
 WATCH_SEC = 2
 NEED_7ZIP = ("7-Zip is needed to read the download. Install it (Debian/Ubuntu: p7zip-full, Fedora: 7zip, Arch: 7zip) "
              "and try again.")
@@ -137,12 +140,71 @@ def check_space(paths: Paths, aotr_zip: AotrZip) -> None:
     """The unpacked installer and the installed game must both fit. What is already there counts towards it."""
     already = dir_bytes(paths.aotr_unpack) + dir_bytes(paths.aotr_exe.parent)
     need = aotr_zip.unpacked_bytes + aotr_zip.unpacked_bytes * INSTALL_RATIO_PERCENT // 100 - already
+    _need_free_space(paths, need)
+
+
+def _need_free_space(paths: Paths, need: int) -> None:
     paths.base.mkdir(parents=True, exist_ok=True)
     free = shutil.disk_usage(paths.base).free
 
     if need > free:
         raise SetupError(f"Not enough free space: Age of the Ring needs {need // 1000000000 + 1} GB more, but only "
                          f"{free // 1000000000} GB is free.")
+
+
+def check_download_space(paths: Paths, config: Config, remote: RemoteFile) -> None:
+    """Before the download: the zip, then the installer unpacked from it (about as big as the zip), then the installed game.
+    The zip is deleted once it is unpacked, unless the player keeps it."""
+    zip_path = paths.downloads / remote.name
+    part = zip_path.with_name(zip_path.name + ".part")
+    already = dir_bytes(paths.aotr_unpack) + dir_bytes(paths.aotr_exe.parent)
+
+    if part.is_file():
+        already += part.stat().st_size
+
+    installed = remote.size * INSTALL_RATIO_PERCENT // 100
+    # Without the zip the most at once is the unpacked installer and the installed game; with it, all three.
+    need = remote.size + installed
+
+    if config.keep_aotr_download:
+        need += remote.size
+
+    _need_free_space(paths, need - already)
+
+
+def download_zip(paths: Paths, config: Config, remote: RemoteFile, emit: Emit,
+                 cancel: threading.Event | None = None) -> Path:
+    """Download the zip into the downloads folder, with progress, and check it against ModDB's MD5. A finished download
+    is not repeated."""
+    zip_path = paths.downloads / remote.name
+
+    if zip_path.is_file() and zip_path.stat().st_size == remote.size:
+        return zip_path
+
+    check_download_space(paths, config, remote)
+    emit(Log(f"Downloading {remote.name} ({remote.size // 1000000000} GB) from ModDB."))
+
+    def progress(percent: int) -> None:
+        emit(Progress(percent))
+
+    download(remote.url, zip_path, progress, cancel)
+    emit(Log("Checking the download."))
+    verify_md5(zip_path, remote.md5)
+
+    return zip_path
+
+
+def from_unpacked(paths: Paths, zip_name: str) -> AotrZip | None:
+    """The installer this zip left unpacked, when its unpack finished: a retry does not need the zip again."""
+    complete = paths.aotr_unpack / ".complete"
+
+    if not complete.is_file() or complete.read_text().strip() != zip_name:
+        return None
+
+    for path in paths.aotr_unpack.glob("AotR_Standalone_*_Installer.exe"):
+        return AotrZip(path=paths.downloads / zip_name, exe_name=path.name, unpacked_bytes=dir_bytes(paths.aotr_unpack))
+
+    return None
 
 
 def _watch(process: subprocess.Popen, measure: Callable[[], int | None], emit: Emit, cancel: threading.Event | None,

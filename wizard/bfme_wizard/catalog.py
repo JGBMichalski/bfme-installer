@@ -12,9 +12,9 @@ from pathlib import Path
 # network.
 ICONS_DIR = Path(__file__).resolve().parent / "icons"
 
-# Age of the Ring 9.3.0. Shown to the player, so they know what they are in for before they start.
-AOTR_DOWNLOAD_GB = 14
-AOTR_INSTALLED_GB = 22
+# Age of the Ring 10.0.0. Shown to the player, so they know what they are in for before they start.
+AOTR_DOWNLOAD_GB = 19
+AOTR_INSTALLED_GB = 28
 
 
 @dataclass(frozen=True)
@@ -48,7 +48,7 @@ CATALOG: tuple[Program, ...] = (
         "A large mod with its own launcher",
         f"It and its own copy of the games are deleted, which frees about {AOTR_INSTALLED_GB} GB. Your settings for it are "
         "kept. The AIO Launcher, the Arena and the games you installed with the AIO Launcher are not touched.",
-        f"You download it first, about {AOTR_DOWNLOAD_GB} GB.",
+        f"About {AOTR_DOWNLOAD_GB} GB to download.",
     ),
 )
 

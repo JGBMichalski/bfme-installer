@@ -25,6 +25,7 @@ from bfme_wizard.engine.paths import Paths
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "bfme-linux-setup.sh"
 SEVENZIP = shutil.which("7zz") or shutil.which("7z") or shutil.which("7za")
+needs_7zip = pytest.mark.skipif(SEVENZIP is None, reason="7-Zip is needed to read the Age of the Ring download")
 
 # Makes the prefix on the first start, and installs the AIO Launcher and Age of the Ring when their installers run.
 FAKE_UMU = r"""#!/bin/sh
@@ -263,22 +264,97 @@ def test_an_unknown_tool(world):
     same(world, world.make_prefix, ["tool-install", "bogus"], jobs.tool_install, "bogus")
 
 
-@pytest.mark.skipif(SEVENZIP is None, reason="7-Zip is needed to read the Age of the Ring download")
-def test_age_of_the_ring(world):
-    source = world.tmp / "zip-source"
+def aotr_zip(world, version="10.0.0"):
+    """A small Age of the Ring download, made with 7-Zip as the real one would be read."""
+    source = world.tmp / f"zip-source-{version}"
     source.mkdir()
-    (source / "AotR_Standalone_9.3.0_Installer.exe").write_text("installer")
-    (source / "AotR_Standalone_9.3.0_Installer-1a.bin").write_bytes(b"x" * 2048)
-    zip_path = world.tmp / "AotR_Standalone_9.3.0_Installer.zip"
+    (source / f"AotR_Standalone_{version}_Installer.exe").write_text("installer")
+    (source / f"AotR_Standalone_{version}_Installer-1a.bin").write_bytes(b"x" * 2048)
+    zip_path = world.tmp / f"AotR_Standalone_{version}_Installer.zip"
     subprocess.run([SEVENZIP, "a", "-tzip", "-bso0", "-bsp0", str(zip_path), "."], cwd=source, check=True)
+    return zip_path
 
-    events = same(world, world.make_prefix, ["aotr-install", str(zip_path)], jobs.aotr_install, str(zip_path))
+
+def without_the_download_step(found):
+    """The setup script has no download step: the player always chose the file."""
+    out = []
+
+    for line in found:
+        if line != "@bfme STEP aotr-download done":
+            out.append(line)
+
+    return out
+
+
+@needs_7zip
+def test_age_of_the_ring_from_the_players_file(world):
+    zip_path = aotr_zip(world)
+
+    events = same(world, world.make_prefix, ["aotr-install", str(zip_path)], jobs.aotr_install, str(zip_path),
+                  compare=without_the_download_step)
 
     assert Status("aotr", "installed") in events
+    assert Step("aotr-download", "done") in events
+    assert zip_path.exists()                    # the player's own file is never deleted
 
 
-def test_age_of_the_ring_needs_a_file(world):
-    same(world, world.make_prefix, ["aotr-install"], jobs.aotr_install, "")
+@needs_7zip
+def test_age_of_the_ring_downloaded_by_the_app(world, moddb):
+    name = moddb.publish(aotr_zip(world).read_bytes())
+    world.make_prefix()
+
+    code, events = world.engine(jobs.aotr_install, None)
+
+    assert code == jobs.OK
+    assert lines(events)[:2] == ["@bfme STEP aotr-download start", "@bfme STEP aotr-download done"]
+    assert Status("aotr", "installed") in events
+    assert not (world.paths.downloads / name).exists()        # deleted once unpacked
+    assert Log("Age of the Ring is installed.") in events
+
+
+@needs_7zip
+def test_the_download_can_be_kept(world, moddb):
+    name = moddb.publish(aotr_zip(world).read_bytes())
+    world.make_prefix()
+    world.paths.config.write_text("BFME_KEEP_AOTR_DOWNLOAD=1\n")
+
+    code, _events = world.engine(jobs.aotr_install, None)
+
+    assert code == jobs.OK
+    assert (world.paths.downloads / name).exists()
+
+
+def test_when_moddb_cannot_be_read_the_player_is_asked_for_the_file(world, moddb):
+    moddb.publish(b"x")
+    moddb.server.files["/downloads/start/290690"] = b"<html>Please verify you are human</html>"
+    world.make_prefix()
+
+    code, events = world.engine(jobs.aotr_install, None)
+
+    assert code == jobs.NEEDS_FILE
+    assert events[-1] == Error("aotr-download", "ModDB did not offer a download link. It may want a browser.")
+    assert list(world.paths.downloads.glob("*")) == []
+
+
+@needs_7zip
+def test_a_retry_after_a_failed_install_does_not_download_again(world, moddb, monkeypatch):
+    moddb.publish(aotr_zip(world).read_bytes())
+    world.make_prefix()
+    monkeypatch.setenv("NO_INSTALL", "1")
+    executable(world.tmp / "bin" / "umu-run", FAKE_UMU.replace('  *AotR_Standalone*Installer.exe)\n',
+                                                                 '  *AotR_Standalone*Installer.exe)\n      [ -n "$NO_INSTALL" ] && exit 3\n'))
+
+    code, _events = world.engine(jobs.aotr_install, None)
+    assert code == jobs.FAILED
+    downloads_before = len(moddb.server.requests)
+
+    monkeypatch.delenv("NO_INSTALL")
+    code, events = world.engine(jobs.aotr_install, None)
+
+    assert code == jobs.OK
+    assert Step("aotr-unpack", "skip") in events
+    mirror_requests = [path for path, _range in moddb.server.requests[downloads_before:] if "/mirror/" in path]
+    assert mirror_requests == []
 
 
 # Changing what is there

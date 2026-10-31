@@ -91,3 +91,52 @@ def file_server():
     yield server
     server.server.shutdown()
     server.server.server_close()
+
+
+# ModDB's pages for a file, cut down to what the app reads. Their markup is copied from the real pages.
+MODDB_FILE_PAGE = """<div class="row clear">
+<h5>Filename</h5>
+<span class="summary">
+\t\t{name}\t\t</span>
+</div>
+<div class="row clear">
+<h5>Size</h5>
+<span class="summary">
+\t\t{size_gb:.2f}gb ({size:,} bytes)\t\t</span>
+</div>
+<div class="row clear">
+<h5>MD5 Hash</h5>
+<span class="summary">
+\t\t{md5}\t\t</span>
+</div>
+<a href="/downloads/start/290690" class="buttondownload">Download Now</a>
+"""
+MODDB_START_PAGE = """<p>Wait for the download to begin, if it doesn't click the link to
+<a href="/downloads/mirror/290690/130/f93911bb939f81ae6ebd42fade8bc944">download {name}</a> or try another
+<a href="/downloads/start/290690/all">mirror</a>.</p>
+"""
+
+
+class Moddb:
+    """The Age of the Ring file on a local stand-in for ModDB. `publish` puts a zip there; the pages can be broken after."""
+
+    def __init__(self, server, monkeypatch):
+        from bfme_wizard.engine import moddb
+        self.server = server
+        self.page_url = server.url("/mods/aotr/downloads/age-of-the-ring")
+        monkeypatch.setattr(moddb, "AOTR_PAGE_URL", self.page_url)
+
+    def publish(self, data, name="AotR_Standalone_10.0.0_Installer.zip", md5=None):
+        import hashlib
+        md5 = md5 or hashlib.md5(data).hexdigest()
+        files = self.server.files
+        files["/mods/aotr/downloads/age-of-the-ring"] = MODDB_FILE_PAGE.format(
+            name=name, size=len(data), size_gb=len(data) / 2 ** 30, md5=md5).encode()
+        files["/downloads/start/290690"] = MODDB_START_PAGE.format(name=name).encode()
+        files["/downloads/mirror/290690/130/f93911bb939f81ae6ebd42fade8bc944"] = data
+        return name
+
+
+@pytest.fixture
+def moddb(file_server, monkeypatch):
+    return Moddb(file_server, monkeypatch)

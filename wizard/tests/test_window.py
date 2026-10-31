@@ -7,6 +7,7 @@ import os
 
 import pytest
 
+from bfme_wizard.catalog import AOTR_INSTALLED_GB
 from bfme_wizard.controller import Controller
 from bfme_wizard.runner import JobRunner
 from tests.fake_jobs import FakeJobs
@@ -415,7 +416,7 @@ def test_what_stays_is_named_with_the_aio_launcher_in_full(win, dialogs):
 
 def test_age_of_the_ring_says_how_much_room_it_gives_back_and_what_it_keeps(win, dialogs):
     dialog = dialog_for(win, dialogs, "aotr")
-    assert "22 GB" in dialog.get_body()
+    assert f"{AOTR_INSTALLED_GB} GB" in dialog.get_body()
     assert "Your settings for it are kept" in dialog.get_body()
 
 
@@ -502,3 +503,17 @@ def test_closing_the_window_otherwise_just_closes(win, dialogs):
     win.model.state = "running"
     assert win._on_close_request(win)
     assert dialogs[-1].get_heading() == "Setup is still running"
+
+
+# The Age of the Ring download page, when the app cannot download it itself
+
+def test_the_download_page_says_why_the_app_could_not(win, gtk):
+    win.model.begin_plan(["aotr"])
+    win.model.wait_for_file("ModDB did not offer a download link.")
+    win.render()
+    assert win.stack.get_visible_child_name() == "aotr"
+    assert "Why: ModDB did not offer a download link." in labels(win.aotr.view, gtk)
+
+    win.model.wait_for_file()
+    win.render()
+    assert not win.aotr.why.get_visible()

@@ -1,6 +1,7 @@
-"""The step where the player downloads Age of the Ring from ModDB and picks the file.
+"""The step where the player downloads Age of the Ring from ModDB and picks the file, when the app cannot download it
+itself (a bot check, a changed page, no connection).
 
-A bot check blocks non-browser downloads. The system file chooser works in the Flatpak sandbox without extra permission.
+The system file chooser works in the Flatpak sandbox without extra permission.
 """
 from __future__ import annotations
 
@@ -13,13 +14,14 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, GLib, Gtk  # noqa: E402
 
 from .catalog import AOTR_DOWNLOAD_GB as DOWNLOAD_GB
+from .catalog import AOTR_INSTALLED_GB
+from .engine.moddb import AOTR_PAGE_URL as MODDB_URL
 from .widgets import pill
 
-MODDB_URL = "https://www.moddb.com/mods/the-horse-lords-a-total-modification-for-bfme/downloads/age-of-the-ring-version-90"
-SPACE_GB = 40
+SPACE_GB = DOWNLOAD_GB + AOTR_INSTALLED_GB   # the unpacked download (about as big as the zip), then the installed game
 INTRO = (
     "It comes with its own launcher and its own copy of the games, so the games you already have stay as they are. "
-    "ModDB only lets a web browser download it, so you do that part and this app does the rest."
+    "This app could not download it itself, so you do that part in your web browser and this app does the rest."
 )
 
 
@@ -39,6 +41,8 @@ class AotrDownloadPage:
             css_classes=["heading"], wrap=True, justify=Gtk.Justification.CENTER,
         ))
         box.append(Gtk.Label(label=INTRO, wrap=True, justify=Gtk.Justification.CENTER, css_classes=["dim-label"]))
+        self.why = Gtk.Label(wrap=True, justify=Gtk.Justification.CENTER, css_classes=["dim-label", "caption"], visible=False)
+        box.append(self.why)
 
         steps = Adw.PreferencesGroup()
         first = Adw.ActionRow(
@@ -60,7 +64,7 @@ class AotrDownloadPage:
         third = Adw.ActionRow(
             title="3. Choose the file you downloaded",
             subtitle=GLib.markup_escape_text(
-                "It is named like AotR_Standalone_9.3.0_Installer.zip and is usually in your Downloads folder. "
+                "It is named like AotR_Standalone_10.0.0_Installer.zip and is usually in your Downloads folder. "
                 "Do not unpack it. When the install is done you can delete it."
             ),
             subtitle_lines=4,
@@ -71,12 +75,15 @@ class AotrDownloadPage:
         steps.add(third)
         box.append(steps)
 
-        # The download is 14 GB, so the player may want to leave.
+        # The download is large, so the player may want to leave.
         self.leave_button = pill("Not now", leave, suggested=False)
         box.append(self.leave_button)
         clamp.set_child(box)
         self.view.set_child(clamp)
 
-    def refresh(self, number: int, total: int, leave_label: str) -> None:
+    def refresh(self, number: int, total: int, leave_label: str, why: str | None = None) -> None:
+        """Refresh the UI with the current step number, total steps, leave button label, and optional reason."""
         self.count.set_text(f"Step {number} of {total}")
         self.leave_button.set_label(leave_label)
+        self.why.set_text(f"Why: {why}" if why else "")
+        self.why.set_visible(bool(why))

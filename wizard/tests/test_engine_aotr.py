@@ -360,3 +360,79 @@ def test_a_whole_install_leaves_what_the_script_leaves(tmp_path, env, paths):
     engine_calls = Path(env["UMU_LOG"]).read_text().splitlines()
     assert tree(paths) == from_script
     assert engine_calls == script_calls
+
+
+# Downloading it from ModDB
+
+def remote_for(data, md5=None, url="http://127.0.0.1:1/never"):
+    import hashlib
+    from bfme_wizard.engine.moddb import RemoteFile
+    return RemoteFile(name=ZIP, size=len(data), md5=md5 or hashlib.md5(data).hexdigest(), url=url)
+
+
+def test_the_download_is_checked_against_moddbs_md5(paths, moddb):
+    from bfme_wizard.engine.moddb import find_aotr
+    data = os.urandom(8192)
+    moddb.publish(data, name=ZIP)
+    events = []
+
+    zip_path = aotr.download_zip(paths, Config(), find_aotr(), events.append)
+
+    assert zip_path == paths.downloads / ZIP
+    assert zip_path.read_bytes() == data
+    assert progress(events)[-1] == 100
+
+
+def test_a_download_with_the_wrong_md5_is_deleted(paths, moddb):
+    from bfme_wizard.engine.moddb import find_aotr
+    moddb.publish(b"what was uploaded", name=ZIP, md5="0" * 32)
+
+    with pytest.raises(SetupError, match="Checksum mismatch"):
+        aotr.download_zip(paths, Config(), find_aotr(), [].append)
+
+    assert not (paths.downloads / ZIP).exists()
+
+
+def test_a_finished_download_is_not_repeated(paths):
+    data = b"already here"
+    paths.downloads.mkdir(parents=True)
+    (paths.downloads / ZIP).write_bytes(data)
+
+    assert aotr.download_zip(paths, Config(), remote_for(data), [].append) == paths.downloads / ZIP
+
+
+def test_before_downloading_there_must_be_room_for_the_unpacked_installer_and_the_game(paths, monkeypatch):
+    monkeypatch.setattr(aotr.shutil, "disk_usage", lambda path: Usage(0, 0, 2_700_000_000))
+    remote = remote_for(b"")
+    remote = remote.__class__(remote.name, 1_000_000_000, remote.md5, remote.url)
+
+    aotr.check_download_space(paths, Config(), remote)    # 1 GB unpacked + 1.6 GB installed
+
+    monkeypatch.setattr(aotr.shutil, "disk_usage", lambda path: Usage(0, 0, 2_000_000_000))
+
+    with pytest.raises(SetupError, match="needs 3 GB more, but only 2 GB is free"):
+        aotr.check_download_space(paths, Config(), remote)
+
+
+def test_keeping_the_download_needs_room_for_it_too(paths, monkeypatch):
+    monkeypatch.setattr(aotr.shutil, "disk_usage", lambda path: Usage(0, 0, 3_000_000_000))
+    remote = remote_for(b"")
+    remote = remote.__class__(remote.name, 1_000_000_000, remote.md5, remote.url)
+
+    aotr.check_download_space(paths, Config(), remote)
+
+    with pytest.raises(SetupError, match="needs 4 GB more"):
+        aotr.check_download_space(paths, Config(keep_aotr_download=True), remote)
+
+
+def test_an_unpacked_installer_of_the_same_zip_is_used_again(paths):
+    assert aotr.from_unpacked(paths, ZIP) is None
+    unpacked(paths)
+    (paths.aotr_unpack / "AotR_Standalone_9.3.0_Installer-1a.bin").write_bytes(b"x" * 10)
+
+    assert aotr.from_unpacked(paths, ZIP) is None                 # its unpack did not finish
+    (paths.aotr_unpack / ".complete").write_text(ZIP + "\n")
+    found = aotr.from_unpacked(paths, ZIP)
+
+    assert (found.exe_name, found.unpacked_bytes) == (EXE, len("installer") + 10 + len(ZIP) + 1)
+    assert aotr.from_unpacked(paths, "AotR_Standalone_10.1.0_Installer.zip") is None

@@ -73,11 +73,12 @@ class Controller:
         self._run_job("aotr")
 
     def choose_another_aotr_file(self) -> None:
-        """Ask for the Age of the Ring file again."""
+        """Ask the player for the Age of the Ring file, instead of the app downloading it."""
         if self.runner.busy:
             return
         self._aotr_zip = None
-        self._run_job("aotr")
+        self.model.wait_for_file()
+        self._on_change()
 
     def back_home(self) -> None:
         """Leave the plan: home screen, or start page when nothing is installed."""
@@ -175,10 +176,6 @@ class Controller:
         if name is None:
             self.start()
             return
-        if name == "aotr" and self._aotr_zip is None:
-            self.model.wait_for_file()
-            self._on_change()
-            return
         self.model.begin_job(name)
         self._on_change()
         if name in TOOLS:
@@ -227,6 +224,13 @@ class Controller:
 
     def _job_done(self, code: int) -> None:
         """Handle the completion of an installation job."""
+        # The app could not download Age of the Ring itself: the player downloads it and chooses the file.
+        if code == self.jobs.NEEDS_FILE and self.model.job == "aotr":
+            why = self.model.error.message if self.model.error else None
+            self.model.wait_for_file(why)
+            self._on_change()
+            return
+
         # Every job ends with STATUS lines, so no second status question is needed.
         following = self.model.finish_install(code)
         self._on_change()

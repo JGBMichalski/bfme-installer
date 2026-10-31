@@ -26,7 +26,7 @@
 
 ## Age of the Ring
 
-The page shows the size (about 14 GB to download, 40 GB of free space), **Open ModDB** in the player's browser (ModDB's bot check blocks scripts), and **Choose file...**, which opens the file chooser in Downloads.
+The app downloads the file from ModDB itself (about 19 GB). The download page appears only when it cannot (no connection, a bot check, a changed page), or when the player picks **Choose a file instead** after a failed download. It says why, then offers **Open ModDB** in the player's browser and **Choose file...**, which opens the file chooser in Downloads. It asks for about 47 GB of free space.
 
 ## Home screen
 

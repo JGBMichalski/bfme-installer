@@ -8,6 +8,7 @@ What is installed lives in flag files in `dir`; every job that runs is added to 
   aio-launcher-flaky      `aio_launcher_install` fails once, in the aio-launcher step
   cancel-once             `aio_launcher_install` is stopped once, before the arena step
   aotr-bad                `aotr_install` fails once, in the check
+  moddb-down              `aotr_install` without a file cannot download it: the player must choose it
   shortcuts-fails         `sync_shortcuts` fails (the permission is gone, say)
   remove-fails            `remove` fails and deletes nothing
   reset-fails             `reset` fails and deletes nothing
@@ -160,8 +161,22 @@ class FakeJobs:
         emit(Done())
         return 0
 
+    NEEDS_FILE = 2
+
     def aotr_install(self, zip_path, emit, cancel=None):
         self.calls.append(f"aotr_install {zip_path}")
+
+        if zip_path is None:
+            emit(Step("aotr-download", "start"))
+
+            if self.has("moddb-down"):
+                return self.fail(emit, "aotr-download", "ModDB did not offer a download link.", self.NEEDS_FILE)
+
+            emit(Progress(30))
+            emit(Step("aotr-download", "done"))
+        else:
+            emit(Step("aotr-download", "done"))
+
         emit(Step("aotr-check", "start"))
 
         if self.once("aotr-bad"):
