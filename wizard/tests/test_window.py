@@ -12,9 +12,9 @@ from bfme_wizard.controller import Controller
 from bfme_wizard.engine.programs.aotr import INSTALLED_GB as AOTR_INSTALLED_GB
 from bfme_wizard.runner import JobRunner
 from tests.fake_jobs import FakeJobs
-from tests.helpers import buttons, descendants, labels, wait_for
+from tests.helpers import buttons, descendants, labels, status, wait_for
 
-ALL = {"aio-launcher": "installed", "arena": "installed", "aotr": "installed"}
+ALL = status("aio-launcher", "arena", "aotr")
 # The icon buttons that lead to the other pages, by tooltip, left to right.
 ICON_BUTTONS = ("Install or remove programs", "Game folders", "Troubleshoot")
 NEAR = 12  # how far from the corner of the page the icon buttons may sit, in pixels
@@ -49,7 +49,7 @@ def make_window(gtk, tmp_path):
 
         win = ui.WizardWindow(shared_app(), lambda on_change: Controller(JobRunner(), on_change, jobs=jobs))
         made.append(win)
-        win.model.installed = dict(installed if installed is not None else ALL)
+        win.model.status = installed if installed is not None else ALL
         win.model.state = state
         win.render()
         return win
@@ -333,7 +333,7 @@ def test_popping_a_page_does_not_forget_the_one_underneath_it(win):
 
 
 def test_installing_from_the_programs_page_goes_back_to_the_main_page_and_installs_that_program(make_window):
-    win = make_window(installed={"aio-launcher": "installed", "arena": "installed"})
+    win = make_window(installed=status("aio-launcher", "arena"))
     asked = []
     win.controller.install = asked.append
     win.show_programs()
@@ -368,14 +368,12 @@ def test_its_rows_hold_still_while_the_answer_is_awaited(win):
     # installed, which must not flash across the rows ("Not installed" three times) before the real answer is there.
     win.show_programs()
     before = [(r.get_title(), r.get_subtitle()) for r in win.programs.rows()]
-    win.model.installed.clear()  # what Controller.start does
+    win.model.status = None  # what Controller.start does
     win.model.state = "checking"
     win.render()
     assert [(r.get_title(), r.get_subtitle()) for r in win.programs.rows()] == before
     assert not win._programs_page.get_can_pop()  # it is still the removal finishing: no way out yet
-    win.model.installed.update(
-        {"aio-launcher": "installed", "arena": "installed"}
-    )  # the answer: Age of the Ring is gone
+    win.model.status = status("aio-launcher", "arena")  # the answer: Age of the Ring is gone
     win.model.state = "done"
     win.render()
     assert [r.get_subtitle()[:13] for r in win.programs.rows()] == ["Installed", "Installed", "Not installed"]
@@ -394,14 +392,14 @@ def test_the_page_cannot_be_left_while_a_program_is_removed(win):
 
 
 def test_its_rows_follow_the_model(make_window):
-    win = make_window(installed={"aio-launcher": "installed", "arena": "installed"})
+    win = make_window(installed=status("aio-launcher", "arena"))
     win.show_programs()
 
     def titles():
         return [(r.get_title(), r.get_subtitle()) for r in win.programs.rows()]
 
     assert titles()[2][0] == "Age of the Ring"
-    win.model.installed["aotr"] = "installed"
+    win.model.status = status("aio-launcher", "arena", "aotr")
     win.render()
     assert titles()[2] == ("Age of the Ring", "Installed")
 

@@ -6,9 +6,9 @@ from bfme_wizard.engine.errors import SetupError
 from bfme_wizard.engine.programs import EVERY_PROGRAM, program
 from bfme_wizard.engine.programs.aotr import DOWNLOAD_GB as AOTR_DOWNLOAD_GB
 from tests.fake_jobs import idle_controller
-from tests.helpers import buttons, descendants, wait_for
+from tests.helpers import buttons, descendants, status, wait_for
 
-ALL = {"aio-launcher": "installed", "arena": "installed", "aotr": "installed"}
+ALL = status("aio-launcher", "arena", "aotr")
 
 
 def make_page(installed, model_state="done", removing=None, apps=None):
@@ -18,7 +18,7 @@ def make_page(installed, model_state="done", removing=None, apps=None):
     from bfme_wizard.programs import ProgramsPage
 
     c = idle_controller()
-    c.model.installed = dict(installed)
+    c.model.status = installed
     c.model.state = model_state
     c.model.removing = removing
     c.apps.state.update(apps or {})
@@ -51,12 +51,12 @@ def test_a_row_for_every_program_in_the_order_of_the_home_screen(gtk):
 
 
 def test_an_installed_program_offers_remove_and_a_missing_one_offers_install(gtk):
-    rows = program_rows({"aio-launcher": "installed", "arena": "installed"})
+    rows = program_rows(status("aio-launcher", "arena"))
     assert [[b.get_label() for b in buttons(r, gtk)] for r in rows] == [["Remove"], ["Remove"], ["Install"]]
 
 
 def test_install_looks_like_the_main_action_and_remove_like_the_dangerous_one(gtk):
-    rows = program_rows({"aio-launcher": "installed"})
+    rows = program_rows(status("aio-launcher"))
     (remove,) = buttons(rows[0], gtk)
     (install,) = buttons(rows[2], gtk)
     assert remove.has_css_class("destructive-action") and not remove.has_css_class("suggested-action")
@@ -64,7 +64,7 @@ def test_install_looks_like_the_main_action_and_remove_like_the_dangerous_one(gt
 
 
 def test_the_buttons_ask_for_their_own_program(gtk):
-    _c, _page, rows, asked = make_page({"aio-launcher": "installed", "aotr": "installed"})
+    _c, _page, rows, asked = make_page(status("aio-launcher", "aotr"))
     for row in rows[:3]:
         for button in buttons(row, gtk):
             button.emit("clicked")
@@ -72,7 +72,7 @@ def test_the_buttons_ask_for_their_own_program(gtk):
 
 
 def test_each_row_says_whether_the_program_is_there(gtk):
-    rows = program_rows({"aio-launcher": "installed", "arena": "installed"})
+    rows = program_rows(status("aio-launcher", "arena"))
     assert rows[0].get_subtitle() == "Installed"
     assert rows[1].get_subtitle() == "Installed"
     assert rows[2].get_subtitle().startswith("Not installed.")
@@ -81,12 +81,12 @@ def test_each_row_says_whether_the_program_is_there(gtk):
 
 def test_a_missing_program_says_what_installing_it_installs_with_it(gtk):
     # The Arena only plays what the AIO Launcher installs, so the setup installs them together.
-    rows = program_rows({})
+    rows = program_rows(status())
     assert "Installs the Arena too" in rows[0].get_subtitle()
     assert "Installs the AIO Launcher too" in rows[1].get_subtitle()
-    rows = program_rows({"aio-launcher": "installed"})
+    rows = program_rows(status("aio-launcher"))
     assert "too" not in rows[1].get_subtitle()  # the AIO Launcher is there: nothing else comes
-    rows = program_rows({"arena": "installed"})
+    rows = program_rows(status("arena"))
     assert "too" not in rows[0].get_subtitle()
 
 
@@ -106,13 +106,13 @@ def test_with_two_programs_open_it_names_both_in_the_order_of_the_page(gtk):
 
 def test_a_missing_program_can_still_be_installed_while_another_is_open(gtk):
     # Only removing is dangerous to what is open.
-    rows = program_rows({"aio-launcher": "installed", "arena": "installed"}, apps={"aio-launcher": "running"})
+    rows = program_rows(status("aio-launcher", "arena"), apps={"aio-launcher": "running"})
     (install,) = buttons(rows[2], gtk)
     assert (install.get_label(), install.get_sensitive()) == ("Install", True)
 
 
 def test_nothing_can_be_changed_while_the_script_is_busy(gtk):
-    c, page, _rows, _asked = make_page({"aio-launcher": "installed"})
+    c, page, _rows, _asked = make_page(status("aio-launcher"))
     assert c.run_checks()
     page.refresh()
     found = [b for r in rows_of(page) for b in buttons(r, gtk)]
@@ -146,7 +146,7 @@ def test_it_is_rebuilt_only_when_what_it_shows_has_changed(gtk):
     first = page.view.get_content()
     page.refresh()
     assert page.view.get_content() is first
-    c.model.installed["aotr"] = "missing"
+    c.model.status = status("aio-launcher", "arena")
     page.refresh()
     assert page.view.get_content() is not first
 
@@ -157,19 +157,19 @@ def test_it_is_rebuilt_only_when_what_it_shows_has_changed(gtk):
 def test_the_tools_have_a_group_of_their_own_after_the_programs(gtk):
     from gi.repository import Adw
 
-    _c, page, rows, _asked = make_page({})
+    _c, page, rows, _asked = make_page(status())
     groups = [w for w in descendants(page.view) if isinstance(w, Adw.PreferencesGroup)]
     assert [g.get_title() for g in groups] == ["", "Tools"]
     assert [r.get_title() for r in rows[3:]] == ["Workshop Studio", "Mission Control"]
 
 
 def test_a_tool_offers_install_or_open_and_remove(gtk):
-    rows = make_page({"workshop": "installed"})[2][3:]
+    rows = make_page(status("workshop"))[2][3:]
     assert [[b.get_label() for b in buttons(r, gtk)] for r in rows] == [["Open", "Remove"], ["Install"]]
 
 
 def test_the_buttons_ask_for_their_own_tool(gtk):
-    _c, _page, rows, asked = make_page({"workshop": "installed"})
+    _c, _page, rows, asked = make_page(status("workshop"))
     for row in rows[3:]:
         for button in buttons(row, gtk):
             button.emit("clicked")
@@ -177,7 +177,7 @@ def test_the_buttons_ask_for_their_own_tool(gtk):
 
 
 def test_a_running_tool_cannot_be_opened_again(gtk):
-    rows = make_page({"workshop": "installed"}, apps={"workshop": "running"})[2][3:]
+    rows = make_page(status("workshop"), apps={"workshop": "running"})[2][3:]
     assert not buttons(rows[0], gtk)[0].get_sensitive()
 
 

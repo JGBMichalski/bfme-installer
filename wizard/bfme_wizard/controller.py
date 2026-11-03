@@ -7,7 +7,7 @@ from functools import partial
 
 from .apps import AppLauncher
 from .engine.events import Event
-from .engine.jobs import Engine
+from .engine.jobs import Engine, PrepareJob
 from .engine.programs import program
 from .model import ALL_PROGRAMS, TOOLS, SetupModel
 from .runner import JobRunner
@@ -26,16 +26,16 @@ class Controller:
         self.model = SetupModel()
         self._on_change = on_change
         self.apps = AppLauncher(self.jobs.open_program, on_change)
-        self._aotr_zip: str | None = None  # the file the player chose for Age of the Ring, kept for Retry and Resume
+        self._chosen_file: str | None = None  # the file the player chose for Age of the Ring, kept for Retry and Resume
         self._offer = offer  # what the shortcut that opened the wizard wanted, used once (see start)
 
     def start(self) -> None:
         """Check what is installed. The old plan is dropped, the choice stays."""
         if self.runner.busy:
             return
-        self._aotr_zip = None
+        self._chosen_file = None
         self.model.begin_check()
-        self.model.installed.clear()  # what the status job reports now replaces what was known before (a reset, say)
+        self.model.status = None  # what the status job reports now replaces what was known before (a reset, say)
         self._on_change()
         self.runner.run(self.jobs.status, self._event, self._status_done)
 
@@ -48,7 +48,7 @@ class Controller:
             return
         if not self.model.begin_plan(programs):
             return
-        self._aotr_zip = None  # a new choice asks for the file again
+        self._chosen_file = None  # a new choice asks for the file again
         self._run_job(self.model.first_unfinished_job())
 
     def resume(self) -> None:
@@ -63,18 +63,18 @@ class Controller:
             return
         self._run_job(self.model.job)
 
-    def choose_aotr_file(self, zip_path: str) -> None:
-        """Install the Age of the Ring file the player chose."""
+    def choose_file(self, path: str) -> None:
+        """Install the file the player chose for the waiting job (Age of the Ring's)."""
         if self.runner.busy:
             return
-        self._aotr_zip = zip_path
-        self._run_job("aotr")
+        self._chosen_file = path
+        self._run_job(self.model.job)
 
-    def choose_another_aotr_file(self) -> None:
-        """Ask the player for the Age of the Ring file, instead of the app downloading it."""
+    def choose_another_file(self) -> None:
+        """Ask the player for the job's file, instead of the app downloading it."""
         if self.runner.busy:
             return
-        self._aotr_zip = None
+        self._chosen_file = None
         self.model.wait_for_file()
         self._on_change()
 
@@ -190,11 +190,11 @@ class Controller:
             return
         self.model.begin_job(name)
         self._on_change()
-        if name == "environment":
+        if name == PrepareJob.KEY:
             job = self.jobs.prepare
         else:
-            # Only Age of the Ring's job uses the file the player chose.
-            job = partial(self.jobs.install, name, self._aotr_zip)
+            # Only a job with a file step (Age of the Ring's) uses the file the player chose.
+            job = partial(self.jobs.install, name, self._chosen_file)
         self.runner.run(job, self._event, self._job_done)
 
     def _event(self, event: Event) -> None:
@@ -208,15 +208,17 @@ class Controller:
         offered = program(self._offer).job if self._offer else None
         self._offer = None  # a shortcut is answered once, not every time the player comes back to the home screen
         done = self.model.state == "done"
-        wants_aotr = done and offered == "aotr" and not self.model.aotr_installed
+        missing = None
+        if offered and done and not self.model.is_installed(offered) and program(offered).shortcut_reinstalls:
+            missing = offered  # the shortcut of a program that is not installed: go and install it
         if offered and not done:
             self.model.choose([offered])
-        self._sync_shortcuts(lambda: self._after_status(done, wants_aotr))
+        self._sync_shortcuts(lambda: self._after_status(done, missing))
 
-    def _after_status(self, done: bool, wants_aotr: bool) -> None:
+    def _after_status(self, done: bool, missing: str | None) -> None:
         """Handle the state after the status job has completed."""
-        if wants_aotr:
-            self.install(["aotr"])  # the shortcut of a mod that is not installed: go and install it
+        if missing is not None:
+            self.install([missing])
             return
         self._on_change()
         if done:
@@ -233,8 +235,8 @@ class Controller:
 
     def _job_done(self, code: int) -> None:
         """Handle the completion of an installation job."""
-        # The app could not download Age of the Ring itself: the player downloads it and chooses the file.
-        if code == self.jobs.NEEDS_FILE and self.model.job == "aotr":
+        # The app could not download the file itself (Age of the Ring's): the player downloads it and chooses it.
+        if code == self.jobs.NEEDS_FILE and self.model.file_step:
             why = self.model.error.message if self.model.error else None
             self.model.wait_for_file(why)
             self._on_change()

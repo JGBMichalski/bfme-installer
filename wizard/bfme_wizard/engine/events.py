@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass(frozen=True)
@@ -66,12 +66,21 @@ class Done:
 
 
 @dataclass(frozen=True)
-class Status:
-    key: str
-    value: str
+class SetupStatus:
+    """Where the setup stands. Every job that changes it ends by reporting it."""
+
+    prefix_ready: bool = False
+    programs: frozenset[str] = field(default_factory=frozenset)  # the keys of the installed programs and tools
+    games: frozenset[str] = field(default_factory=frozenset)  # the keys of the installed games
+    # The game environment is ready and holds at least one program; the tools do not count.
+    complete: bool = False
+    graphics: str = "vulkan"
+    gpu: str = "auto"
+    fps_counter: bool = False
+    graphics_cards: int = 1  # the window offers the choice of card only on a computer that has more than one
 
 
-Event = Log | Step | Progress | Speed | Check | Fix | Warn | Error | Cancelled | Done | Status
+Event = Log | Step | Progress | Speed | Check | Fix | Warn | Error | Cancelled | Done | SetupStatus
 Emit = Callable[[Event], None]
 
 

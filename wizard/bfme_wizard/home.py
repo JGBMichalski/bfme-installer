@@ -227,9 +227,9 @@ class TroubleshootPage:
             tuple(c.apps.state.values()),
             c.blocked_reason(),
             m.graphics,
-            m.gpu,
-            m.fps_counter,
-            m.graphics_cards,
+            m.known.gpu,
+            m.known.fps_counter,
+            m.known.graphics_cards,
         )
         if key == self._key and not force:
             return
@@ -293,14 +293,14 @@ class TroubleshootPage:
         group.add(row)
 
         # The choice of card only means something on a computer that has two.
-        if m.graphics_cards > 1:
+        if m.known.graphics_cards > 1:
             group.add(
                 self._choice_row(
                     "Graphics card",
                     "Which card runs the games, on a computer with two.",
                     "gpu",
                     GPU_CHOICES,
-                    m.gpu,
+                    m.known.gpu,
                     free,
                 )
             )
@@ -308,7 +308,7 @@ class TroubleshootPage:
         counter = Adw.SwitchRow(
             title="Show FPS",
             subtitle="The frame rate in the corner of the game. Vulkan only.",
-            active=m.fps_counter,
+            active=m.known.fps_counter,
             sensitive=free,
         )
         counter.connect(

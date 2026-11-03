@@ -21,6 +21,7 @@ from tests.helpers import (
     manifest_app_id,
     manifest_icon_exports,
     png_size,
+    status,
 )
 
 EVERY_PROGRAM = (*PROGRAMS, *TOOLS)  # each has a picture; only the PROGRAMS ones have menu shortcuts
@@ -165,7 +166,7 @@ def avatars(widget):
 
 def make_controller(installed):
     c = idle_controller()
-    c.model.installed = dict(installed)
+    c.model.status = installed
     c.model.state = "done"
     return c
 
@@ -235,7 +236,7 @@ def test_a_failure_to_read_is_not_kept_so_a_file_that_appears_later_is_found(wid
 def test_the_home_screen_shows_each_installed_programs_picture_at_64_and_only_those(widgets):
     from bfme_wizard.home import HomePage
 
-    page = HomePage(make_controller({"aio-launcher": "installed", "aotr": "installed"}), lambda: "1.0")
+    page = HomePage(make_controller(status("aio-launcher", "aotr")), lambda: "1.0")
     page.refresh()
     shown = avatars(page.content)
     assert [(a.get_text(), a.get_size()) for a in shown] == [("AIO Launcher", 64), ("Age of the Ring", 64)]
@@ -245,7 +246,7 @@ def test_the_home_screen_shows_each_installed_programs_picture_at_64_and_only_th
 def test_the_programs_page_shows_every_programs_picture_at_40_installed_or_not(widgets):
     from bfme_wizard.programs import ProgramsPage
 
-    c = make_controller({"aio-launcher": "installed"})
+    c = make_controller(status("aio-launcher"))
     page = ProgramsPage(c, install=lambda key: None, remove=lambda key: None, open_app=lambda key: None)
     shown = [avatars(row) for row in page.rows()]
     assert [[(a.get_text(), a.get_size()) for a in found] for found in shown] == [
@@ -270,7 +271,7 @@ def test_the_old_generic_glyphs_are_gone_from_the_cards_and_rows(gtk, widgets):
         "media-optical-symbolic",
         "starred-symbolic",
     }
-    c = make_controller({"aio-launcher": "installed", "arena": "installed", "aotr": "installed"})
+    c = make_controller(status("aio-launcher", "arena", "aotr"))
     home = HomePage(c, lambda: "1.0")
     home.refresh()
     programs = ProgramsPage(c, install=lambda key: None, remove=lambda key: None, open_app=lambda key: None)

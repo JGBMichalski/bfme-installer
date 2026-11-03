@@ -13,7 +13,7 @@ from abc import ABC, abstractmethod
 from .config import Config, ConfigError, ConfigFile
 from .doctor import SystemCheck
 from .errors import JobCancelled, SetupError
-from .events import Cancelled, Done, Emit, Error, Log, Progress, Status, Step
+from .events import Cancelled, Done, Emit, Error, Log, Progress, SetupStatus, Step
 from .lock import SetupLock
 from .moddb import ModdbUnavailable
 from .paths import Paths
@@ -101,38 +101,37 @@ class Job(ABC):
 
     # Where things stand
 
-    def setup_status(self) -> dict[str, str]:
-        """Where the setup stands, as the wizard reads it. Complete means the game environment is ready and holds at least
-        one program; the tools do not count."""
+    def setup_status(self) -> SetupStatus:
+        """Where the setup stands."""
         ready = self.environment.ready()
-        out = {
-            "runner": "proton",
-            "graphics": self.config.graphics,
-            "gpu": self.config.gpu,
-            "fps-counter": "1" if GameEnvironment.fps_counter_on(self.config) else "0",
-            # The window offers the choice of card only on a computer that has more than one.
-            "graphics-cards": str(len(Proton.graphics_cards())),
-            "prefix": "ready" if ready else "missing",
-        }
+        programs = set()
+        games = set()
         any_program = False
 
         for each in EVERY_PROGRAM:
-            is_installed = each.installed(self.paths)
-            out[each.key] = "installed" if is_installed else "missing"
+            if each.installed(self.paths):
+                programs.add(each.key)
 
-            if is_installed and not each.is_tool:
-                any_program = True
+                if not each.is_tool:
+                    any_program = True
 
         for game, exe in GAME_EXES.items():
-            out[game] = "installed" if (self.paths.drive_c / exe).is_file() else "missing"
+            if (self.paths.drive_c / exe).is_file():
+                games.add(game)
 
-        out["complete"] = "yes" if ready and any_program else "no"
-
-        return out
+        return SetupStatus(
+            prefix_ready=ready,
+            programs=frozenset(programs),
+            games=frozenset(games),
+            complete=ready and any_program,
+            graphics=self.config.graphics,
+            gpu=self.config.gpu,
+            fps_counter=GameEnvironment.fps_counter_on(self.config),
+            graphics_cards=len(Proton.graphics_cards()),
+        )
 
     def report_status(self) -> None:
-        for key, value in self.setup_status().items():
-            self.emit(Status(key, value))
+        self.emit(self.setup_status())
 
     def finish(self, *lines: str) -> None:
         """End with where things stand, then any last words for the player."""
@@ -197,6 +196,15 @@ class SyncShortcutsJob(Job):
 
 class PrepareJob(Job):
     """The game environment: the system check, Proton, and the prefix."""
+
+    # The plan's name for it, beside the programs' keys.
+    KEY = "environment"
+    # (step id, title, description) of each step, as the install page shows them
+    STEPS = (
+        ("doctor", "Check your system", "Making sure your computer has what the games need."),
+        ("runner", "Get Proton", "Downloading the compatibility layer that runs Windows games."),
+        ("prefix", "Create the game environment", "Setting up a private folder for the launchers and games."),
+    )
 
     def body(self) -> None:
         self.start("doctor")
@@ -263,7 +271,7 @@ class SwitchGraphicsJob(Job):
     def body(self) -> None:
         with self.lock():
             self.config = self.environment.set_graphics(self.config, self.backend, self.emit)
-            self.emit(Status("graphics", self.config.graphics))
+            self.report_status()
             self.emit(Done())
 
 
@@ -370,4 +378,4 @@ class Engine:
         except ConfigError:
             pass
 
-        return job.setup_status()["complete"] == "yes"
+        return job.setup_status().complete

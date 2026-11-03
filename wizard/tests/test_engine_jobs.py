@@ -19,8 +19,8 @@ from bfme_wizard.engine.events import (
     Fix,
     Log,
     Progress,
+    SetupStatus,
     Speed,
-    Status,
     Step,
     Warn,
 )
@@ -41,6 +41,7 @@ from bfme_wizard.engine.programs import (
 )
 from bfme_wizard.engine.proton import Proton
 from bfme_wizard.engine.shortcuts import MenuShortcuts
+from tests.helpers import status
 
 SEVENZIP = shutil.which("7zz") or shutil.which("7z") or shutil.which("7za")
 needs_7zip = pytest.mark.skipif(SEVENZIP is None, reason="7-Zip is needed to read the Age of the Ring download")
@@ -148,8 +149,8 @@ def lines(events):
             out.append("@bfme CANCELLED")
         elif isinstance(event, Done):
             out.append("@bfme DONE")
-        elif isinstance(event, Status):
-            out.append(f"@bfme STATUS {event.key} {event.value}")
+        elif isinstance(event, SetupStatus):
+            out.append(event)
 
     return out
 
@@ -159,10 +160,20 @@ def without_checks(found):
     out = []
 
     for line in found:
-        if not line.startswith(("@bfme CHECK ", "@bfme FIX ")):
+        if not isinstance(line, str) or not line.startswith(("@bfme CHECK ", "@bfme FIX ")):
             out.append(line)
 
     return out
+
+
+def last_status(events):
+    found = None
+
+    for event in events:
+        if isinstance(event, SetupStatus):
+            found = event
+
+    return found
 
 
 @pytest.fixture
@@ -171,34 +182,24 @@ def world(tmp_path, monkeypatch, file_server):
 
 
 def status_lines(**changed):
-    """The STATUS lines every job ends with: nothing installed, unless changed (use _ for -)."""
-    values = {
-        "runner": "proton",
-        "graphics": "vulkan",
-        "gpu": "auto",
-        "fps-counter": "0",
-        "graphics-cards": "0",
-        "prefix": "ready",
-        "aio-launcher": "missing",
-        "arena": "missing",
-        "aotr": "missing",
-        "workshop": "missing",
-        "mission-control": "missing",
-        "bfme1": "missing",
-        "bfme2": "missing",
-        "rotwk": "missing",
-        "complete": "no",
-    }
+    """The status every job ends with, as a list to splice in: a ready game environment and nothing installed, unless
+    changed. Keys use _ for -; programs and games say "installed"."""
+    installed = []
 
     for key, value in changed.items():
-        values[key.replace("_", "-")] = value
+        if value == "installed":
+            installed.append(key.replace("_", "-"))
 
-    out = []
-
-    for key, value in values.items():
-        out.append(f"@bfme STATUS {key} {value}")
-
-    return out
+    complete = changed.get("complete", "no") == "yes"
+    report = status(
+        *installed,
+        prefix_ready=changed.get("prefix", "ready") == "ready",
+        complete=complete,
+        gpu=changed.get("gpu", "auto"),
+        graphics=changed.get("graphics", "vulkan"),
+        graphics_cards=0,  # the test's lspci finds no card
+    )
+    return [report]
 
 
 NO_WINE_SERVER = "@bfme WARN Could not find the Wine server to close the programs in the game environment. Close any that are still open."
@@ -255,7 +256,7 @@ def test_prepare(world):
         "@bfme DONE",
     ]
 
-    assert Status("prefix", "ready") in events
+    assert last_status(events).prefix_ready
     assert Log("The game environment is ready.") in events
 
 
@@ -289,8 +290,7 @@ def test_the_aio_launcher_and_the_arena(world):
         "@bfme DONE",
     ]
 
-    assert Status("aio-launcher", "installed") in events
-    assert Status("arena", "installed") in events
+    assert {"aio-launcher", "arena"} <= last_status(events).programs
     assert (world.home / f".local/share/applications/{MenuShortcuts.RELEASE_APP_ID}.AioLauncher.desktop").is_file()
 
 
@@ -370,7 +370,7 @@ def test_age_of_the_ring_downloaded_by_the_app(world, moddb):
 
     assert code == jobs.OK
     assert lines(events)[:2] == ["@bfme STEP aotr-download start", "@bfme STEP aotr-download done"]
-    assert Status("aotr", "installed") in events
+    assert "aotr" in last_status(events).programs
     assert not (world.paths.downloads / name).exists()  # deleted once unpacked
     assert any(isinstance(event, Speed) for event in events)  # the download reported its speed
     assert Log("Age of the Ring is installed.") in events
@@ -470,7 +470,7 @@ def test_switching_graphics(world, backend):
     code, events = world.engine(jobs.switch_graphics, backend)
 
     assert code == jobs.OK
-    assert lines(events) == [f"@bfme STATUS graphics {backend}", "@bfme DONE"]
+    assert lines(events) == [*status_lines(graphics=backend), "@bfme DONE"]
 
 
 def test_reset(world):

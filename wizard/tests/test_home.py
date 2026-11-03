@@ -11,13 +11,13 @@ from bfme_wizard.__main__ import CommandLine, main
 from bfme_wizard.apps import AppLauncher
 from bfme_wizard.controller import Controller
 from bfme_wizard.diagnostics import Diagnostics
-from bfme_wizard.engine.events import Cancelled, Check, Done, Fix, Status
+from bfme_wizard.engine.events import Cancelled, Check, Done, Fix
 from bfme_wizard.engine.programs import AIO_LAUNCHER
 from bfme_wizard.engine.shortcuts import MenuShortcuts
 from bfme_wizard.model import SetupModel
 from bfme_wizard.runner import JobRunner
 from tests.fake_jobs import FakeJobs, idle_controller
-from tests.helpers import buttons, descendants, labels, wait_for
+from tests.helpers import buttons, descendants, labels, status, wait_for
 
 
 def feed(model, *events):
@@ -30,7 +30,7 @@ def feed(model, *events):
 
 def test_installed_games_in_a_fixed_order():
     m = SetupModel()
-    feed(m, Status("rotwk", "installed"), Status("bfme1", "missing"), Status("bfme2", "installed"))
+    feed(m, status("rotwk", "bfme2"))
     assert m.games == ["BFME 2", "Rise of the Witch-king"]
 
 
@@ -40,7 +40,7 @@ def test_no_games_before_a_status_check():
 
 def test_just_finished_only_after_this_session_ran_the_setup():
     m = SetupModel()
-    feed(m, Status("complete", "yes"))
+    feed(m, status(complete=True))
     m.finish_status(0)
     assert (m.state, m.just_finished) == ("done", False)
     m.begin_plan(["aio-launcher"])
@@ -59,7 +59,7 @@ def test_just_finished_only_after_this_session_ran_the_setup():
 def test_the_backend_comes_from_the_status_and_defaults_to_vulkan():
     m = SetupModel()
     assert (m.graphics, m.graphics_label) == ("vulkan", "Vulkan (DXVK)")
-    feed(m, Status("graphics", "opengl"))
+    feed(m, status(graphics="opengl"))
     assert (m.graphics, m.graphics_label) == ("opengl", "OpenGL (WineD3D)")
 
 
@@ -89,28 +89,28 @@ def test_a_quiet_check_keeps_the_state_and_forgets_old_results():
 
 # The line about games on the home screen
 
-LAUNCHER = {"aio-launcher": "installed", "arena": "installed"}
+LAUNCHER = ("aio-launcher", "arena")
 
 
 def games(installed, finished=False):
     m = SetupModel()
-    m.installed = installed
+    m.status = installed
     m.just_finished = finished
     return m.games_line
 
 
 def test_wording():
-    assert games({**LAUNCHER, "bfme2": "installed"}) == ""
-    assert games({**LAUNCHER, "bfme1": "installed", "bfme2": "installed", "rotwk": "installed"}) == ""
-    assert games(LAUNCHER) == "No games installed yet. Open the AIO Launcher to install them."
-    assert games(LAUNCHER, finished=True) == "Setup is complete. Open the AIO Launcher to install your games."
-    assert games({**LAUNCHER, "bfme2": "installed"}, finished=True) == ""
+    assert games(status(*LAUNCHER, "bfme2")) == ""
+    assert games(status(*LAUNCHER, "bfme1", "bfme2", "rotwk")) == ""
+    assert games(status(*LAUNCHER)) == "No games installed yet. Open the AIO Launcher to install them."
+    assert games(status(*LAUNCHER), finished=True) == "Setup is complete. Open the AIO Launcher to install your games."
+    assert games(status(*LAUNCHER, "bfme2"), finished=True) == ""
 
 
 def test_nothing_about_games_for_someone_who_did_not_install_the_aio_launcher():
     # Age of the Ring has its own copies of the games, and there is no AIO Launcher to open to install the others.
-    assert games({"aotr": "installed"}) == ""
-    assert games({"aotr": "installed"}, finished=True) == ""
+    assert games(status("aotr")) == ""
+    assert games(status("aotr"), finished=True) == ""
 
 
 TOOLS_IDLE = {"workshop": "idle", "mission-control": "idle"}
@@ -189,21 +189,16 @@ def test_report_has_the_version_checks_fixes_and_log_tails(tmp_path):
     (logs / "aio-launcher-20260102-000000.log").write_text("\n".join(f"line {i}" for i in range(100)))
     (logs / "arena-20260101-000000.log").write_text("arena says hi\n")
     m = SetupModel()
-    m.installed = {
-        "runner": "proton",
-        "prefix": "ready",
-        "aio-launcher": "installed",
-        "arena": "installed",
-        "bfme2": "installed",
-    }
+    m.status = status("aio-launcher", "arena", "bfme2", prefix_ready=True)
     feed(m, Check("cpu", "ok", "x86_64 processor"), Check("f", "fail", "parts missing"), Fix("f", "flatpak install X"))
     report = Diagnostics(logs).report("0.2.9", m)
     for expected in (
         "Version: 0.2.9",
         "Runner: proton",
-        "Graphics: unknown",
+        "Graphics: Vulkan (DXVK)",
+        "Setup: prefix ready, aio-launcher installed, arena installed",
         "BFME 2 installed",
-        "BFME unknown",
+        "BFME missing",
         "[FAILED] parts missing",
         "fix: flatpak install X",
         "[ok] x86_64 processor",
@@ -219,7 +214,7 @@ def test_report_has_the_version_checks_fixes_and_log_tails(tmp_path):
 
 def test_the_report_names_the_graphics_backend(tmp_path):
     m = SetupModel()
-    m.installed = {"graphics": "opengl"}
+    m.status = status(graphics="opengl")
     report = Diagnostics(tmp_path).report("dev", m)
     assert "Graphics: OpenGL (WineD3D)" in report
 
@@ -502,7 +497,7 @@ def troubleshoot_button_labels(Gtk, graphics):
 
     c = idle_controller()
     c.model.state = "idle"
-    c.model.installed = {"graphics": graphics}
+    c.model.status = status(graphics=graphics)
     page = TroubleshootPage(
         c,
         copy_text=lambda *_a: None,
@@ -524,14 +519,14 @@ def test_the_row_offers_the_other_backend(gtk):
 # The home screen shows the programs that are installed, each with a button to open it. Installing and removing
 # programs is the Programs page's job, and the buttons for the other pages float in the corner of the window's page.
 
-ALL = {"aio-launcher": "installed", "arena": "installed", "aotr": "installed"}
+ALL = status("aio-launcher", "arena", "aotr")
 
 
 def home_page(installed):
     from bfme_wizard.home import HomePage
 
     c = idle_controller()
-    c.model.installed = installed
+    c.model.status = installed
     page = HomePage(c, lambda: "1.0.0")
     page.refresh()
     return c, page
@@ -544,14 +539,14 @@ def titles(Gtk, installed):
 
 def test_only_the_installed_programs_have_a_card(gtk):
     assert titles(gtk, ALL) == ["AIO Launcher", "Arena", "Age of the Ring"]
-    assert titles(gtk, {"aio-launcher": "installed", "arena": "installed"}) == ["AIO Launcher", "Arena"]
-    assert titles(gtk, {"aotr": "installed"}) == ["Age of the Ring"]
-    assert titles(gtk, {"arena": "installed"}) == ["Arena"]
-    assert titles(gtk, {"aio-launcher": "installed", "aotr": "installed"}) == ["AIO Launcher", "Age of the Ring"]
+    assert titles(gtk, status("aio-launcher", "arena")) == ["AIO Launcher", "Arena"]
+    assert titles(gtk, status("aotr")) == ["Age of the Ring"]
+    assert titles(gtk, status("arena")) == ["Arena"]
+    assert titles(gtk, status("aio-launcher", "aotr")) == ["AIO Launcher", "Age of the Ring"]
 
 
 def test_a_program_that_is_not_there_leaves_no_trace_of_itself(gtk):
-    _c, page = home_page({"aio-launcher": "installed"})
+    _c, page = home_page(status("aio-launcher"))
     text = " ".join(labels(page.content, gtk))
     for word in ("Arena", "Age of the Ring", "Not installed", "Comes with"):
         assert word not in text
@@ -586,7 +581,7 @@ def test_a_running_program_shows_that_and_a_quick_exit_says_so_softly(gtk):
 
 def test_with_nothing_installed_it_points_at_the_button_that_installs(gtk):
     # Not reachable through a real status (the setup is not complete then), but the page must not be a blank.
-    _c, page = home_page({})
+    _c, page = home_page(status())
     assert labels(page.content, gtk, "title-2") == []
     assert any("download button" in line for line in labels(page.content, gtk))
 
@@ -708,7 +703,7 @@ def test_the_players_ticks_survive_a_refresh(start):
 
 def test_after_a_stop_the_same_choice_says_resume_and_another_says_install(start):
     c, page = start
-    c.model.installed["prefix"] = "missing"
+    c.model.status = status()
     c.model.begin_plan(["aio-launcher", "aotr"])
     c.model.begin_job("environment")
     feed(c.model, Cancelled())
@@ -727,7 +722,7 @@ def test_the_page_says_when_the_game_environment_is_ready(start):
     c, page = start
     page.enter()
     assert page.view.get_title() == "Set up BFME on Linux"
-    c.model.installed["prefix"] = "ready"
+    c.model.status = status(prefix_ready=True)
     page.refresh()
     assert page.view.get_title() == "Choose what to install"
 
@@ -751,7 +746,7 @@ def troubleshoot(installed, state="done"):
 
     c = idle_controller()
     c.model.state = state
-    c.model.installed = dict(installed)
+    c.model.status = installed
     asked = []
     page = TroubleshootPage(
         c,
@@ -779,8 +774,8 @@ def rows_titled(page, kind):
 def test_the_choice_of_card_is_only_there_with_two_cards(gtk):
     from gi.repository import Adw
 
-    one, _ = troubleshoot({"graphics-cards": "1"})
-    two, _ = troubleshoot({"graphics-cards": "2"})
+    one, _ = troubleshoot(status(graphics_cards=1))
+    two, _ = troubleshoot(status(graphics_cards=2))
 
     assert "Graphics card" not in rows_titled(one, Adw.ComboRow)
     assert "Graphics card" in rows_titled(two, Adw.ComboRow)
@@ -789,7 +784,7 @@ def test_the_choice_of_card_is_only_there_with_two_cards(gtk):
 def test_the_rows_show_what_is_saved_and_building_them_saves_nothing(gtk):
     from gi.repository import Adw
 
-    page, asked = troubleshoot({"graphics-cards": "2", "gpu": "integrated", "fps-counter": "1"})
+    page, asked = troubleshoot(status(graphics_cards=2, gpu="integrated", fps_counter=True))
     combos = rows_titled(page, Adw.ComboRow)
 
     assert combos["Graphics card"].get_selected_item().get_string() == "Built-in card"
@@ -800,7 +795,7 @@ def test_the_rows_show_what_is_saved_and_building_them_saves_nothing(gtk):
 def test_changing_a_row_saves_that_setting(gtk):
     from gi.repository import Adw
 
-    page, asked = troubleshoot({"graphics-cards": "2"})
+    page, asked = troubleshoot(status(graphics_cards=2))
     combos = rows_titled(page, Adw.ComboRow)
 
     combos["Graphics card"].set_selected(1)
@@ -812,7 +807,7 @@ def test_changing_a_row_saves_that_setting(gtk):
 def test_the_rows_wait_while_the_setup_runs(gtk):
     from gi.repository import Adw
 
-    page, _ = troubleshoot({"graphics-cards": "2"}, state="running")
+    page, _ = troubleshoot(status(graphics_cards=2), state="running")
 
     for row in [*rows_titled(page, Adw.ComboRow).values(), *rows_titled(page, Adw.SwitchRow).values()]:
         assert not row.get_sensitive(), row.get_title()
@@ -821,7 +816,7 @@ def test_the_rows_wait_while_the_setup_runs(gtk):
 def test_the_settings_file_row_opens_it(gtk):
     from gi.repository import Adw
 
-    page, asked = troubleshoot({})
+    page, asked = troubleshoot(status())
 
     rows_titled(page, Adw.ActionRow)["Open settings file"].emit("activated")
 

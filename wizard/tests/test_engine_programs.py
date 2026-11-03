@@ -15,6 +15,7 @@ from bfme_wizard.engine.jobs import StatusJob
 from bfme_wizard.engine.paths import Paths
 from bfme_wizard.engine.programs import AIO_LAUNCHER, AOTR, ARENA, TOOLS, AioLauncher, program
 from bfme_wizard.engine.proton import Proton
+from tests.helpers import status
 
 
 def executable(path, text):
@@ -70,45 +71,20 @@ LAYOUTS = {
     "a game folder without its program": ["prefix", "bfme2-folder"],
 }
 
-STATUS_KEYS = [
-    "runner",
-    "graphics",
-    "gpu",
-    "fps-counter",
-    "graphics-cards",
-    "prefix",
-    "aio-launcher",
-    "arena",
-    "aotr",
-    "workshop",
-    "mission-control",
-    "bfme1",
-    "bfme2",
-    "rotwk",
-    "complete",
-]
-
-# What differs, per layout, from a status where nothing is there. An unfinished install counts as missing, and only a
-# prefix with a launcher or AotR in it is complete.
-STATUS_CHANGES = {
-    "nothing": {},
-    "prefix only": {"prefix": "ready"},
-    "aio-launcher": {"prefix": "ready", "aio-launcher": "installed", "complete": "yes"},
-    "aio-launcher still installing": {"prefix": "ready"},
-    "arena only": {"prefix": "ready", "arena": "installed", "complete": "yes"},
-    "aotr": {"prefix": "ready", "aotr": "installed", "complete": "yes"},
-    "aotr still installing": {"prefix": "ready"},
-    "programs without a prefix": {"aio-launcher": "installed", "aotr": "installed"},
-    "tools only": {"prefix": "ready", "workshop": "installed", "mission-control": "installed"},
-    "games": {
-        "prefix": "ready",
-        "aio-launcher": "installed",
-        "bfme1": "installed",
-        "bfme2": "installed",
-        "rotwk": "installed",
-        "complete": "yes",
-    },
-    "a game folder without its program": {"prefix": "ready"},
+# What each layout reports. An unfinished install counts as missing, and only a prefix with a launcher or AotR in it is
+# complete.
+EXPECTED = {
+    "nothing": status(),
+    "prefix only": status(prefix_ready=True),
+    "aio-launcher": status("aio-launcher", prefix_ready=True),
+    "aio-launcher still installing": status(prefix_ready=True),
+    "arena only": status("arena", prefix_ready=True),
+    "aotr": status("aotr", prefix_ready=True),
+    "aotr still installing": status(prefix_ready=True),
+    "programs without a prefix": status("aio-launcher", "aotr"),
+    "tools only": status("workshop", "mission-control", prefix_ready=True),
+    "games": status("aio-launcher", "bfme1", "bfme2", "rotwk", prefix_ready=True),
+    "a game folder without its program": status(prefix_ready=True),
 }
 
 TOOL_KEYS = [tool.key for tool in TOOLS]
@@ -143,29 +119,9 @@ def test_the_status_of_each_layout(paths, layout, tmp_path, monkeypatch):
     monkeypatch.setenv("PATH", f"{tmp_path / 'bin'}:/usr/bin:/bin")
     build(paths, LAYOUTS[layout])
 
-    expected = {
-        "runner": "proton",
-        "graphics": "vulkan",
-        "gpu": "auto",
-        "fps-counter": "0",
-        "graphics-cards": "1",
-        "prefix": "missing",
-        "aio-launcher": "missing",
-        "arena": "missing",
-        "aotr": "missing",
-        "workshop": "missing",
-        "mission-control": "missing",
-        "bfme1": "missing",
-        "bfme2": "missing",
-        "rotwk": "missing",
-        "complete": "no",
-    }
-    expected.update(STATUS_CHANGES[layout])
-
     found = StatusJob([].append, environ={"BFME_HOME": str(paths.base)}).setup_status()
 
-    assert found == expected
-    assert list(found) == STATUS_KEYS
+    assert found == EXPECTED[layout]
 
 
 # Waiting for a file

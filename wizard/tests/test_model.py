@@ -1,7 +1,8 @@
 import pytest
 
-from bfme_wizard.engine.events import Cancelled, Check, Done, Error, Fix, Log, Progress, Speed, Status, Step, Warn
+from bfme_wizard.engine.events import Cancelled, Check, Done, Error, Fix, Log, Progress, Speed, Step, Warn
 from bfme_wizard.model import SetupModel, plan_for, speed_text
+from tests.helpers import status
 
 
 def feed(model, *events):
@@ -12,7 +13,7 @@ def feed(model, *events):
 def planned(*programs, environment_ready=False):
     """A model with a plan for these programs, as the start page leaves it: nothing is running yet."""
     m = SetupModel()
-    m.installed["prefix"] = "ready" if environment_ready else "missing"
+    m.status = status(prefix_ready=environment_ready)
     m.begin_plan(programs)
     return m
 
@@ -29,40 +30,21 @@ ENVIRONMENT_DONE = (Step("doctor", "done"), Step("runner", "done"), Step("prefix
 
 def test_complete_setup_goes_straight_to_done():
     m = SetupModel()
-    feed(
-        m,
-        Status("prefix", "ready"),
-        Status("aio-launcher", "installed"),
-        Status("arena", "installed"),
-        Status("complete", "yes"),
-    )
+    feed(m, status("aio-launcher", "arena", prefix_ready=True))
     m.finish_status(0)
     assert m.state == "done"
 
 
 def test_a_ready_environment_with_nothing_installed_is_not_complete():
     m = SetupModel()
-    feed(
-        m,
-        Status("prefix", "ready"),
-        Status("aio-launcher", "missing"),
-        Status("arena", "missing"),
-        Status("aotr", "missing"),
-        Status("complete", "no"),
-    )
+    feed(m, status(prefix_ready=True))
     m.finish_status(0)
     assert (m.state, m.paused, m.environment_ready) == ("idle", False, True)
 
 
 def test_nothing_installed_is_a_fresh_start():
     m = SetupModel()
-    feed(
-        m,
-        Status("prefix", "missing"),
-        Status("aio-launcher", "missing"),
-        Status("arena", "missing"),
-        Status("complete", "no"),
-    )
+    feed(m, status())
     m.finish_status(0)
     assert (m.state, m.paused, m.environment_ready) == ("idle", False, False)
 
@@ -73,20 +55,20 @@ def test_a_failing_status_command_is_not_done():
     assert m.state == "idle"
 
 
-def test_each_program_is_known_from_its_status_line():
+def test_each_program_is_known_from_the_status():
     m = SetupModel()
     assert not any(m.is_installed(p) for p in ("aio-launcher", "arena", "aotr"))
-    feed(m, Status("aio-launcher", "installed"), Status("arena", "missing"), Status("aotr", "installed"))
+    feed(m, status("aio-launcher", "aotr"))
     assert [m.is_installed(p) for p in ("aio-launcher", "arena", "aotr")] == [True, False, True]
-    assert m.aotr_installed
+    assert m.is_installed("aotr")
 
 
 def test_leaving_a_plan_lands_on_the_home_screen_only_when_something_is_installed():
     m = SetupModel()
     assert not m.has_home_screen
-    feed(m, Status("prefix", "ready"), Status("complete", "no"))
+    feed(m, status(prefix_ready=True))
     assert not m.has_home_screen  # the environment alone is not a home screen
-    feed(m, Status("aotr", "installed"), Status("complete", "yes"))
+    feed(m, status("aotr", prefix_ready=True))
     assert m.has_home_screen
 
 
@@ -303,6 +285,7 @@ def test_the_next_job_waits_for_nobody_unless_it_needs_a_file():
 
 def test_age_of_the_ring_waits_for_the_player_to_choose_the_file():
     m = planned("aotr", environment_ready=True)
+    run_next(m)  # the job ends: the app cannot download the file
     m.wait_for_file()
     assert (m.state, m.job, m.current, m.step_number) == ("waiting", "aotr", "aotr-download", 1)
     assert m.steps["aotr-download"] == "running"
@@ -313,6 +296,7 @@ def test_age_of_the_ring_waits_for_the_player_to_choose_the_file():
 
 def test_the_app_can_say_why_the_player_must_download_it():
     m = planned("aotr", environment_ready=True)
+    run_next(m)
     m.wait_for_file("ModDB did not offer a download link.")
     assert m.file_note == "ModDB did not offer a download link."
     m.wait_for_file()
@@ -352,7 +336,7 @@ def test_a_stopped_age_of_the_ring_install_from_the_setup_pauses_it():
 
 def test_stopping_an_install_started_from_the_home_screen_goes_back_to_the_home_screen():
     m = SetupModel()
-    feed(m, Status("prefix", "ready"), Status("aio-launcher", "installed"), Status("complete", "yes"))
+    feed(m, status("aio-launcher", prefix_ready=True))
     m.finish_status(0)
     assert m.state == "done"
     m.begin_plan(["aotr"])
@@ -397,7 +381,7 @@ def test_a_cancel_during_the_last_job_changes_nothing_because_there_is_nothing_l
 
 def test_a_plan_started_on_the_home_screen_goes_back_there_when_stopped_between_jobs():
     m = SetupModel()
-    feed(m, Status("prefix", "ready"), Status("aotr", "installed"), Status("complete", "yes"))
+    feed(m, status("aotr", prefix_ready=True))
     m.finish_status(0)
     m.begin_plan(["aio-launcher", "aotr"])
     run_next(m)
@@ -436,13 +420,7 @@ def test_the_system_checks_survive_the_jobs_after_the_environment():
 
 def done_setup():
     m = SetupModel()
-    feed(
-        m,
-        Status("prefix", "ready"),
-        Status("aio-launcher", "installed"),
-        Status("arena", "installed"),
-        Status("complete", "yes"),
-    )
+    feed(m, status("aio-launcher", "arena", prefix_ready=True))
     m.finish_status(0)
     return m
 
@@ -498,7 +476,7 @@ def test_passing_leaves_the_state_for_the_caller():
 
 def test_the_log_holds_the_log_lines_and_the_warnings_and_nothing_else():
     m = SetupModel()
-    feed(m, Log("hello"), Progress(1), Step("doctor", "start"), Warn("careful"), Status("prefix", "ready"), Log("bye"))
+    feed(m, Log("hello"), Progress(1), Step("doctor", "start"), Warn("careful"), status(prefix_ready=True), Log("bye"))
     assert m.log_text() == "hello\nWARNING: careful\nbye"
 
 

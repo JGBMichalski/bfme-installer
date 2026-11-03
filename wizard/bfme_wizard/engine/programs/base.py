@@ -59,6 +59,14 @@ class Program(ABC):
     aliases: tuple[str, ...] = ()
     # Opening it installs or updates it first (prepare_to_open), so it may be opened when it is missing.
     prepare_installs = False
+    # The step that waits for a file the player downloads in a browser, when the app cannot download it itself. Its job
+    # then ends with NEEDS_FILE, and the window asks for the file.
+    file_step = ""
+    # Its menu shortcut, clicked once it is gone from a complete setup, installs it again rather than only showing the
+    # home screen.
+    shortcut_reinstalls = False
+    # The games are installed through it, so the home screen points at it while there are none.
+    installs_games = False
     # Tools are listed apart and do not count towards a complete setup.
     is_tool = False
 

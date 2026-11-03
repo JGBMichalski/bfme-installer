@@ -27,18 +27,13 @@ from dataclasses import dataclass
 
 from .engine import events
 from .engine import programs as engine_programs
+from .engine.jobs import PrepareJob
 from .engine.paths import GAME_DIRS
-
-ENVIRONMENT_STEPS = [
-    ("doctor", "Check your system", "Making sure your computer has what the games need."),
-    ("runner", "Get Proton", "Downloading the compatibility layer that runs Windows games."),
-    ("prefix", "Create the game environment", "Setting up a private folder for the launchers and games."),
-]
 
 
 def _job_steps() -> dict[str, list[tuple[str, str, str]]]:
     """The steps of each job: the game environment's, then each program's that has a job of its own."""
-    steps = {"environment": ENVIRONMENT_STEPS}
+    steps = {PrepareJob.KEY: list(PrepareJob.STEPS)}
 
     for program in engine_programs.EVERY_PROGRAM:
         if program.steps:
@@ -105,7 +100,7 @@ def plan_for(programs: Iterable[str], environment_ready: bool) -> list[str]:
     chosen = list(_in_order(programs))
     if not chosen:
         return []
-    return chosen if environment_ready else ["environment", *chosen]
+    return chosen if environment_ready else [PrepareJob.KEY, *chosen]
 
 
 @dataclass(frozen=True)
@@ -120,7 +115,7 @@ class SetupModel:
     def __init__(self) -> None:
         self.state = "checking"
         self.log: list[str] = []
-        self.installed: dict[str, str] = {}
+        self.status: events.SetupStatus | None = None  # known after a status check
         self.selection: tuple[str, ...] = ()  # what the player chose to install (see PROGRAMS)
         self.plan: list[str] = []  # the jobs that choice takes
         self.job: str | None = None  # the job that is running, waiting for the player, or failed
@@ -176,18 +171,25 @@ class SetupModel:
         for sid, _t, _d in JOB_STEPS[name]:
             self.steps[sid] = "pending"
         # Only the environment job runs system checks. Troubleshoot keeps showing the last ones.
-        self._reset_run(keep_checks=name != "environment")
+        self._reset_run(keep_checks=name != PrepareJob.KEY)
         self.state = "running"
 
     def wait_for_file(self, why: str | None = None) -> None:
-        """The plan waits for the player to download and choose the Age of the Ring file. `why`: why the app could not
-        download it itself, if it tried."""
-        self.job = "aotr"
+        """The running job waits for the player to download and choose its file (Age of the Ring's). `why`: why the app
+        could not download it itself, if it tried."""
         self._reset_run(keep_checks=True)
         self.file_note = why
-        self.steps["aotr-download"] = "running"
-        self.current = "aotr-download"
+        self.steps[self.file_step] = "running"
+        self.current = self.file_step
         self.state = "waiting"
+
+    @property
+    def file_step(self) -> str:
+        """The current job's step that waits for a file from the player, or "" when it has none."""
+        if self.job is None or self.job == PrepareJob.KEY:
+            return ""
+
+        return engine_programs.program(self.job).file_step
 
     def _reset_run(self, keep_checks: bool = False) -> None:
         """Forget what the last script run reported. Step results stay."""
@@ -270,12 +272,12 @@ class SetupModel:
             self._saw_cancelled = True
         elif isinstance(e, events.Done):
             self._saw_done = True
-        elif isinstance(e, events.Status):
-            self.installed[e.key] = e.value
+        elif isinstance(e, events.SetupStatus):
+            self.status = e
 
     def finish_status(self, exit_code: int) -> None:
         """Handle the completion of the status job."""
-        if exit_code == 0 and self.installed.get("complete") == "yes":
+        if exit_code == 0 and self.known.complete:
             self.state = "done"
         else:
             self.state = "idle"
@@ -321,29 +323,21 @@ class SetupModel:
         return self.state == "cancelled"
 
     @property
+    def known(self) -> events.SetupStatus:
+        """The last status reported, or an empty one before the first status check."""
+        if self.status is None:
+            return events.SetupStatus()
+
+        return self.status
+
+    @property
     def environment_ready(self) -> bool:
-        """Known only after a status check."""
-        return self.installed.get("prefix") == "ready"
+        return self.known.prefix_ready
 
     @property
     def graphics(self) -> str:
-        """The graphics backend: `vulkan` (DXVK) or `opengl` (WineD3D). Known only after a status check."""
-        return self.installed.get("graphics", "vulkan")
-
-    @property
-    def gpu(self) -> str:
-        """Which graphics card the programs use: `auto`, `dedicated` or `integrated`."""
-        return self.installed.get("gpu", "auto")
-
-    @property
-    def fps_counter(self) -> bool:
-        """Whether the programs show DXVK's frame counter."""
-        return self.installed.get("fps-counter") == "1"
-
-    @property
-    def graphics_cards(self) -> int:
-        """How many graphics cards the computer has."""
-        return int(self.installed.get("graphics-cards", "1"))
+        """The graphics backend: `vulkan` (DXVK) or `opengl` (WineD3D)."""
+        return self.known.graphics
 
     @property
     def graphics_label(self) -> str:
@@ -353,7 +347,7 @@ class SetupModel:
     @property
     def has_home_screen(self) -> bool:
         """Something is installed, so leaving the plan lands on the home screen. Known only after a status check."""
-        return self.installed.get("complete") == "yes"
+        return self.known.complete
 
     @property
     def done_count(self) -> int:
@@ -379,18 +373,19 @@ class SetupModel:
         return [Problem(c.message, self.fixes.get(cid)) for cid, c in self.checks.items() if c.level == "fail"]
 
     def is_installed(self, program: str) -> bool:
-        """Return True if the given program is installed. Known only after a status check."""
-        return self.installed.get(program) == "installed"
-
-    @property
-    def aotr_installed(self) -> bool:
-        """Return True if the AOTR mod is installed. Known only after a status check."""
-        return self.is_installed("aotr")
+        """Known only after a status check."""
+        return program in self.known.programs
 
     @property
     def games(self) -> list[str]:
         """Return a list of installed game names. Known only after a status check."""
-        return [name for key, name in GAMES if self.installed.get(key) == "installed"]
+        names = []
+
+        for key, name in GAMES:
+            if key in self.known.games:
+                names.append(name)
+
+        return names
 
     @property
     def check_rows(self) -> list[tuple[str, str, str, str | None]]:
@@ -409,7 +404,16 @@ class SetupModel:
     @property
     def games_line(self) -> str:
         """The home screen's top sentence. Empty when games are installed or there is no AIO Launcher."""
-        if self.games or not self.is_installed("aio-launcher"):
+        if self.games:
+            return ""
+
+        has_installer = False
+
+        for program in engine_programs.EVERY_PROGRAM:
+            if program.installs_games and self.is_installed(program.key):
+                has_installer = True
+
+        if not has_installer:
             return ""
 
         if self.just_finished:

@@ -217,7 +217,7 @@ class WizardWindow(Adw.ApplicationWindow):
             if not path:
                 self.toasts.add_toast(Adw.Toast.new("That file cannot be read from here."))
                 return
-            self.controller.choose_aotr_file(path)
+            self.controller.choose_file(path)
 
         dialog.open(self, None, chosen)
 
@@ -512,10 +512,10 @@ class WizardWindow(Adw.ApplicationWindow):
             self.problem_box.append(pill("Retry", self.controller.retry))
             # One row: four stacked buttons do not fit.
             others = Gtk.Box(spacing=12, halign=Gtk.Align.CENTER)
-            if m.job == "aotr":
+            if m.file_step:
                 # Most Age of the Ring failures come from the file. A failed download can be done in a browser instead.
-                label = "Choose a file instead" if m.failed_step == "aotr-download" else "Choose another file"
-                others.append(pill(label, self.controller.choose_another_aotr_file, suggested=False))
+                label = "Choose a file instead" if m.failed_step == m.file_step else "Choose another file"
+                others.append(pill(label, self.controller.choose_another_file, suggested=False))
             others.append(pill(self._leave_label(), self.controller.back_home, suggested=False))
             others.append(pill("Copy log", lambda: self.copy(m.log_text(), "Log copied"), suggested=False))
             self.problem_box.append(others)

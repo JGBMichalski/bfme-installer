@@ -45,6 +45,7 @@ class AioLauncher(Program):
     # Shortcuts made before it was called "aio-launcher" pass "launcher".
     aliases = ("launcher",)
     prepare_installs = True
+    installs_games = True
 
     URL = "https://arena-files.bfmeladder.com/downloads/AllInOneLauncherSetup.exe"
     # Left in the game environment until the setup finishes, so a half-copied file is not taken for the AIO Launcher.

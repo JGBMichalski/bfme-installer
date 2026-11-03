@@ -156,15 +156,18 @@ class Diagnostics:
         return lines
 
     def report(self, version: str, model: SetupModel, system: list[str] | None = None) -> str:
+        status = model.status
         graphics = "unknown"
+        runner = "unknown"
 
-        if "graphics" in model.installed:
+        if status is not None:
             graphics = model.graphics_label
+            runner = "proton"
 
         out = [
             "BFME Installer diagnostics",
             f"Version: {version}",
-            f"Runner: {model.installed.get('runner', 'unknown')}",
+            f"Runner: {runner}",
             f"Graphics: {graphics}",
         ]
 
@@ -173,17 +176,25 @@ class Diagnostics:
 
         out += system
 
-        setup = []
+        if status is None:
+            setup = ["prefix unknown", "aio-launcher unknown", "arena unknown"]
+        else:
+            setup = [f"prefix {'ready' if status.prefix_ready else 'missing'}"]
 
-        for key in ("prefix", "aio-launcher", "arena"):
-            setup.append(f"{key} {model.installed.get(key, 'unknown')}")
+            for key in ("aio-launcher", "arena"):
+                setup.append(f"{key} {'installed' if key in status.programs else 'missing'}")
 
         out.append("Setup: " + ", ".join(setup))
 
         games = []
 
         for key, name in GAMES:
-            games.append(f"{name} {model.installed.get(key, 'unknown')}")
+            if status is None:
+                games.append(f"{name} unknown")
+            elif key in status.games:
+                games.append(f"{name} installed")
+            else:
+                games.append(f"{name} missing")
 
         out.append("Games: " + ", ".join(games))
         out += ["", "System checks:"]

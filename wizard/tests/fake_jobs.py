@@ -30,9 +30,9 @@ from bfme_wizard.engine.events import (
     Fix,
     Log,
     Progress,
-    Status,
     Step,
 )
+from tests.helpers import status
 
 PROGRAMS = ("aio-launcher", "arena", "aotr")
 
@@ -67,23 +67,29 @@ class FakeJobs:
     # What every job ends with
 
     def report(self, emit):
-        emit(Status("graphics", (self.dir / "graphics").read_text() if self.has("graphics") else "vulkan"))
+        installed = []
 
-        for option, default in (("gpu", "auto"), ("fps-counter", "0")):
-            saved = self.dir / f"option-{option}"
-            emit(Status(option, saved.read_text() if saved.exists() else default))
+        for key in (*PROGRAMS, "workshop", "mission-control", "bfme2"):
+            if self.has(key):
+                installed.append(key)
 
-        emit(Status("graphics-cards", "2" if self.has("two-cards") else "1"))
-        emit(Status("prefix", "ready" if self.has("prefix") else "missing"))
-        any_program = False
+        emit(
+            status(
+                *installed,
+                prefix_ready=self.has("prefix"),
+                graphics=self.saved("graphics", "vulkan"),
+                gpu=self.saved("option-gpu", "auto"),
+                fps_counter=self.saved("option-fps-counter", "0") == "1",
+                graphics_cards=2 if self.has("two-cards") else 1,
+            )
+        )
 
-        for program in (*PROGRAMS, "workshop", "mission-control", "bfme2"):
-            emit(Status(program, "installed" if self.has(program) else "missing"))
+    def saved(self, name, default):
+        """What a job saved in the file `name`, or `default`."""
+        if self.has(name):
+            return (self.dir / name).read_text()
 
-            if program in PROGRAMS and self.has(program):
-                any_program = True
-
-        emit(Status("complete", "yes" if self.has("prefix") and any_program else "no"))
+        return default
 
     def fail(self, emit, step, message, code=1):
         emit(Log(f"ERROR: {message}"))

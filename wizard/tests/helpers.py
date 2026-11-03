@@ -75,3 +75,30 @@ def manifest_icon_exports():
     for name, width, height, exported in re.findall(pattern, MANIFEST.read_text()):
         found[name] = (int(width), int(height), exported)
     return found
+
+
+def status(*installed, prefix_ready=False, **fields):
+    """A SetupStatus with these program and game keys installed. Complete as the engine works it out, unless given."""
+    from bfme_wizard.engine.events import SetupStatus
+    from bfme_wizard.engine.paths import GAME_DIRS
+    from bfme_wizard.engine.programs import program
+
+    programs = set()
+    games = set()
+
+    for key in installed:
+        if key in GAME_DIRS:
+            games.add(key)
+        else:
+            programs.add(key)
+
+    if "complete" not in fields:
+        any_program = False
+
+        for key in programs:
+            if not program(key).is_tool:
+                any_program = True
+
+        fields["complete"] = prefix_ready and any_program
+
+    return SetupStatus(prefix_ready=prefix_ready, programs=frozenset(programs), games=frozenset(games), **fields)
