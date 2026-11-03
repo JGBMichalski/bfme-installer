@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from bfme_wizard.engine import doctor, download, graphics, proton, shortcuts
+from bfme_wizard.engine import doctor, download, graphics, shortcuts
 from bfme_wizard.engine.events import (
     Cancelled,
     Check,
@@ -36,6 +36,7 @@ from bfme_wizard.engine.programs import (
     WorkshopStudio,
     program,
 )
+from bfme_wizard.engine.proton import Proton
 
 SEVENZIP = shutil.which("7zz") or shutil.which("7z") or shutil.which("7za")
 needs_7zip = pytest.mark.skipif(SEVENZIP is None, reason="7-Zip is needed to read the Age of the Ring download")
@@ -528,12 +529,12 @@ def test_a_bad_config_file_is_an_error(world):
 def test_progress_is_reported_while_proton_downloads(world, monkeypatch, file_server):
     seen = []
 
-    def ensure_proton(paths, config, on_progress, cancel, emit=None):
+    def ensure(self, on_progress, cancel, emit):
         on_progress(50)
         on_progress(100)
         return "fake-proton"
 
-    monkeypatch.setattr(proton, "ensure_proton", ensure_proton)
+    monkeypatch.setattr(Proton, "ensure", ensure)
 
     code, events = world.engine(jobs.prepare)
 

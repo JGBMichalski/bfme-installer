@@ -10,12 +10,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from .. import proton
 from ..config import Config
 from ..errors import SetupError
 from ..events import Emit, Log, Warn
 from ..logs import RunLogs
 from ..paths import Paths
+from ..proton import NO_WINE_SERVER, Proton
 
 if TYPE_CHECKING:
     from ..jobs import InstallJob
@@ -91,16 +91,14 @@ class Program(ABC):
         """The steps of its install job, with the setup lock held. A program installed by another one's job has none."""
         raise SetupError(f"{self.title} is installed with {self.installed_by}.")
 
-    def prepare_to_open(
-        self, paths: Paths, config: Config, proton_path: str, emit: Emit, cancel: threading.Event | None = None
-    ) -> None:
+    def prepare_to_open(self, paths: Paths, proton: Proton, emit: Emit, cancel: threading.Event | None = None) -> None:
         """What opening it needs first, while the setup lock is held. Nothing by default."""
         return
 
     def logs(self, paths: Paths) -> RunLogs:
         return RunLogs(paths.logs, self.key)
 
-    def open(self, paths: Paths, config: Config, proton_path: str, emit: Emit) -> int:
+    def open(self, paths: Paths, proton: Proton, emit: Emit) -> int:
         """Run the program from its own folder and wait until it ends. Its output goes to a log of its own. Returns its
         exit status."""
         exe = self.exe(paths)
@@ -109,7 +107,7 @@ class Program(ABC):
         emit(Log(f"Starting {self.name}. Log: {log}"))
 
         with open(log, "w", encoding="utf-8") as out:
-            code = proton.run(paths, config, proton_path, [str(exe)], inprefix=True, output=out, cwd=exe.parent)
+            code = proton.run([str(exe)], inprefix=True, output=out, cwd=exe.parent)
 
         logs.remove_old()
 
@@ -124,8 +122,8 @@ class Program(ABC):
         if paths.drive_c not in folder.parents:
             raise SetupError(f"Refusing to delete '{folder}'.")
 
-        if not proton.end_wine_session(paths, config):
-            emit(Warn(proton.NO_WINE_SERVER))
+        if not Proton(paths, config).end_session():
+            emit(Warn(NO_WINE_SERVER))
 
         shutil.rmtree(folder, ignore_errors=True)
 

@@ -7,11 +7,11 @@ import tarfile
 import pytest
 
 from bfme_wizard.engine import download as download_module
-from bfme_wizard.engine import proton
 from bfme_wizard.engine.config import DEFAULT_PROTONPATH, Config, load
 from bfme_wizard.engine.errors import SetupError
 from bfme_wizard.engine.events import Log
 from bfme_wizard.engine.paths import Paths
+from bfme_wizard.engine.proton import Proton
 
 LSPCI_TWO_CARDS = (
     "00:02.0 VGA compatible controller: Intel Corporation CometLake-H GT2\n"
@@ -59,7 +59,7 @@ def no_retry_delay(monkeypatch):
 def test_another_proton_is_used_as_it_is(paths, file_server):
     config = Config(protonpath="GE-Proton10-1")
 
-    assert proton.ensure_proton(paths, config, url=file_server.url("/p.tar.gz")) == "GE-Proton10-1"
+    assert Proton(paths, config).ensure(url=file_server.url("/p.tar.gz")) == "GE-Proton10-1"
     assert file_server.requests == []
 
 
@@ -69,8 +69,8 @@ def test_the_pinned_proton_is_downloaded_checked_and_unpacked_once(paths, file_s
     seen = []
     target = paths.base / "proton" / DEFAULT_PROTONPATH
 
-    got = proton.ensure_proton(
-        paths, Config(), seen.append, url=file_server.url("/p.tar.gz"), sha256=hashlib.sha256(data).hexdigest()
+    got = Proton(paths, Config()).ensure(
+        seen.append, url=file_server.url("/p.tar.gz"), sha256=hashlib.sha256(data).hexdigest()
     )
 
     assert got == str(target)
@@ -79,7 +79,7 @@ def test_the_pinned_proton_is_downloaded_checked_and_unpacked_once(paths, file_s
     assert not (paths.base / "proton" / ".extracting").exists()
     assert list(paths.downloads.iterdir()) == []
 
-    proton.ensure_proton(paths, Config(), url=file_server.url("/p.tar.gz"), sha256="unused")
+    Proton(paths, Config()).ensure(url=file_server.url("/p.tar.gz"), sha256="unused")
 
     assert len(file_server.requests) == 1
 
@@ -88,7 +88,7 @@ def test_a_wrong_checksum_installs_nothing(paths, file_server):
     file_server.files["/p.tar.gz"] = proton_tarball()
 
     with pytest.raises(SetupError, match="Checksum mismatch"):
-        proton.ensure_proton(paths, Config(), url=file_server.url("/p.tar.gz"), sha256="0" * 64)
+        Proton(paths, Config()).ensure(url=file_server.url("/p.tar.gz"), sha256="0" * 64)
 
     assert not (paths.base / "proton" / DEFAULT_PROTONPATH).exists()
 
@@ -98,7 +98,7 @@ def test_a_tarball_without_proton_in_it_is_an_error(paths, file_server):
     file_server.files["/p.tar.gz"] = data
 
     with pytest.raises(SetupError, match="Proton was not found after extracting"):
-        proton.ensure_proton(paths, Config(), url=file_server.url("/p.tar.gz"), sha256=hashlib.sha256(data).hexdigest())
+        Proton(paths, Config()).ensure(url=file_server.url("/p.tar.gz"), sha256=hashlib.sha256(data).hexdigest())
 
     assert not (paths.base / "proton" / DEFAULT_PROTONPATH).exists()
 
@@ -108,14 +108,14 @@ def test_a_broken_tarball_is_an_error(paths, file_server):
     file_server.files["/p.tar.gz"] = data
 
     with pytest.raises(SetupError, match="Proton could not be unpacked"):
-        proton.ensure_proton(paths, Config(), url=file_server.url("/p.tar.gz"), sha256=hashlib.sha256(data).hexdigest())
+        Proton(paths, Config()).ensure(url=file_server.url("/p.tar.gz"), sha256=hashlib.sha256(data).hexdigest())
 
 
 def test_protonpath_is_our_copy_once_it_is_there(paths):
-    assert proton.protonpath(paths, Config()) == DEFAULT_PROTONPATH
+    assert Proton(paths, Config()).path == DEFAULT_PROTONPATH
     (paths.base / "proton" / DEFAULT_PROTONPATH).mkdir(parents=True)
-    assert proton.protonpath(paths, Config()) == str(paths.base / "proton" / DEFAULT_PROTONPATH)
-    assert proton.protonpath(paths, Config(protonpath="GE-Proton10-1")) == "GE-Proton10-1"
+    assert Proton(paths, Config()).path == str(paths.base / "proton" / DEFAULT_PROTONPATH)
+    assert Proton(paths, Config(protonpath="GE-Proton10-1")).path == "GE-Proton10-1"
 
 
 # NVIDIA
@@ -133,13 +133,13 @@ def test_nvidia_offload_only_with_two_cards_one_of_them_nvidia(tmp_path, monkeyp
     executable(tmp_path / "bin" / "lspci", f"#!/bin/sh\nprintf '%s' '{output}'\n")
     monkeypatch.setenv("PATH", str(tmp_path / "bin"))
 
-    assert proton.use_nvidia() is expected
+    assert Proton.use_nvidia() is expected
 
 
 def test_no_lspci_means_no_offload(tmp_path, monkeypatch):
     monkeypatch.setenv("PATH", str(tmp_path))
 
-    assert proton.use_nvidia() is False
+    assert Proton.use_nvidia() is False
 
 
 # The environment
@@ -164,7 +164,7 @@ def changed(env, base):
     return out
 
 
-# What runner_env adds besides the variables every run gets. With WINE_D3D_CONFIG already set, OpenGL keeps it;
+# What Proton.env adds besides the variables every run gets. With WINE_D3D_CONFIG already set, OpenGL keeps it;
 # an existing WINEDLLOVERRIDES is appended to.
 @pytest.mark.parametrize(
     "graphics,lspci,extra_environ,expected",
@@ -204,7 +204,7 @@ def test_the_environment(tmp_path, monkeypatch, graphics, lspci, extra_environ, 
     paths.config.write_text(f'BFME_GRAPHICS={graphics}\nBFME_EXTRA_ENV="DXVK_HUD=fps WINEDEBUG=-all"\n')
 
     config = load(paths.config, environ)
-    env = proton.runner_env(paths, config, "fake-proton", inprefix=True, environ=environ)
+    env = Proton(paths, config, "fake-proton", environ).env(True)
 
     every_run = {
         "DXVK_CONFIG": "d3d9.cachedWriteOnlyBuffers = True",
@@ -220,7 +220,7 @@ def test_the_environment(tmp_path, monkeypatch, graphics, lspci, extra_environ, 
 
 
 def test_the_first_start_is_not_runinprefix(paths):
-    env = proton.runner_env(paths, Config(), "p", inprefix=False, environ={})
+    env = Proton(paths, Config(), "p", {}).env(False)
 
     assert "PROTON_VERB" not in env
 
@@ -232,7 +232,7 @@ def test_run_starts_umu_with_the_program_and_logs_its_output(tmp_path, monkeypat
     log = tmp_path / "run.log"
 
     with open(log, "w") as out:
-        code = proton.run(paths, Config(), "p", ["reg", "add", "X"], inprefix=True, output=out)
+        code = Proton(paths, Config(), "p").run(["reg", "add", "X"], inprefix=True, output=out)
 
     assert code == 3
     assert log.read_text() == f"args: reg add X prefix: {paths.prefix}\n"
@@ -243,7 +243,7 @@ def test_without_umu_run_it_says_so(tmp_path, monkeypatch, paths):
     monkeypatch.setenv("PATH", str(tmp_path))
 
     with pytest.raises(SetupError, match="umu-run was not found"):
-        proton.run(paths, Config(), "p", ["x"], inprefix=True)
+        Proton(paths, Config(), "p").run(["x"], inprefix=True)
 
 
 # Ending the Wine session
@@ -267,7 +267,7 @@ def test_the_wine_session_is_killed_and_waited_for(tmp_path):
     (paths.prefix / "drive_c/windows").mkdir(parents=True)
     (paths.prefix / "drive_c/users/steamuser").mkdir(parents=True)
 
-    proton.end_wine_session(paths, load(paths.config, environ), environ)
+    Proton(paths, load(paths.config, environ), environ=environ).end_session()
 
     assert log.read_text() == f"{paths.prefix} -k\n{paths.prefix} -w\n"
 
@@ -276,19 +276,19 @@ def test_umus_own_protons_are_found_too(tmp_path, paths):
     log = tmp_path / "wineserver.log"
     fake_wineserver(tmp_path / "xdg/umu/compatibilitytools/GE-Proton10-1/files/bin/wineserver", log)
 
-    assert proton.stop_wine_session(paths, "GE-Proton10-1", {"XDG_DATA_HOME": str(tmp_path / "xdg")})
+    assert Proton(paths, Config(), "GE-Proton10-1", {"XDG_DATA_HOME": str(tmp_path / "xdg")}).stop_session()
     assert log.read_text() == f"{paths.prefix} -k\n{paths.prefix} -w\n"
 
 
 def test_without_a_wine_server_it_says_so(tmp_path, paths):
-    assert proton.stop_wine_session(paths, str(tmp_path / "nothing"), {"HOME": str(tmp_path)}) is False
+    assert Proton(paths, Config(), str(tmp_path / "nothing"), {"HOME": str(tmp_path)}).stop_session() is False
 
 
 def test_without_a_game_environment_there_is_nothing_to_end(tmp_path, paths):
     log = tmp_path / "wineserver.log"
     fake_wineserver(tmp_path / "my-proton/files/bin/wineserver", log)
 
-    proton.end_wine_session(paths, Config(protonpath=str(tmp_path / "my-proton")), {})
+    Proton(paths, Config(protonpath=str(tmp_path / "my-proton")), environ={}).end_session()
 
     assert not log.exists()
 
@@ -298,8 +298,8 @@ def test_the_proton_download_says_so(paths, file_server):
     file_server.files["/p.tar.gz"] = data
     events = []
 
-    proton.ensure_proton(
-        paths, Config(), url=file_server.url("/p.tar.gz"), sha256=hashlib.sha256(data).hexdigest(), emit=events.append
+    Proton(paths, Config()).ensure(
+        url=file_server.url("/p.tar.gz"), sha256=hashlib.sha256(data).hexdigest(), emit=events.append
     )
 
     assert events == [Log(f"Downloading {DEFAULT_PROTONPATH}.tar.gz.")]
@@ -311,7 +311,7 @@ def test_the_proton_download_says_so(paths, file_server):
 def card_env(tmp_path, monkeypatch, gpu, lspci):
     executable(tmp_path / "bin" / "lspci", f"#!/bin/sh\nprintf '%s' '{lspci}'\n")
     monkeypatch.setenv("PATH", str(tmp_path / "bin"))
-    return proton.runner_env(Paths(tmp_path / "data"), Config(gpu=gpu), "p", inprefix=True, environ={})
+    return Proton(Paths(tmp_path / "data"), Config(gpu=gpu), "p", {}).env(True)
 
 
 CARD_VARIABLES = ("__NV_PRIME_RENDER_OFFLOAD", "__GLX_VENDOR_LIBRARY_NAME", "__VK_LAYER_NV_optimus", "DRI_PRIME")
@@ -349,7 +349,7 @@ def test_the_cards_are_listed_as_lspci_names_them(tmp_path, monkeypatch):
     executable(tmp_path / "bin" / "lspci", f"#!/bin/sh\nprintf '%s' '{LSPCI_TWO_CARDS}'\n")
     monkeypatch.setenv("PATH", str(tmp_path / "bin"))
 
-    assert len(proton.graphics_cards()) == 2
+    assert len(Proton.graphics_cards()) == 2
 
 
 @pytest.mark.parametrize(
@@ -365,6 +365,6 @@ def test_dxvks_settings_and_the_players_own(paths, player, expected):
     if player:
         environ["DXVK_CONFIG"] = player
 
-    env = proton.runner_env(paths, Config(), "p", inprefix=True, environ=environ)
+    env = Proton(paths, Config(), "p", environ).env(True)
 
     assert env["DXVK_CONFIG"] == expected

@@ -10,7 +10,7 @@ from __future__ import annotations
 import threading
 from abc import ABC, abstractmethod
 
-from . import doctor, proton, shortcuts
+from . import doctor, shortcuts
 from .config import Config, ConfigError
 from .config import load as load_config
 from .errors import JobCancelled, SetupError
@@ -19,16 +19,9 @@ from .lock import setup_lock
 from .moddb import ModdbUnavailable
 from .paths import Paths
 from .paths import paths as paths_for
-from .prefix import (
-    detect_graphics,
-    fps_counter_on,
-    prefix_ready,
-    prepare_prefix,
-    reset_prefix,
-    set_graphics,
-    set_option,
-)
+from .prefix import GameEnvironment
 from .programs import EVERY_PROGRAM, program
+from .proton import Proton
 
 OK = 0
 FAILED = 1
@@ -49,6 +42,7 @@ class Job(ABC):
         self.cancel = cancel or threading.Event()
         self.environ = environ
         self.paths: Paths = paths_for(environ)
+        self.environment = GameEnvironment(self.paths)
         self.config = Config()
         self.step: str | None = None
 
@@ -111,14 +105,14 @@ class Job(ABC):
     def setup_status(self) -> dict[str, str]:
         """Where the setup stands, as the wizard reads it. Complete means the game environment is ready and holds at least
         one program; the tools do not count."""
-        ready = prefix_ready(self.paths)
+        ready = self.environment.ready()
         out = {
             "runner": "proton",
             "graphics": self.config.graphics,
             "gpu": self.config.gpu,
-            "fps-counter": "1" if fps_counter_on(self.config) else "0",
+            "fps-counter": "1" if GameEnvironment.fps_counter_on(self.config) else "0",
             # The window offers the choice of card only on a computer that has more than one.
-            "graphics-cards": str(len(proton.graphics_cards())),
+            "graphics-cards": str(len(Proton.graphics_cards())),
             "prefix": "ready" if ready else "missing",
         }
         any_program = False
@@ -151,8 +145,8 @@ class Job(ABC):
 
     # The game environment
 
-    def ensure_runner(self) -> str:
-        """Proton, ready to run programs. Returns PROTONPATH for umu."""
+    def ensure_runner(self) -> Proton:
+        """Proton, ready to run programs."""
         for folder in (self.paths.base, self.paths.downloads, self.paths.logs):
             folder.mkdir(parents=True, exist_ok=True)
 
@@ -166,16 +160,18 @@ class Job(ABC):
         def progress(percent: int) -> None:
             self.emit(Progress(percent))
 
-        return proton.ensure_proton(self.paths, self.config, progress, self.cancel, emit=self.emit)
+        proton = Proton(self.paths, self.config)
+        proton.ensure(progress, self.cancel, self.emit)
+        return proton
 
-    def ensure_prefix(self) -> str:
-        """Proton and a ready game environment with the current settings. Returns PROTONPATH for umu."""
-        proton_path = self.ensure_runner()
-        prepare_prefix(self.paths, self.config, proton_path, self.emit)
-        return proton_path
+    def ensure_prefix(self) -> Proton:
+        """Proton and a ready game environment with the current settings."""
+        proton = self.ensure_runner()
+        self.environment.prepare(proton, self.emit)
+        return proton
 
     def need_prefix(self) -> None:
-        if not prefix_ready(self.paths):
+        if not self.environment.ready():
             raise SetupError(SET_UP_FIRST)
 
 
@@ -211,14 +207,15 @@ class PrepareJob(Job):
 
         with self.lock():
             self.start("runner")
-            proton_path = self.ensure_runner()
+            self.ensure_runner()
             self.done("runner")
             self.start("prefix")
 
-            if not prefix_ready(self.paths):
-                self.config = detect_graphics(self.paths, self.config, self.emit)
+            if not self.environment.ready():
+                self.config = self.environment.detect_graphics(self.config, self.emit)
 
-            prepare_prefix(self.paths, self.config, proton_path, self.emit)
+            # A new choice of graphics changes how Proton runs the programs.
+            self.environment.prepare(Proton(self.paths, self.config), self.emit)
             self.done("prefix")
             self.finish("The game environment is ready.")
 
@@ -264,7 +261,7 @@ class SwitchGraphicsJob(Job):
 
     def body(self) -> None:
         with self.lock():
-            self.config = set_graphics(self.paths, self.config, self.backend, self.emit)
+            self.config = self.environment.set_graphics(self.config, self.backend, self.emit)
             self.emit(Status("graphics", self.config.graphics))
             self.emit(Done())
 
@@ -279,7 +276,7 @@ class ChangeOptionJob(Job):
 
     def body(self) -> None:
         with self.lock():
-            self.config = set_option(self.paths, self.config, self.option, self.value, self.emit)
+            self.config = self.environment.set_option(self.config, self.option, self.value, self.emit)
             self.report_status()
             self.emit(Done())
 
@@ -289,7 +286,7 @@ class ResetJob(Job):
 
     def body(self) -> None:
         with self.lock():
-            reset_prefix(self.paths, self.config, self.emit)
+            self.environment.reset(self.config, self.emit)
             shortcuts.sync(self.paths, self.emit, self.environ)
 
 
@@ -310,10 +307,10 @@ class OpenJob(Job):
             raise SetupError(f"{chosen.title} is not installed.")
 
         with self.lock():
-            proton_path = self.ensure_prefix()
-            chosen.prepare_to_open(self.paths, self.config, proton_path, self.emit, self.cancel)
+            proton = self.ensure_prefix()
+            chosen.prepare_to_open(self.paths, proton, self.emit, self.cancel)
 
-        chosen.open(self.paths, self.config, proton_path, self.emit)
+        chosen.open(self.paths, proton, self.emit)
 
 
 class Engine:
@@ -362,7 +359,7 @@ class Engine:
         """Whether a shortcut can start this program without the wizard: the game environment is ready and the program is
         in it."""
         paths = paths_for(self.environ)
-        return prefix_ready(paths) and program(key).installed(paths)
+        return GameEnvironment(paths).ready() and program(key).installed(paths)
 
     def setup_complete(self) -> bool:
         job = StatusJob(lambda _event: None, None, self.environ)

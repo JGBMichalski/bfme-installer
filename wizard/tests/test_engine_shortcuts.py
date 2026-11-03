@@ -11,6 +11,7 @@ from bfme_wizard.engine.config import Config
 from bfme_wizard.engine.events import Log, Warn
 from bfme_wizard.engine.paths import Paths
 from bfme_wizard.engine.programs import AIO_LAUNCHER, AOTR, ARENA
+from bfme_wizard.engine.proton import Proton
 from tests.helpers import manifest_app_id, manifest_icon_exports
 
 DEV_ID = "com.example.Dev"
@@ -314,7 +315,7 @@ def test_a_program_starts_from_its_folder(tmp_path, paths, umu):
     install(paths, "aotr")
     events = []
 
-    code = AOTR.open(paths, Config(), "fake-proton", events.append)
+    code = AOTR.open(paths, Proton(paths, Config(), "fake-proton"), events.append)
 
     # Each call is logged as "arguments|working folder|PROTON_VERB"; the game is the last call, after the prefix settings.
     calls = Path(umu["UMU_LOG"]).read_text().splitlines()
@@ -335,7 +336,7 @@ def test_each_start_gets_its_own_log_and_the_newest_ten_are_kept(tmp_path, paths
     put(paths.logs / "arena-20250101-000000.log", "another program's")
     events = []
 
-    AOTR.open(paths, Config(), "fake-proton", events.append)
+    AOTR.open(paths, Proton(paths, Config(), "fake-proton"), events.append)
 
     logs = sorted(paths.logs.glob("aotr-*.log"))
     newest = Path(events[0].text.split("Log: ")[1])
@@ -356,7 +357,7 @@ def test_only_the_logs_of_starts_are_rotated(paths, umu):
         old.write_text("old")
         os.utime(old, (1000 + number, 1000 + number))
 
-    AOTR.open(paths, Config(), "fake-proton", [].append)
+    AOTR.open(paths, Proton(paths, Config(), "fake-proton"), [].append)
 
     assert (paths.logs / "aotr-setup.log").read_text() == "a log of its own"
     assert len(AOTR.logs(paths).started()) == 10

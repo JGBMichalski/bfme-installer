@@ -7,12 +7,12 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from .. import proton, shortcuts
-from ..config import Config
+from .. import shortcuts
 from ..download import download
 from ..errors import JobCancelled, SetupError
 from ..events import Emit, Log, Warn, report_speed
 from ..paths import Paths
+from ..proton import NO_WINE_SERVER, Proton
 from .base import Program, Shortcut
 
 if TYPE_CHECKING:
@@ -77,8 +77,8 @@ class AioLauncher(Program):
             job.skip("aio-launcher")
         else:
             job.start("aio-launcher")
-            proton_path = job.ensure_prefix()
-            self.install(job.paths, job.config, proton_path, job.emit, job.cancel)
+            proton = job.ensure_prefix()
+            self.install(job.paths, proton, job.emit, job.cancel)
             job.done("aio-launcher")
 
         job.start("arena")
@@ -92,16 +92,13 @@ class AioLauncher(Program):
         job.done("shortcuts")
         job.finish(*self.DONE)
 
-    def prepare_to_open(
-        self, paths: Paths, config: Config, proton_path: str, emit: Emit, cancel: threading.Event | None = None
-    ) -> None:
-        self.install(paths, config, proton_path, emit, cancel)
+    def prepare_to_open(self, paths: Paths, proton: Proton, emit: Emit, cancel: threading.Event | None = None) -> None:
+        self.install(paths, proton, emit, cancel)
 
     def install(
         self,
         paths: Paths,
-        config: Config,
-        proton_path: str,
+        proton: Proton,
         emit: Emit,
         cancel: threading.Event | None = None,
         url: str | None = None,
@@ -129,13 +126,13 @@ class AioLauncher(Program):
         # the installed file to appear and stop growing, then end the session. The first start of the setup must not use
         # runinprefix.
         with open(log, "w", encoding="utf-8") as out:
-            process = proton.start(paths, config, proton_path, [str(setup)], inprefix=False, output=out)
+            process = proton.start([str(setup)], inprefix=False, output=out)
 
             try:
                 done = self.wait_for_stable_file(exe, self.WAIT_SEC, cancel)
             finally:
-                if not proton.stop_wine_session(paths, proton_path):
-                    emit(Warn(proton.NO_WINE_SERVER))
+                if not proton.stop_session():
+                    emit(Warn(NO_WINE_SERVER))
 
                 process.wait()
 

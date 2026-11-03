@@ -47,7 +47,9 @@ Set these in `config.env` in the data folder. The file wins over the environment
 
 `wizard/bfme_wizard/engine/` is the setup, with no GTK. `jobs.py` holds the jobs: a `Job` base class (setup lock,
 steps, errors, exit status) with one subclass per job, and `Engine`, the jobs the window runs (prepare, install,
-remove, ...). They are built from `prefix.py`, `proton.py`, `programs/`, `moddb.py`, `shortcuts.py` and `doctor.py`.
+remove, ...). `Proton` (`proton.py`) gets the pinned Proton and runs programs in the game environment through umu;
+`GameEnvironment` (`prefix.py`) creates the Wine prefix, applies its registry and graphics settings, and deletes it.
+They are built from `prefix.py`, `proton.py`, `programs/`, `moddb.py`, `shortcuts.py` and `doctor.py`.
 
 `engine/programs/` has one class per program. The base class `Program` (`base.py`) holds what they share: where the
 program is, whether it is installed, opening it with a log of its own, and removing it. Each subclass fills in its own

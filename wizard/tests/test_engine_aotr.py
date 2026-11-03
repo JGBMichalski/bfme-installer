@@ -10,14 +10,15 @@ from pathlib import Path
 
 import pytest
 
-from bfme_wizard.engine import prefix
 from bfme_wizard.engine.config import Config
 from bfme_wizard.engine.errors import JobCancelled, SetupError
 from bfme_wizard.engine.events import Progress
 from bfme_wizard.engine.paths import Paths
+from bfme_wizard.engine.prefix import GameEnvironment
 from bfme_wizard.engine.programs import AOTR, AgeOfTheRing
 from bfme_wizard.engine.programs import aotr as aotr_module
 from bfme_wizard.engine.programs.aotr import AotrZip
+from bfme_wizard.engine.proton import Proton
 
 SEVENZIP = shutil.which("7zz") or shutil.which("7z") or shutil.which("7za")
 needs_7zip = pytest.mark.skipif(SEVENZIP is None, reason="7-Zip is needed to read the Age of the Ring download")
@@ -312,7 +313,7 @@ def test_the_installer_runs_silently_in_the_unpack_folder(env, paths):
     make_prefix(paths)
     events = []
 
-    AOTR.run_installer(paths, Config(), "fake-proton", unpacked(paths), events.append)
+    AOTR.run_installer(paths, Proton(paths, Config(), "fake-proton"), unpacked(paths), events.append)
 
     assert (
         Path(env["UMU_LOG"]).read_text()
@@ -329,7 +330,7 @@ def test_an_installer_that_fails_leaves_it_unfinished(env, paths, monkeypatch):
     monkeypatch.setenv("NO_INSTALL", "1")
 
     with pytest.raises(SetupError, match=r"Age of the Ring was not installed \(exit 3\). See .*aotr-installer.log"):
-        AOTR.run_installer(paths, Config(), "fake-proton", unpacked(paths), [].append)
+        AOTR.run_installer(paths, Proton(paths, Config(), "fake-proton"), unpacked(paths), [].append)
 
     assert (paths.prefix / AOTR.INSTALLING).exists()
 
@@ -346,7 +347,7 @@ def test_cancelling_the_installer_ends_the_wine_session(tmp_path, env, paths, mo
     threading.Timer(0.3, cancel.set).start()
 
     with pytest.raises(JobCancelled):
-        AOTR.run_installer(paths, Config(), str(tmp_path / "proton"), unpacked(paths), [].append, cancel)
+        AOTR.run_installer(paths, Proton(paths, Config(), str(tmp_path / "proton")), unpacked(paths), [].append, cancel)
 
     assert log.read_text().startswith("-k\n")
     assert not AOTR.installed(paths)
@@ -391,9 +392,9 @@ def test_a_whole_install_leaves_the_game_and_cleans_up(tmp_path, env, paths):
 
     aotr_zip = AOTR.check_zip(zip_path)
     AOTR.check_space(paths, aotr_zip)
-    prefix.prepare_prefix(paths, Config(), "fake-proton", [].append)
+    GameEnvironment(paths).prepare(Proton(paths, Config(), "fake-proton"), [].append)
     AOTR.unpack(paths, aotr_zip, [].append)
-    AOTR.run_installer(paths, Config(), "fake-proton", aotr_zip, [].append)
+    AOTR.run_installer(paths, Proton(paths, Config(), "fake-proton"), aotr_zip, [].append)
     AOTR.clean_up(paths)
 
     # Each call is logged as "arguments|working folder".

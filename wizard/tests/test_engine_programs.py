@@ -14,6 +14,7 @@ from bfme_wizard.engine.events import Log, Warn
 from bfme_wizard.engine.jobs import StatusJob
 from bfme_wizard.engine.paths import Paths
 from bfme_wizard.engine.programs import AIO_LAUNCHER, AOTR, ARENA, TOOLS, AioLauncher, program
+from bfme_wizard.engine.proton import Proton
 
 
 def executable(path, text):
@@ -229,7 +230,9 @@ def aio_launcher_env(tmp_path, paths, monkeypatch, file_server):
 def test_the_aio_launcher_setup_runs_once_and_the_session_is_ended(paths, aio_launcher_env):
     events = []
 
-    AIO_LAUNCHER.install(paths, Config(), aio_launcher_env["proton"], events.append, url=aio_launcher_env["url"])
+    AIO_LAUNCHER.install(
+        paths, Proton(paths, Config(), aio_launcher_env["proton"]), events.append, url=aio_launcher_env["url"]
+    )
 
     tmp = aio_launcher_env["tmp"]
     setup = paths.downloads / "AllInOneLauncherSetup.exe"
@@ -247,7 +250,9 @@ def test_the_aio_launcher_setup_runs_once_and_the_session_is_ended(paths, aio_la
 def test_an_installed_aio_launcher_is_left_alone(paths, aio_launcher_env, file_server):
     put(AIO_LAUNCHER.exe(paths))
 
-    AIO_LAUNCHER.install(paths, Config(), aio_launcher_env["proton"], [].append, url=aio_launcher_env["url"])
+    AIO_LAUNCHER.install(
+        paths, Proton(paths, Config(), aio_launcher_env["proton"]), [].append, url=aio_launcher_env["url"]
+    )
 
     assert file_server.requests == []
     assert not (aio_launcher_env["tmp"] / "umu.log").exists()
@@ -258,7 +263,9 @@ def test_an_interrupted_install_is_redone_with_the_setup_already_downloaded(path
     put(paths.prefix / AIO_LAUNCHER.INSTALLING)
     put(paths.downloads / "AllInOneLauncherSetup.exe", "setup")
 
-    AIO_LAUNCHER.install(paths, Config(), aio_launcher_env["proton"], [].append, url=aio_launcher_env["url"])
+    AIO_LAUNCHER.install(
+        paths, Proton(paths, Config(), aio_launcher_env["proton"]), [].append, url=aio_launcher_env["url"]
+    )
 
     assert file_server.requests == []
     assert AIO_LAUNCHER.exe(paths).read_text() == "aio-launcher"
@@ -270,7 +277,9 @@ def test_a_setup_that_installs_nothing_fails_and_stays_unfinished(paths, aio_lau
     monkeypatch.setattr(AioLauncher, "WAIT_SEC", 0.3)
 
     with pytest.raises(SetupError, match="The AIO Launcher was not installed. See .*aio-launcher-setup.log"):
-        AIO_LAUNCHER.install(paths, Config(), aio_launcher_env["proton"], [].append, url=aio_launcher_env["url"])
+        AIO_LAUNCHER.install(
+            paths, Proton(paths, Config(), aio_launcher_env["proton"]), [].append, url=aio_launcher_env["url"]
+        )
 
     assert (paths.prefix / AIO_LAUNCHER.INSTALLING).exists()
     assert (aio_launcher_env["tmp"] / "wineserver.log").read_text() == "-k\n-w\n"
@@ -284,7 +293,9 @@ def test_without_a_wine_server_it_warns(paths, aio_launcher_env, tmp_path):
     )
     events = []
 
-    AIO_LAUNCHER.install(paths, Config(), aio_launcher_env["proton"], events.append, url=aio_launcher_env["url"])
+    AIO_LAUNCHER.install(
+        paths, Proton(paths, Config(), aio_launcher_env["proton"]), events.append, url=aio_launcher_env["url"]
+    )
 
     assert (
         Warn(

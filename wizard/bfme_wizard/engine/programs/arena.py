@@ -8,11 +8,11 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from ..config import Config
 from ..download import USER_AGENT, download
 from ..errors import SetupError
 from ..events import Emit, Log, Warn, report_speed
 from ..paths import Paths
+from ..proton import Proton
 from .base import Program, Shortcut
 
 
@@ -46,9 +46,7 @@ class Arena(Program):
         tmp = self.download_file(paths)
         return [tmp, tmp.with_name(tmp.name + ".part")]
 
-    def prepare_to_open(
-        self, paths: Paths, config: Config, proton_path: str, emit: Emit, cancel: threading.Event | None = None
-    ) -> None:
+    def prepare_to_open(self, paths: Paths, proton: Proton, emit: Emit, cancel: threading.Event | None = None) -> None:
         self.update(paths, emit, cancel)
 
     def remote_hash(self, server_host: str | None = None) -> str:

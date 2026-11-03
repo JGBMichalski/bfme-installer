@@ -17,13 +17,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from .. import proton, shortcuts
+from .. import shortcuts
 from ..config import Config
 from ..download import download, verify_md5
 from ..errors import JobCancelled, SetupError
 from ..events import Emit, Log, Progress, Step, report_speed
 from ..moddb import RemoteFile, find_aotr
 from ..paths import Paths
+from ..proton import Proton
 from .base import Program, Shortcut
 
 if TYPE_CHECKING:
@@ -127,7 +128,7 @@ class AgeOfTheRing(Program):
             job.start("aotr-check")
             aotr_zip = self.check_zip(zip_path)
             self.check_space(job.paths, aotr_zip)
-            proton_path = job.ensure_prefix()
+            proton = job.ensure_prefix()
             job.done("aotr-check")
 
             job.start("aotr-unpack")
@@ -141,11 +142,11 @@ class AgeOfTheRing(Program):
         else:
             aotr_zip = resumed
             job.skip("aotr-check")
-            proton_path = job.ensure_prefix()
+            proton = job.ensure_prefix()
             job.skip("aotr-unpack")
 
         job.start("aotr-install")
-        self.run_installer(job.paths, job.config, proton_path, aotr_zip, job.emit, job.cancel)
+        self.run_installer(job.paths, proton, aotr_zip, job.emit, job.cancel)
         job.done("aotr-install")
 
         job.start("aotr-settings")
@@ -374,8 +375,7 @@ class AgeOfTheRing(Program):
     def run_installer(
         self,
         paths: Paths,
-        config: Config,
-        proton_path: str,
+        proton: Proton,
         aotr_zip: AotrZip,
         emit: Emit,
         cancel: threading.Event | None = None,
@@ -388,14 +388,14 @@ class AgeOfTheRing(Program):
             return self.install_percent(unpack_dir)
 
         def stop() -> None:
-            proton.stop_wine_session(paths, proton_path)
+            proton.stop_session()
 
         (paths.prefix / self.INSTALLING).touch()
         paths.logs.mkdir(parents=True, exist_ok=True)
         args = [f"./{aotr_zip.exe_name}", "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", r"/LOG=C:\aotr-install.log"]
 
         with open(paths.logs / "aotr-install.log", "w", encoding="utf-8") as out:
-            process = proton.start(paths, config, proton_path, args, inprefix=True, output=out, cwd=unpack_dir)
+            process = proton.start(args, inprefix=True, output=out, cwd=unpack_dir)
             code = self._watch(process, measure, emit, cancel, stop)
 
         installer_log = paths.drive_c / "aotr-install.log"
