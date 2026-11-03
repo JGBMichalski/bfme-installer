@@ -2,17 +2,19 @@ import contextlib
 import io
 import os
 import time
+from pathlib import Path
 from unittest import mock
 
 import pytest
 
-from bfme_wizard.__main__ import main, parse_args
+from bfme_wizard.__main__ import CommandLine, main
 from bfme_wizard.apps import AppLauncher
 from bfme_wizard.controller import Controller
-from bfme_wizard.diagnostics import any_log, build_report, newest_log, system_lines, tail
+from bfme_wizard.diagnostics import Diagnostics
 from bfme_wizard.engine.events import Cancelled, Check, Done, Fix, Status
 from bfme_wizard.engine.programs import AIO_LAUNCHER
-from bfme_wizard.model import SetupModel, games_line
+from bfme_wizard.engine.shortcuts import MenuShortcuts
+from bfme_wizard.model import SetupModel
 from bfme_wizard.runner import JobRunner
 from tests.fake_jobs import FakeJobs, idle_controller
 from tests.helpers import buttons, descendants, labels, wait_for
@@ -94,7 +96,7 @@ def games(installed, finished=False):
     m = SetupModel()
     m.installed = installed
     m.just_finished = finished
-    return games_line(m)
+    return m.games_line
 
 
 def test_wording():
@@ -195,7 +197,7 @@ def test_report_has_the_version_checks_fixes_and_log_tails(tmp_path):
         "bfme2": "installed",
     }
     feed(m, Check("cpu", "ok", "x86_64 processor"), Check("f", "fail", "parts missing"), Fix("f", "flatpak install X"))
-    report = build_report("0.2.9", m, logs)
+    report = Diagnostics(logs).report("0.2.9", m)
     for expected in (
         "Version: 0.2.9",
         "Runner: proton",
@@ -218,25 +220,25 @@ def test_report_has_the_version_checks_fixes_and_log_tails(tmp_path):
 def test_the_report_names_the_graphics_backend(tmp_path):
     m = SetupModel()
     m.installed = {"graphics": "opengl"}
-    report = build_report("dev", m, tmp_path)
+    report = Diagnostics(tmp_path).report("dev", m)
     assert "Graphics: OpenGL (WineD3D)" in report
 
 
 def test_a_report_before_any_check_or_log_still_works(tmp_path):
-    report = build_report("dev", SetupModel(), tmp_path)
+    report = Diagnostics(tmp_path).report("dev", SetupModel())
     assert "(not run yet)" in report
     assert "--- no AIO Launcher log ---" in report
 
 
 def test_the_report_says_what_computer_it_came_from(tmp_path):
-    report = build_report(
-        "dev", SetupModel(), tmp_path, system=["Desktop: KDE, wayland session", "Graphics card: NVIDIA X"]
+    report = Diagnostics(tmp_path).report(
+        "dev", SetupModel(), system=["Desktop: KDE, wayland session", "Graphics card: NVIDIA X"]
     )
     assert "Desktop: KDE, wayland session\nGraphics card: NVIDIA X\n" in report
 
 
 def test_system_lines_name_the_session_and_the_desktop():
-    lines = system_lines({"XDG_SESSION_TYPE": "wayland", "XDG_CURRENT_DESKTOP": "KDE"})
+    lines = Diagnostics(Path("/nowhere"), {"XDG_SESSION_TYPE": "wayland", "XDG_CURRENT_DESKTOP": "KDE"}).system_lines()
     assert "Desktop: KDE, wayland session" in lines
     assert any(line.startswith("Graphics card: ") for line in lines)
     assert any(line.startswith("NVIDIA driver: ") for line in lines)
@@ -244,21 +246,24 @@ def test_system_lines_name_the_session_and_the_desktop():
 
 
 def test_system_lines_guess_the_session_without_a_session_type():
-    assert "Desktop: unknown, x11 session" in system_lines({"DISPLAY": ":0"})
-    assert "Desktop: unknown, wayland session" in system_lines({"WAYLAND_DISPLAY": "wayland-0"})
-    assert "Desktop: unknown, unknown session" in system_lines({})
+    assert "Desktop: unknown, x11 session" in Diagnostics(Path("/nowhere"), {"DISPLAY": ":0"}).system_lines()
+    assert (
+        "Desktop: unknown, wayland session"
+        in Diagnostics(Path("/nowhere"), {"WAYLAND_DISPLAY": "wayland-0"}).system_lines()
+    )
+    assert "Desktop: unknown, unknown session" in Diagnostics(Path("/nowhere"), {}).system_lines()
 
 
 def test_log_helpers(tmp_path):
     d = tmp_path
-    assert newest_log(d, "x") is None
-    assert any_log(d) is None
-    assert any_log(d / "missing") is None
+    assert Diagnostics(d).newest_log("x") is None
+    assert Diagnostics(d).any_log() is None
+    assert Diagnostics(d / "missing").any_log() is None
     (d / "prefix-create.log").write_text("a\nb\nc")
-    assert newest_log(d, "prefix-create").name == "prefix-create.log"
-    assert any_log(d).name == "prefix-create.log"
-    assert tail(d / "prefix-create.log", 2) == "b\nc"
-    assert "could not read" in tail(d / "nope.log")
+    assert Diagnostics(d).newest_log("prefix-create").name == "prefix-create.log"
+    assert Diagnostics(d).any_log().name == "prefix-create.log"
+    assert Diagnostics(d).tail(d / "prefix-create.log", 2) == "b\nc"
+    assert "could not read" in Diagnostics(d).tail(d / "nope.log")
 
 
 # Menu entries
@@ -278,7 +283,7 @@ def test_log_helpers(tmp_path):
     ],
 )
 def test_parse_args(args, app):
-    assert parse_args(args) == app
+    assert CommandLine(["bfme-installer", *args]).offer == app
 
 
 def test_a_shortcut_whose_program_is_there_opens_it_without_a_window():
@@ -318,7 +323,6 @@ def test_the_program_opens_even_when_the_shortcuts_cannot_be_synced():
 
 def test_a_2x_shortcut_is_replaced_the_first_time_it_is_used(tmp_path, monkeypatch):
     # 2.x named the AIO Launcher's shortcut <app id>.Launcher.desktop and passed --open launcher.
-    from bfme_wizard.engine import shortcuts
     from bfme_wizard.engine.paths import Paths
 
     app = "com.example.App"
@@ -335,7 +339,7 @@ def test_a_2x_shortcut_is_replaced_the_first_time_it_is_used(tmp_path, monkeypat
     AIO_LAUNCHER.exe(data).write_text("x")
     mountinfo = tmp_path / "mountinfo"
     mountinfo.write_text(f"20 1 0:20 / / rw - tmpfs tmpfs rw\n40 20 0:40 / {home} rw - ext4 /dev/sda1 rw\n")
-    monkeypatch.setattr(shortcuts, "MOUNTINFO", mountinfo)
+    monkeypatch.setattr(MenuShortcuts, "MOUNTINFO", mountinfo)
 
     for name, value in {"HOME": str(home), "BFME_HOME": str(data.base), "FLATPAK_ID": app}.items():
         monkeypatch.setenv(name, value)
@@ -360,7 +364,7 @@ def test_a_shortcut_whose_program_is_gone_opens_the_wizard_offering_it(monkeypat
     with (
         mock.patch("bfme_wizard.__main__.Engine.ready_to_open", return_value=False),
         mock.patch("bfme_wizard.__main__.Engine.open_program") as open_program,
-        mock.patch("bfme_wizard.__main__.has_display", return_value=True),
+        mock.patch("bfme_wizard.__main__.CommandLine.has_display", return_value=True),
         mock.patch.object(ui, "WizardApp") as app,
         mock.patch("sys.argv", ["bfme-installer", "--open", "aotr"]),
     ):
@@ -375,7 +379,7 @@ def test_without_a_display_it_says_so_and_stops():
     err = io.StringIO()
 
     with (
-        mock.patch("bfme_wizard.__main__.has_display", return_value=False),
+        mock.patch("bfme_wizard.__main__.CommandLine.has_display", return_value=False),
         mock.patch("sys.argv", ["bfme-installer"]),
         contextlib.redirect_stderr(err),
     ):

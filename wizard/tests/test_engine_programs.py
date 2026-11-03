@@ -6,9 +6,9 @@ import threading
 
 import pytest
 
-from bfme_wizard.engine import download as download_module
 from bfme_wizard.engine import jobs
 from bfme_wizard.engine.config import Config
+from bfme_wizard.engine.download import Download
 from bfme_wizard.engine.errors import JobCancelled, SetupError
 from bfme_wizard.engine.events import Log, Warn
 from bfme_wizard.engine.jobs import StatusJob
@@ -31,7 +31,7 @@ def paths(tmp_path):
 @pytest.fixture(autouse=True)
 def fast(monkeypatch):
     monkeypatch.setattr(AioLauncher, "POLL_SEC", 0.05)
-    monkeypatch.setattr(download_module, "RETRY_DELAY_SEC", 0)
+    monkeypatch.setattr(Download, "RETRY_DELAY_SEC", 0)
 
 
 def make_prefix(paths):

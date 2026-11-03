@@ -62,32 +62,50 @@ def notes_since(text: str, seen: str | None, current: str) -> list[tuple[str, st
     return out
 
 
-def to_show(paths: Paths, current: str | None, changelog: Path = CHANGELOG) -> list[tuple[str, str]]:
-    """The notes to show now, once: empty for a development build, a first install, or a version already shown."""
-    if parse_version(current) is None:
-        return []
+class WhatsNew:
+    """The notes a player has not seen yet. The last version whose notes were shown is kept in the data folder."""
 
-    marker = paths.base / LAST_VERSION_FILE
-    seen = marker.read_text().strip() if marker.is_file() else None
+    def __init__(self, paths: Paths, current: str | None, changelog: Path = CHANGELOG) -> None:
+        self.paths = paths
+        self.current = current
+        self.changelog = changelog
 
-    if seen == current:
-        return []
+    @property
+    def marker(self) -> Path:
+        return self.paths.base / LAST_VERSION_FILE
 
-    # No marker: a first install shows nothing; an update from a version that kept none (2.x) shows this version's notes.
-    first_install = seen is None and not paths.config.exists() and not paths.prefix.exists()
+    def to_show(self) -> list[tuple[str, str]]:
+        """The notes to show now, once: empty for a development build, a first install, or a version already shown."""
+        paths = self.paths
+        current = self.current
 
-    paths.base.mkdir(parents=True, exist_ok=True)
-    marker.write_text(current + "\n")
+        if parse_version(current) is None:
+            return []
 
-    if first_install:
-        return []
+        seen = None
 
-    try:
-        text = changelog.read_text(encoding="utf-8")
-    except OSError:
-        return []
+        if self.marker.is_file():
+            seen = self.marker.read_text().strip()
 
-    return notes_since(text, seen, current)
+        if seen == current:
+            return []
+
+        # No marker: a first install shows nothing; an update from a version that kept none (2.x) shows this version's
+        # notes.
+        first_install = seen is None and not paths.config.exists() and not paths.prefix.exists()
+
+        paths.base.mkdir(parents=True, exist_ok=True)
+        self.marker.write_text(current + "\n")
+
+        if first_install:
+            return []
+
+        try:
+            text = self.changelog.read_text(encoding="utf-8")
+        except OSError:
+            return []
+
+        return notes_since(text, seen, current)
 
 
 def markup(notes: str) -> str:

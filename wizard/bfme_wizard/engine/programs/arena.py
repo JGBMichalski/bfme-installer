@@ -8,7 +8,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from ..download import USER_AGENT, download
+from ..download import Download
 from ..errors import SetupError
 from ..events import Emit, Log, Warn, report_speed
 from ..paths import Paths
@@ -55,7 +55,7 @@ class Arena(Program):
         url = f"{server_host}/api/applications/versionHash?name=online-arena&version={self.BRANCH}"
 
         try:
-            request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+            request = urllib.request.Request(url, headers={"User-Agent": Download.USER_AGENT})
 
             with urllib.request.urlopen(request, timeout=self.HASH_TIMEOUT_SEC) as response:
                 return response.read().decode(errors="replace").strip()
@@ -92,12 +92,12 @@ class Arena(Program):
         tmp.unlink(missing_ok=True)
         tmp.with_name(tmp.name + ".part").unlink(missing_ok=True)
         emit(Log(f"Downloading {tmp.name}."))
-        download(
+        Download(
             f"{files_host}/application-builds/online-arena-{self.BRANCH}",
             tmp,
             cancel=cancel,
             on_speed=report_speed(emit),
-        )
+        ).run()
 
         if remote:
             got = self._md5(tmp)

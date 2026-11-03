@@ -122,11 +122,11 @@ class Moddb:
     """The Age of the Ring file on a local stand-in for ModDB. `publish` puts a zip there; the pages can be broken after."""
 
     def __init__(self, server, monkeypatch):
-        from bfme_wizard.engine import moddb
+        from bfme_wizard.engine.moddb import ModDB
 
         self.server = server
         self.page_url = server.url("/mods/aotr/downloads/age-of-the-ring")
-        monkeypatch.setattr(moddb, "AOTR_PAGE_URL", self.page_url)
+        monkeypatch.setattr(ModDB, "PAGE_URL", self.page_url)
 
     def publish(self, data, name="AotR_Standalone_10.0.0_Installer.zip", md5=None):
         import hashlib

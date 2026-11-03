@@ -406,18 +406,20 @@ class SetupModel:
         """Return the step that failed, if any."""
         return self.error.step if self.error else None
 
+    @property
+    def games_line(self) -> str:
+        """The home screen's top sentence. Empty when games are installed or there is no AIO Launcher."""
+        if self.games or not self.is_installed("aio-launcher"):
+            return ""
+
+        if self.just_finished:
+            return "Setup is complete. Open the AIO Launcher to install your games."
+
+        return "No games installed yet. Open the AIO Launcher to install them."
+
     def log_text(self, last: int = 400) -> str:
         """Return the last `last` lines of the job log for the Copy log feature."""
         return "\n".join(self.log[-last:])
-
-
-def games_line(model: SetupModel) -> str:
-    """The home screen's top sentence. Empty when games are installed or there is no AIO Launcher."""
-    if model.games or not model.is_installed("aio-launcher"):
-        return ""
-    if model.just_finished:
-        return "Setup is complete. Open the AIO Launcher to install your games."
-    return "No games installed yet. Open the AIO Launcher to install them."
 
 
 def speed_text(bytes_per_second: int) -> str:

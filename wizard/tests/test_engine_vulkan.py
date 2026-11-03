@@ -3,6 +3,7 @@ import subprocess
 import pytest
 
 from bfme_wizard.engine import graphics
+from bfme_wizard.engine.graphics import Graphics
 from bfme_wizard.engine.vulkan import Device, choose
 
 DISCRETE, INTEGRATED, CPU = 2, 1, 4
@@ -45,7 +46,7 @@ def test_one_new_enough_card_is_enough():
 
 
 def test_the_probe_runs_as_a_child_process_and_answers():
-    backend, why = graphics.probe()
+    backend, why = Graphics.probe()
 
     assert backend in ("vulkan", "opengl", "unknown")
     assert why
@@ -64,13 +65,13 @@ def test_the_probe_runs_as_a_child_process_and_answers():
 def test_the_probes_answer_is_read(monkeypatch, output, expected):
     monkeypatch.setattr(graphics.subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(a, 0, stdout=output))
 
-    assert graphics.probe() == expected
+    assert Graphics.probe() == expected
 
 
 def test_a_hung_probe_is_unknown(monkeypatch):
     def hang(*args, **kwargs):
-        raise subprocess.TimeoutExpired(args, graphics.PROBE_TIMEOUT_SEC)
+        raise subprocess.TimeoutExpired(args, Graphics.PROBE_TIMEOUT_SEC)
 
     monkeypatch.setattr(graphics.subprocess, "run", hang)
 
-    assert graphics.probe() == ("unknown", "could not check Vulkan")
+    assert Graphics.probe() == ("unknown", "could not check Vulkan")

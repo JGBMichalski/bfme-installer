@@ -6,11 +6,10 @@ import dataclasses
 import shutil
 from pathlib import Path
 
-from . import config as config_file
-from . import graphics
-from .config import GPUS, GRAPHICS, Config
+from .config import GPUS, GRAPHICS, Config, ConfigFile
 from .errors import SetupError
 from .events import Emit, Log, Warn
+from .graphics import Graphics
 from .paths import Paths
 from .proton import NO_WINE_SERVER, Proton
 
@@ -173,13 +172,13 @@ class GameEnvironment:
         if config.graphics_chosen or self.ready():
             return config
 
-        backend, why = graphics.probe()
+        backend, why = Graphics.probe()
 
         if backend == "unknown":
             return config
 
-        config_file.save(self.paths.config, "BFME_GRAPHICS", backend)
-        emit(Log(f"Graphics: {graphics.label(backend)} ({why})."))
+        ConfigFile(self.paths.config).save("BFME_GRAPHICS", backend)
+        emit(Log(f"Graphics: {Graphics.label(backend)} ({why})."))
 
         return dataclasses.replace(config, graphics=backend, graphics_chosen=True)
 
@@ -192,13 +191,13 @@ class GameEnvironment:
         changed = backend != config.graphics
 
         if changed:
-            emit(Log(f"Graphics: {graphics.label(backend)}. Saved for this game environment."))
+            emit(Log(f"Graphics: {Graphics.label(backend)}. Saved for this game environment."))
         else:
-            emit(Log(f"Already using {graphics.label(backend)}."))
+            emit(Log(f"Already using {Graphics.label(backend)}."))
 
         # An explicit choice beats detection, so it is saved even when it is the default.
         if changed or not config.graphics_chosen:
-            config_file.save(self.paths.config, "BFME_GRAPHICS", backend)
+            ConfigFile(self.paths.config).save("BFME_GRAPHICS", backend)
 
         config = dataclasses.replace(config, graphics=backend, graphics_chosen=True)
 
@@ -250,10 +249,10 @@ class GameEnvironment:
             for name, extra_value in extra.items():
                 words.append(f"{name}={extra_value}")
 
-            config_file.save(self.paths.config, key, " ".join(words))
+            ConfigFile(self.paths.config).save(key, " ".join(words))
             config = dataclasses.replace(config, extra_env=extra)
         else:
-            config_file.save(self.paths.config, key, str(value))
+            ConfigFile(self.paths.config).save(key, str(value))
 
         if option == "gpu":
             config = dataclasses.replace(config, gpu=value)

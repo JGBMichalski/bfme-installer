@@ -6,12 +6,12 @@ from pathlib import Path
 
 import pytest
 
-from bfme_wizard.engine import shortcuts
 from bfme_wizard.engine.config import Config
 from bfme_wizard.engine.events import Log, Warn
 from bfme_wizard.engine.paths import Paths
 from bfme_wizard.engine.programs import AIO_LAUNCHER, AOTR, ARENA
 from bfme_wizard.engine.proton import Proton
+from bfme_wizard.engine.shortcuts import MenuShortcuts
 from tests.helpers import manifest_app_id, manifest_icon_exports
 
 DEV_ID = "com.example.Dev"
@@ -74,7 +74,7 @@ class Sandbox:
     def engine(self, paths):
         """Run the engine's shortcut synchronization with the sandbox environment and return the result and events."""
         events = []
-        ok = shortcuts.sync(paths, events.append, self.environ, self.info, self.mountinfo)
+        ok = MenuShortcuts(paths, self.environ, self.info, self.mountinfo).sync(events.append)
         return ok, events
 
     def files(self):
@@ -88,7 +88,7 @@ class Sandbox:
         return found
 
 
-RELEASE_ID = shortcuts.RELEASE_APP_ID
+RELEASE_ID = MenuShortcuts.RELEASE_APP_ID
 
 # Per program: the shortcut's file suffix, name, comment and what it opens.
 PROGRAM_SHORTCUTS = {
@@ -275,7 +275,7 @@ def test_each_icon_is_the_one_the_manifest_exports():
 
     asked = set()
 
-    for program in shortcuts.with_shortcut():
+    for program in MenuShortcuts.with_shortcut():
         asked.add(f"{app}.{program.shortcut.suffix}")
 
     assert asked == exported

@@ -19,67 +19,78 @@ from .engine.jobs import Engine
 from .engine.programs import PROGRAMS
 
 
-def openable() -> dict[str, str]:
-    """What a shortcut passes to --open, and the program it means: the key of each program with a shortcut, and its older
-    names."""
-    names = {}
+class CommandLine:
+    """What the app was started with: the wizard, or `--open <program>` from a menu shortcut."""
 
-    for program in PROGRAMS:
-        if program.shortcut is None:
-            continue
+    def __init__(self, argv: list[str]) -> None:
+        self.argv = argv
+        self.jobs = Engine()
 
-        names[program.key] = program.key
+    @staticmethod
+    def openable() -> dict[str, str]:
+        """What a shortcut passes to --open, and the program it means: the key of each program with a shortcut, and its
+        older names."""
+        names = {}
 
-        for alias in program.aliases:
-            names[alias] = program.key
+        for program in PROGRAMS:
+            if program.shortcut is None:
+                continue
 
-    return names
+            names[program.key] = program.key
 
+            for alias in program.aliases:
+                names[alias] = program.key
 
-OPENABLE = openable()
+        return names
 
+    @property
+    def offer(self) -> str | None:
+        """The program named by --open, or None. GTK has its own options, so others are ignored."""
+        names = self.openable()
+        args = self.argv[1:]
 
-def has_display() -> bool:
-    """Return True if a display is available, False otherwise."""
-    return bool(os.environ.get("WAYLAND_DISPLAY") or os.environ.get("DISPLAY"))
+        for i, arg in enumerate(args):
+            if arg == "--open" and i + 1 < len(args) and args[i + 1] in names:
+                return names[args[i + 1]]
 
+        return None
 
-def parse_args(argv: list[str]) -> str | None:
-    """The program named by --open, or None. GTK has its own options, so others are ignored."""
-    for i, arg in enumerate(argv):
-        if arg == "--open" and i + 1 < len(argv) and argv[i + 1] in OPENABLE:
-            return OPENABLE[argv[i + 1]]
-    return None
+    @staticmethod
+    def has_display() -> bool:
+        return bool(os.environ.get("WAYLAND_DISPLAY") or os.environ.get("DISPLAY"))
 
+    @staticmethod
+    def print_event(event: Event) -> None:
+        """What a program started from a shortcut reports, for whoever reads the output."""
+        if isinstance(event, Log):
+            print(event.text, flush=True)
 
-def print_event(event: Event) -> None:
-    """What a program started from a shortcut reports, for whoever reads the output."""
-    if isinstance(event, Log):
-        print(event.text, flush=True)
+        if isinstance(event, Error):
+            print(f"ERROR: {event.message}", file=sys.stderr, flush=True)
 
-    if isinstance(event, Error):
-        print(f"ERROR: {event.message}", file=sys.stderr, flush=True)
+    def run(self) -> int:
+        offer = self.offer
+        jobs = self.jobs
+
+        # A shortcut whose program is there starts it without a window. The shortcuts are brought in line first, so a
+        # player who only uses the menu still gets them renamed or removed. A failed sync is no reason not to open the
+        # program.
+        if offer and jobs.ready_to_open(offer):
+            jobs.sync_shortcuts(self.print_event, threading.Event())
+            return jobs.open_program(offer, self.print_event, threading.Event())
+
+        if not self.has_display():
+            print("No display found, so the setup wizard cannot open.", file=sys.stderr)
+            return 1
+
+        from .runner import JobRunner
+        from .ui import WizardApp  # late, so a shortcut that opens a program needs no GTK
+
+        return WizardApp(JobRunner(), offer=offer).run(self.argv[:1])
 
 
 def main() -> int:
-    offer = parse_args(sys.argv[1:])
-
-    # A shortcut whose program is there starts it without a window. The shortcuts are brought in line first, so a player who
-    # only uses the menu still gets them renamed or removed. A failed sync is no reason not to open the program.
-    jobs = Engine()
-
-    if offer and jobs.ready_to_open(offer):
-        jobs.sync_shortcuts(print_event, threading.Event())
-        return jobs.open_program(offer, print_event, threading.Event())
-
-    if not has_display():
-        print("No display found, so the setup wizard cannot open.", file=sys.stderr)
-        return 1
-
-    from .runner import JobRunner
-    from .ui import WizardApp  # late, so a shortcut that opens a program needs no GTK
-
-    return WizardApp(JobRunner(), offer=offer).run(sys.argv[:1])
+    return CommandLine(sys.argv).run()
 
 
 if __name__ == "__main__":

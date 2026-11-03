@@ -1,43 +1,50 @@
-"""One setup at a time, so two never write the same files.
-
-The lock is an flock on <data dir>/.setup.lock, the same file and kind of lock the setup script took, so the two keep each other
-out while both exist.
-"""
+"""One setup at a time, so two never write the same files."""
 
 from __future__ import annotations
 
 import fcntl
 import os
-from collections.abc import Generator
-from contextlib import contextmanager
+from typing import IO
 
 from .errors import SetupError
 from .paths import Paths
 
 
-def busy_message(environ: dict[str, str] | None = None) -> str:
-    env = os.environ if environ is None else environ
-    app_id = env.get("FLATPAK_ID")
+class SetupLock:
+    """An flock on <data dir>/.setup.lock, held for a `with` block. Entering fails at once when another setup holds it.
+    Closing the file releases the lock, also when the block fails."""
 
-    if app_id:
-        return (
-            f"Another setup is already running. Wait for it to finish. If you stopped one earlier and it is stuck, run: "
-            f"flatpak kill {app_id}"
-        )
+    def __init__(self, paths: Paths, environ: dict[str, str] | None = None) -> None:
+        self.paths = paths
+        self.environ = environ
+        self._file: IO | None = None
 
-    return "Another setup is already running. Wait for it to finish."
+    def busy_message(self) -> str:
+        env = os.environ if self.environ is None else self.environ
+        app_id = env.get("FLATPAK_ID")
 
+        if app_id:
+            return (
+                "Another setup is already running. Wait for it to finish. If you stopped one earlier and it is stuck, "
+                f"run: flatpak kill {app_id}"
+            )
 
-@contextmanager
-def setup_lock(paths: Paths, environ: dict[str, str] | None = None) -> Generator[None]:
-    """Hold the setup lock for the `with` block. Fails at once when another setup holds it."""
-    paths.base.mkdir(parents=True, exist_ok=True)
+        return "Another setup is already running. Wait for it to finish."
 
-    with open(paths.base / ".setup.lock", "w", encoding="utf-8") as lock_file:
+    def __enter__(self) -> SetupLock:
+        self.paths.base.mkdir(parents=True, exist_ok=True)
+        self._file = open(self.paths.base / ".setup.lock", "w", encoding="utf-8")  # noqa: SIM115
+
         try:
-            fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            fcntl.flock(self._file, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
-            raise SetupError(busy_message(environ)) from None
+            self._file.close()
+            self._file = None
+            raise SetupError(self.busy_message()) from None
 
-        # Closing the file releases the lock, also when the block fails.
-        yield
+        return self
+
+    def __exit__(self, *_exc) -> None:
+        if self._file is not None:
+            self._file.close()
+            self._file = None

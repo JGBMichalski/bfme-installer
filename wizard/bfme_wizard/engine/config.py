@@ -28,99 +28,113 @@ class Config:
     gpu: str = "auto"
 
 
-def _parse(line: str) -> tuple[str, str] | None:
-    """(key, value) for a `KEY=value` or `export KEY=value` line, else None. Quotes around the value are removed."""
-    line = line.strip()
+class ConfigFile:
+    """config.env: plain `KEY=value` lines, as the setup script wrote them. Its values win over the environment."""
 
-    if line.startswith("export "):
-        line = line[len("export ") :].lstrip()
+    def __init__(self, path: Path) -> None:
+        self.path = path
 
-    key, sep, value = line.partition("=")
+    @staticmethod
+    def _parse(line: str) -> tuple[str, str] | None:
+        """(key, value) for a `KEY=value` or `export KEY=value` line, else None. Quotes around the value are removed."""
+        line = line.strip()
 
-    if not sep or not key.isidentifier():
-        return None
+        if line.startswith("export "):
+            line = line[len("export ") :].lstrip()
 
-    value = value.strip()
+        key, sep, value = line.partition("=")
 
-    # Remove surrounding quotes from the value, if any.
-    if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
-        value = value[1:-1]
+        if not sep or not key.isidentifier():
+            return None
 
-    return key, value
+        value = value.strip()
 
+        # Remove surrounding quotes from the value, if any.
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
+            value = value[1:-1]
 
-def _lines(path: Path) -> list[str]:
-    try:
-        return path.read_text(encoding="utf-8").splitlines()
-    except FileNotFoundError:
-        return []
+        return key, value
 
+    def _lines(self) -> list[str]:
+        try:
+            return self.path.read_text(encoding="utf-8").splitlines()
+        except FileNotFoundError:
+            return []
 
-def read_file(path: Path) -> dict[str, str]:
-    return dict(pair for pair in map(_parse, _lines(path)) if pair)
+    def read(self) -> dict[str, str]:
+        """The file's keys and values."""
+        values = {}
 
+        for line in self._lines():
+            pair = self._parse(line)
 
-def load(path: Path, environ: dict[str, str] | None = None) -> Config:
-    env = os.environ if environ is None else environ
-    values: dict[str, str] = {}
+            if pair is not None:
+                values[pair[0]] = pair[1]
 
-    for key, value in env.items():
-        if key.startswith("BFME_"):
-            values[key] = value
+        return values
 
-    # The file's values win over the environment.
-    values.update(read_file(path))
+    def load(self, environ: dict[str, str] | None = None) -> Config:
+        """The settings: the file's, then any BFME_ variable of the environment it does not set."""
+        env = os.environ if environ is None else environ
+        values: dict[str, str] = {}
 
-    graphics = values.get("BFME_GRAPHICS", "")
+        for key, value in env.items():
+            if key.startswith("BFME_"):
+                values[key] = value
 
-    if graphics and graphics not in GRAPHICS:
-        raise ConfigError(f'BFME_GRAPHICS must be vulkan or opengl, not "{graphics}".')
+        # The file's values win over the environment.
+        values.update(self.read())
 
-    gpu = values.get("BFME_GPU") or "auto"
+        graphics = values.get("BFME_GRAPHICS", "")
 
-    if gpu not in GPUS:
-        raise ConfigError(f'BFME_GPU must be auto, dedicated or integrated, not "{gpu}".')
+        if graphics and graphics not in GRAPHICS:
+            raise ConfigError(f'BFME_GRAPHICS must be vulkan or opengl, not "{graphics}".')
 
-    extra: dict[str, str] = {}
+        gpu = values.get("BFME_GPU") or "auto"
 
-    for word in values.get("BFME_EXTRA_ENV", "").split():
-        name, sep, extra_value = word.partition("=")
+        if gpu not in GPUS:
+            raise ConfigError(f'BFME_GPU must be auto, dedicated or integrated, not "{gpu}".')
 
-        if sep:
-            extra[name] = extra_value
+        extra: dict[str, str] = {}
 
-    return Config(
-        graphics=graphics or "vulkan",
-        graphics_chosen=bool(graphics),
-        protonpath=values.get("BFME_PROTONPATH") or DEFAULT_PROTONPATH,
-        extra_env=extra,
-        keep_aotr_download=values.get("BFME_KEEP_AOTR_DOWNLOAD", "") in ("1", "yes", "true"),
-        gpu=gpu,
-    )
+        for word in values.get("BFME_EXTRA_ENV", "").split():
+            name, sep, extra_value = word.partition("=")
 
+            if sep:
+                extra[name] = extra_value
 
-def save(path: Path, key: str, value: str) -> None:
-    """Set one key, keeping every other line."""
-    kept: list[str] = []
+        return Config(
+            graphics=graphics or "vulkan",
+            graphics_chosen=bool(graphics),
+            protonpath=values.get("BFME_PROTONPATH") or DEFAULT_PROTONPATH,
+            extra_env=extra,
+            keep_aotr_download=values.get("BFME_KEEP_AOTR_DOWNLOAD", "") in ("1", "yes", "true"),
+            gpu=gpu,
+        )
 
-    for line in _lines(path):
-        parsed = _parse(line)
+    def save(self, key: str, value: str) -> None:
+        """Set one key, keeping every other line."""
+        kept: list[str] = []
 
-        # Drop the old line for this key; keep everything else.
-        if parsed is not None and parsed[0] == key:
-            continue
+        for line in self._lines():
+            parsed = self._parse(line)
 
-        kept.append(line)
+            # Drop the old line for this key; keep everything else.
+            if parsed is not None and parsed[0] == key:
+                continue
 
-    kept.append(f"{key}={value}")
+            kept.append(line)
 
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f"{path.name}.new.{os.getpid()}")
+        kept.append(f"{key}={value}")
 
-    content = ""
+        path = self.path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(f"{path.name}.new.{os.getpid()}")
 
-    for line in kept:
-        content += f"{line}\n"
+        content = ""
 
-    tmp.write_text(content, encoding="utf-8")
-    tmp.replace(path)
+        for line in kept:
+            content += f"{line}\n"
+
+        tmp.write_text(content, encoding="utf-8")
+        tmp.replace(path)

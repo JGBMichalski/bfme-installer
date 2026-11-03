@@ -4,10 +4,10 @@ from pathlib import Path
 
 import pytest
 
-from bfme_wizard.engine import graphics
-from bfme_wizard.engine.config import Config, load
+from bfme_wizard.engine.config import Config, ConfigFile
 from bfme_wizard.engine.errors import SetupError
 from bfme_wizard.engine.events import Log, Warn
+from bfme_wizard.engine.graphics import Graphics
 from bfme_wizard.engine.paths import Paths
 from bfme_wizard.engine.prefix import GameEnvironment
 from bfme_wizard.engine.proton import Proton
@@ -243,7 +243,7 @@ def test_prepare_creates_a_missing_prefix_then_applies_the_settings(env, paths):
 @pytest.fixture
 def probe(monkeypatch):
     answer = {"value": ("opengl", "no graphics card with Vulkan was found")}
-    monkeypatch.setattr(graphics, "probe", lambda: answer["value"])
+    monkeypatch.setattr(Graphics, "probe", lambda: answer["value"])
     return answer
 
 
@@ -253,7 +253,7 @@ def test_the_first_setup_saves_what_the_computer_suits(paths, probe):
     config = GameEnvironment(paths).detect_graphics(Config(), events.append)
 
     assert (config.graphics, config.graphics_chosen) == ("opengl", True)
-    assert load(paths.config, {}).graphics == "opengl"
+    assert ConfigFile(paths.config).load({}).graphics == "opengl"
     assert logs(events) == ["Graphics: OpenGL (WineD3D) (no graphics card with Vulkan was found)."]
 
 
@@ -314,7 +314,7 @@ def test_switching(env, paths, ready, saved, wanted):
     paths.config.write_text(start)
     events = []
 
-    config = GameEnvironment(paths).set_graphics(load(paths.config, {}), wanted, events.append)
+    config = GameEnvironment(paths).set_graphics(ConfigFile(paths.config).load({}), wanted, events.append)
 
     assert logs(events) == SWITCHES[(ready, saved, wanted)]
     assert paths.config.read_text() == f"BFME_NVIDIA=1\n# keep me\nBFME_GRAPHICS={wanted}\n"
@@ -391,18 +391,18 @@ def test_the_fps_counter_is_added_to_the_extra_environment_and_keeps_the_rest(pa
     paths.base.mkdir(parents=True)
     paths.config.write_text('BFME_EXTRA_ENV="WINEDEBUG=-all"\n')
 
-    config = GameEnvironment(paths).set_option(load(paths.config, {}), "fps-counter", 1, [].append)
+    config = GameEnvironment(paths).set_option(ConfigFile(paths.config).load({}), "fps-counter", 1, [].append)
 
     assert paths.config.read_text() == "BFME_EXTRA_ENV=WINEDEBUG=-all DXVK_HUD=fps\n"
     assert config.extra_env == {"WINEDEBUG": "-all", "DXVK_HUD": "fps"}
     assert GameEnvironment.fps_counter_on(config)
-    assert load(paths.config, {}).extra_env == {"WINEDEBUG": "-all", "DXVK_HUD": "fps"}
+    assert ConfigFile(paths.config).load({}).extra_env == {"WINEDEBUG": "-all", "DXVK_HUD": "fps"}
 
 
 def test_turning_it_off_removes_any_dxvk_hud_and_only_that(paths):
     paths.base.mkdir(parents=True)
     paths.config.write_text('BFME_EXTRA_ENV="DXVK_HUD=full WINEDEBUG=-all"\n')
-    config = load(paths.config, {})
+    config = ConfigFile(paths.config).load({})
     assert GameEnvironment.fps_counter_on(config)  # any DXVK_HUD counts as on
 
     config = GameEnvironment(paths).set_option(config, "fps-counter", 0, [].append)
@@ -416,7 +416,7 @@ def test_turning_it_off_with_nothing_else_leaves_it_empty(paths):
     paths.config.write_text("BFME_EXTRA_ENV=DXVK_HUD=fps\n")
 
     events = []
-    config = GameEnvironment(paths).set_option(load(paths.config, {}), "fps-counter", 0, events.append)
+    config = GameEnvironment(paths).set_option(ConfigFile(paths.config).load({}), "fps-counter", 0, events.append)
 
     assert paths.config.read_text() == "BFME_EXTRA_ENV=\n"
     assert config.extra_env == {}

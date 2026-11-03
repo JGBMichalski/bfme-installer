@@ -57,9 +57,9 @@ data folder), once. A first install and development builds show nothing.
 | `controller.py` | Runs the plan: retry, resume, recheck, cancel, remove. |
 | `model.py` | The setup's state and the plan. |
 | `apps.py` | Opens programs and watches whether they still run. |
-| `diagnostics.py`, `updater.py` | Copy diagnostics; the release check and portal update. |
+| `diagnostics.py`, `updater.py`, `whatsnew.py` | `Diagnostics` (Copy diagnostics); `Updater` (release check, portal update, restart); `WhatsNew` (the notes after an update). |
 | `ui.py`, `start.py`, `home.py`, `programs.py`, `aotr.py`, `widgets.py` | The window and its pages (need GTK). |
-| `__main__.py` | Entry point and `--open`. |
+| `__main__.py` | Entry point; `CommandLine` handles `--open`. |
 
 ## Build, run and test
 

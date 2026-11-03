@@ -7,12 +7,12 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from .. import shortcuts
-from ..download import download
+from ..download import Download
 from ..errors import JobCancelled, SetupError
 from ..events import Emit, Log, Warn, report_speed
 from ..paths import Paths
 from ..proton import NO_WINE_SERVER, Proton
+from ..shortcuts import MenuShortcuts
 from .base import Program, Shortcut
 
 if TYPE_CHECKING:
@@ -88,7 +88,7 @@ class AioLauncher(Program):
 
         # The programs are installed whatever happens here, and sync says what went wrong.
         job.start("shortcuts")
-        shortcuts.sync(job.paths, job.emit, job.environ)
+        MenuShortcuts(job.paths, job.environ).sync(job.emit)
         job.done("shortcuts")
         job.finish(*self.DONE)
 
@@ -112,7 +112,7 @@ class AioLauncher(Program):
 
         if not setup.is_file():
             emit(Log(f"Downloading {setup.name}."))
-            download(url or self.URL, setup, cancel=cancel, on_speed=report_speed(emit))
+            Download(url or self.URL, setup, cancel=cancel, on_speed=report_speed(emit)).run()
 
         emit(Log("Installing the AIO Launcher. It may open for a moment; the setup closes it again."))
 

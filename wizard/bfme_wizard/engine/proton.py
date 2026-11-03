@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import IO
 
 from .config import DEFAULT_PROTONPATH, Config
-from .download import Progress, download, verify_sha256
+from .download import Download, Progress
 from .errors import SetupError
 from .events import Emit, Log, report_speed
 from .paths import Paths
@@ -85,8 +85,8 @@ class Proton:
             emit(Log(f"Downloading {tarball.name}."))
             on_speed = report_speed(emit)
 
-        download(url or self.URL, tarball, on_progress, cancel, on_speed)
-        verify_sha256(tarball, sha256 or self.SHA256)
+        Download(url or self.URL, tarball, on_progress, cancel, on_speed).run()
+        Download.verify_sha256(tarball, sha256 or self.SHA256)
 
         # Unpack beside the final place and rename when done, so an interrupted unpack cannot leave a Proton that looks
         # installed but is missing files.

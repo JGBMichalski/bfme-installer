@@ -13,15 +13,15 @@ from gi.repository import Adw, Gdk, Gio, GLib, GObject, Gtk  # noqa: E402
 from . import whatsnew
 from .aotr import AotrDownloadPage
 from .controller import Controller
-from .diagnostics import any_log, build_report
-from .engine.moddb import AOTR_PAGE_URL
-from .engine.paths import data_dir, paths
+from .diagnostics import Diagnostics
+from .engine.moddb import ModDB
+from .engine.paths import Paths
 from .engine.programs import program
 from .home import GameFoldersPage, HomePage, TroubleshootPage
 from .model import description_of, speed_text, title_of
 from .programs import ProgramsPage
 from .start import StartPage
-from .updater import make_updater, restart_command
+from .updater import Updater
 from .widgets import clear, first_icon, icon_button, pill
 
 # Flatpak builds under another ID run beside this one.
@@ -56,7 +56,7 @@ class WizardWindow(Adw.ApplicationWindow):
         self.check_banner = Adw.Banner(title="Your system needs a change.", button_label="Troubleshoot")
         self.check_banner.connect("button-clicked", lambda *_: self.show_troubleshoot())
         toolbar.add_top_bar(self.check_banner)
-        self.updater = make_updater(self._render_update_banner)
+        self.updater = Updater.from_environment(self._render_update_banner)
         self.update_banner = Adw.Banner(use_markup=False)
         self.update_banner.connect("button-clicked", self._on_update_button)
         toolbar.add_top_bar(self.update_banner)
@@ -192,10 +192,10 @@ class WizardWindow(Adw.ApplicationWindow):
             except GLib.Error:
                 toast = Adw.Toast.new("Could not open your browser.")
                 toast.set_button_label("Copy link")
-                toast.connect("button-clicked", lambda *_: self.copy(AOTR_PAGE_URL, "Link copied"))
+                toast.connect("button-clicked", lambda *_: self.copy(ModDB.PAGE_URL, "Link copied"))
                 self.toasts.add_toast(toast)
 
-        Gtk.UriLauncher.new(AOTR_PAGE_URL).launch(self, None, opened)
+        Gtk.UriLauncher.new(ModDB.PAGE_URL).launch(self, None, opened)
 
     def choose_aotr_zip(self) -> None:
         zips = Gtk.FileFilter()
@@ -222,12 +222,12 @@ class WizardWindow(Adw.ApplicationWindow):
         dialog.open(self, None, chosen)
 
     def copy_diagnostics(self) -> None:
-        report = build_report(self.updater.local or "dev", self.model, data_dir() / "logs")
+        report = Diagnostics(Paths.of().logs).report(self.updater.local or "dev", self.model)
         self.copy(report, "Diagnostics copied. Check it before you share it.")
 
     def open_logs(self) -> None:
-        logs = data_dir() / "logs"
-        target = any_log(logs)
+        logs = Paths.of().logs
+        target = Diagnostics(logs).any_log()
         if target is None:
             self.toasts.add_toast(Adw.Toast.new("There are no logs yet."))
             return
@@ -241,7 +241,7 @@ class WizardWindow(Adw.ApplicationWindow):
         Gtk.FileLauncher.new(Gio.File.new_for_path(str(target))).open_containing_folder(self, None, opened)
 
     def open_config(self) -> None:
-        config = paths().config
+        config = Paths.of().config
 
         if not config.is_file():
             self.toasts.add_toast(Adw.Toast.new("There is no settings file yet. The first setup creates it."))
@@ -383,7 +383,7 @@ class WizardWindow(Adw.ApplicationWindow):
     def restart(self) -> None:
         """Start the new version, then quit. If it cannot be started, close and let the player reopen it."""
         try:
-            Gio.Subprocess.new(restart_command(self.updater.app_id), Gio.SubprocessFlags.NONE)
+            Gio.Subprocess.new(self.updater.restart_command(), Gio.SubprocessFlags.NONE)
         except GLib.Error:
             self.close()
             return
@@ -622,7 +622,7 @@ class WizardApp(Adw.Application):
             window.controller.start()
             window.present()
             # Once, after an update: what changed since the version the player last saw.
-            notes = whatsnew.to_show(paths(), window.updater.local)
+            notes = whatsnew.WhatsNew(Paths.of(), window.updater.local).to_show()
 
             if notes:
                 show_whats_new(window, notes)

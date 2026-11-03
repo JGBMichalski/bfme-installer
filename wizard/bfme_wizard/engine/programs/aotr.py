@@ -17,14 +17,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from .. import shortcuts
 from ..config import Config
-from ..download import download, verify_md5
+from ..download import Download
 from ..errors import JobCancelled, SetupError
 from ..events import Emit, Log, Progress, Step, report_speed
-from ..moddb import RemoteFile, find_aotr
+from ..moddb import ModDB, RemoteFile
 from ..paths import Paths
 from ..proton import Proton
+from ..shortcuts import MenuShortcuts
 from .base import Program, Shortcut
 
 if TYPE_CHECKING:
@@ -113,7 +113,7 @@ class AgeOfTheRing(Program):
             zip_path = Path(job.zip_path)
         else:
             job.start("aotr-download")
-            remote = find_aotr()
+            remote = ModDB().find_aotr()
             # A retry after a failed install needs no download when the installer is still unpacked.
             resumed = self.from_unpacked(job.paths, remote.name)
 
@@ -153,7 +153,7 @@ class AgeOfTheRing(Program):
         self.clean_up(job.paths)
         job.done("aotr-settings")
 
-        shortcuts.sync(job.paths, job.emit, job.environ)
+        MenuShortcuts(job.paths, job.environ).sync(job.emit)
 
         if downloaded:
             job.finish("Age of the Ring is installed.")
@@ -260,9 +260,9 @@ class AgeOfTheRing(Program):
         def progress(percent: int) -> None:
             emit(Progress(percent))
 
-        download(remote.url, zip_path, progress, cancel, report_speed(emit))
+        Download(remote.url, zip_path, progress, cancel, report_speed(emit)).run()
         emit(Log("Checking the download."))
-        verify_md5(zip_path, remote.md5)
+        Download.verify_md5(zip_path, remote.md5)
 
         return zip_path
 

@@ -35,22 +35,6 @@ def is_newer(remote: str | None, local: str | None) -> bool:
     return new is not None and old is not None and new > old
 
 
-def installed_version(app_id: str, metainfo_dir: str = "/app/share/metainfo") -> str | None:
-    """Version stamped into the metainfo by the release build; None in development."""
-    path = Path(metainfo_dir) / f"{app_id}.metainfo.xml"
-    try:
-        match = re.search(r'<release\s+version="([^"]+)"', path.read_text(encoding="utf-8"))
-    except OSError:
-        return None
-    return match.group(1) if match and parse_version(match.group(1)) else None
-
-
-def version_from_redirect(url: str) -> str | None:
-    """'https://github.com/o/r/releases/tag/v0.2.3' -> '0.2.3'."""
-    tail = url.strip().rsplit("/", 1)[-1]
-    return tail.lstrip("v") if parse_version(tail) else None
-
-
 class Updater:
     """state: idle | available | updating | done | empty | failed"""
 
@@ -66,13 +50,38 @@ class Updater:
         self.app_id = app_id
         self.on_change = on_change
         self.latest_url = latest_url
-        self.local = local if local is not None else (installed_version(app_id) if app_id else None)
+        self.local = local if local is not None else (self.installed_version(app_id) if app_id else None)
         self._bus_factory = bus_factory or (lambda: Gio.bus_get_sync(Gio.BusType.SESSION, None))
         self.state = "idle"
         self.remote: str | None = None
         self.progress: int | None = None
         self.error = ""
         self._subscription: tuple[Gio.DBusConnection, int] | None = None
+
+    @classmethod
+    def from_environment(cls, on_change: Callable[[], None]) -> Updater:
+        """For this app's Flatpak. BFME_UPDATE_URL overrides the check URL for tests."""
+        return cls(
+            os.environ.get("FLATPAK_ID"),
+            on_change,
+            latest_url=os.environ.get("BFME_UPDATE_URL", LATEST_URL),
+        )
+
+    @staticmethod
+    def installed_version(app_id: str, metainfo_dir: str = "/app/share/metainfo") -> str | None:
+        """Version stamped into the metainfo by the release build; None in development."""
+        path = Path(metainfo_dir) / f"{app_id}.metainfo.xml"
+        try:
+            match = re.search(r'<release\s+version="([^"]+)"', path.read_text(encoding="utf-8"))
+        except OSError:
+            return None
+        return match.group(1) if match and parse_version(match.group(1)) else None
+
+    @staticmethod
+    def version_from_redirect(url: str) -> str | None:
+        """'https://github.com/o/r/releases/tag/v0.2.3' -> '0.2.3'."""
+        tail = url.strip().rsplit("/", 1)[-1]
+        return tail.lstrip("v") if parse_version(tail) else None
 
     @property
     def enabled(self) -> bool:
@@ -103,7 +112,7 @@ class Updater:
                 _ok, out, _err = source.communicate_utf8_finish(result)
             except GLib.Error:
                 return
-            remote = version_from_redirect(out or "")
+            remote = self.version_from_redirect(out or "")
             if remote and is_newer(remote, self.local):
                 self.remote = remote
                 self._set("available")
@@ -191,25 +200,15 @@ class Updater:
             )
         self._set(state)
 
-
-def restart_command(app_id: str, command: str = "bfme-installer") -> list[str]:
-    """Starts the newest installed version through Flatpak's portal. It waits for this instance to give up its D-Bus name
-    first (10 seconds at most); otherwise the new one would only bring this window forward, and then this one quits."""
-    wait = (
-        "for _ in $(seq 50); do "
-        "gdbus call --session --dest org.freedesktop.DBus --object-path /org/freedesktop/DBus "
-        f"--method org.freedesktop.DBus.NameHasOwner {app_id} | grep -q true || break; "
-        "sleep 0.2; "
-        "done; "
-        f"exec {command}"
-    )
-    return ["flatpak-spawn", "--latest-version", "sh", "-c", wait]
-
-
-def make_updater(on_change: Callable[[], None]) -> Updater:
-    """BFME_UPDATE_URL overrides the check URL for tests."""
-    return Updater(
-        os.environ.get("FLATPAK_ID"),
-        on_change,
-        latest_url=os.environ.get("BFME_UPDATE_URL", LATEST_URL),
-    )
+    def restart_command(self, command: str = "bfme-installer") -> list[str]:
+        """Starts the newest installed version through Flatpak's portal. It waits for this instance to give up its D-Bus name
+        first (10 seconds at most); otherwise the new one would only bring this window forward, and then this one quits."""
+        wait = (
+            "for _ in $(seq 50); do "
+            "gdbus call --session --dest org.freedesktop.DBus --object-path /org/freedesktop/DBus "
+            f"--method org.freedesktop.DBus.NameHasOwner {self.app_id} | grep -q true || break; "
+            "sleep 0.2; "
+            "done; "
+            f"exec {command}"
+        )
+        return ["flatpak-spawn", "--latest-version", "sh", "-c", wait]

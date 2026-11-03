@@ -12,9 +12,8 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, GLib, Gtk  # noqa: E402
 
 from .controller import Controller
-from .engine.paths import paths
+from .engine.paths import Paths
 from .engine.programs import PROGRAMS, Program
-from .model import games_line
 from .widgets import clear, first_icon, pill, program_icon
 
 # What the page says when there is no card to show. A complete setup always has one, so this is only a safety net.
@@ -85,7 +84,7 @@ class HomePage:
     def refresh(self) -> None:
         clear(self.content)
         self.version_label.set_text(f"Version {self.version()}")
-        line = games_line(self.controller.model)
+        line = self.controller.model.games_line
         if line:
             self.content.append(
                 Gtk.Label(label=line, wrap=True, justify=Gtk.Justification.CENTER, css_classes=["heading"])
@@ -163,7 +162,7 @@ class GameFoldersPage:
         )
         any_installed = False
         # A game that is not installed has no folders to open, so it has no group.
-        for folders in (f for f in paths().game_folders() if f.installed):
+        for folders in (f for f in Paths.of().game_folders() if f.installed):
             group = Adw.PreferencesGroup(title=GLib.markup_escape_text(folders.name))
             for title, subtitle, target in (
                 ("Game folder", "Installed files and patches", folders.game),

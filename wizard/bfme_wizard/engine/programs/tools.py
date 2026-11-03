@@ -7,7 +7,7 @@ import threading
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ..download import download
+from ..download import Download
 from ..events import Emit, Log, report_speed
 from ..paths import Paths
 from .base import Program, Step
@@ -45,7 +45,7 @@ class Tool(Program):
     def install(self, paths: Paths, emit: Emit, cancel: threading.Event | None = None, url: str | None = None) -> None:
         exe = self.exe(paths)
         emit(Log(f"Downloading {exe.name}."))
-        download(url or self.url, exe, cancel=cancel, on_speed=report_speed(emit))
+        Download(url or self.url, exe, cancel=cancel, on_speed=report_speed(emit)).run()
         exe.chmod(0o755)
 
 

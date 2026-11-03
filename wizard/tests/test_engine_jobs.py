@@ -8,7 +8,9 @@ from pathlib import Path
 
 import pytest
 
-from bfme_wizard.engine import doctor, download, graphics, shortcuts
+from bfme_wizard.engine import doctor
+from bfme_wizard.engine.doctor import SystemCheck
+from bfme_wizard.engine.download import Download
 from bfme_wizard.engine.events import (
     Cancelled,
     Check,
@@ -22,8 +24,9 @@ from bfme_wizard.engine.events import (
     Step,
     Warn,
 )
+from bfme_wizard.engine.graphics import Graphics
 from bfme_wizard.engine.jobs import Engine
-from bfme_wizard.engine.lock import setup_lock
+from bfme_wizard.engine.lock import SetupLock
 from bfme_wizard.engine.paths import Paths
 from bfme_wizard.engine.programs import (
     AIO_LAUNCHER,
@@ -37,6 +40,7 @@ from bfme_wizard.engine.programs import (
     program,
 )
 from bfme_wizard.engine.proton import Proton
+from bfme_wizard.engine.shortcuts import MenuShortcuts
 
 SEVENZIP = shutil.which("7zz") or shutil.which("7z") or shutil.which("7za")
 needs_7zip = pytest.mark.skipif(SEVENZIP is None, reason="7-Zip is needed to read the Age of the Ring download")
@@ -106,14 +110,14 @@ class World:
         lib = tmp_path / "lib"
         (lib / "i386-linux-gnu/GL/default").mkdir(parents=True)
         (lib / "i386-linux-gnu/ld-linux.so.2").touch()
-        monkeypatch.setattr(doctor, "LIB_ROOT", lib)
+        monkeypatch.setattr(SystemCheck, "LIB_ROOT", lib)
         mountinfo = tmp_path / "mountinfo"
         mountinfo.write_text(f"20 1 0:20 / / rw - tmpfs tmpfs rw\n40 20 0:40 / {self.home} rw - ext4 /dev/sda1 rw\n")
-        monkeypatch.setattr(shortcuts, "MOUNTINFO", mountinfo)
-        monkeypatch.setattr(graphics, "probe", lambda: ("vulkan", "Vulkan 1.4 on Test GPU"))
+        monkeypatch.setattr(MenuShortcuts, "MOUNTINFO", mountinfo)
+        monkeypatch.setattr(Graphics, "probe", lambda: ("vulkan", "Vulkan 1.4 on Test GPU"))
         monkeypatch.setattr(AioLauncher, "POLL_SEC", 0.05)
         monkeypatch.setattr(AgeOfTheRing, "WATCH_SEC", 0.05)
-        monkeypatch.setattr(download, "SPEED_INTERVAL_SEC", 0)
+        monkeypatch.setattr(Download, "SPEED_INTERVAL_SEC", 0)
 
     def make_prefix(self):
         for folder in ("windows", "users/steamuser"):
@@ -287,7 +291,7 @@ def test_the_aio_launcher_and_the_arena(world):
 
     assert Status("aio-launcher", "installed") in events
     assert Status("arena", "installed") in events
-    assert (world.home / f".local/share/applications/{shortcuts.RELEASE_APP_ID}.AioLauncher.desktop").is_file()
+    assert (world.home / f".local/share/applications/{MenuShortcuts.RELEASE_APP_ID}.AioLauncher.desktop").is_file()
 
 
 def test_the_aio_launcher_needs_the_game_environment(world):
@@ -498,7 +502,7 @@ def test_a_stop_takes_effect_before_the_next_step(world):
 def test_another_setup_holding_the_lock_is_an_error(world):
     world.make_prefix()
 
-    with setup_lock(world.paths):
+    with SetupLock(world.paths):
         code, events = world.engine(jobs.install, "workshop", None)
 
     assert code == jobs.FAILED
@@ -506,7 +510,7 @@ def test_another_setup_holding_the_lock_is_an_error(world):
 
 
 def test_missing_32bit_extensions_stop_before_proton_runs(world, monkeypatch):
-    monkeypatch.setattr(doctor, "LIB_ROOT", world.tmp / "nothing")
+    monkeypatch.setattr(SystemCheck, "LIB_ROOT", world.tmp / "nothing")
     world.make_prefix()
 
     code, events = world.engine(jobs.install, "aio-launcher", None)
@@ -588,7 +592,7 @@ def test_the_lock_is_free_while_the_program_runs(world, monkeypatch):
     held = []
 
     def open_aotr(*args):
-        with setup_lock(world.paths):
+        with SetupLock(world.paths):
             held.append(True)
 
         return 0

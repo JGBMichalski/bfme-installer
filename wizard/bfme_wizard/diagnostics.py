@@ -12,135 +12,202 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from .engine import graphics
+from .engine.graphics import Graphics
 from .engine.logs import RunLogs
 from .model import GAMES, SetupModel
 
-LOG_LINES = 40
 
+class Diagnostics:
+    """What a bug report needs: the computer, where the setup stands, and the end of the latest logs."""
 
-def newest_log(log_dir: Path, prefix: str) -> Path | None:
-    """The most recent '<prefix>-<date>-<time>.log', or else the plain '<prefix>.log'."""
-    started = RunLogs(log_dir, prefix).started()
+    LOG_LINES = 40
+    # (title, log name) of the logs the report ends with
+    LOGS = (("AIO Launcher", "aio-launcher"), ("Arena", "arena"), ("prefix creation", "prefix-create"))
 
-    if started:
-        return started[0]
+    def __init__(self, log_dir: Path, environ: dict[str, str] | None = None) -> None:
+        self.log_dir = log_dir
+        self.environ = environ
 
-    plain = log_dir / f"{prefix}.log"
-    return plain if plain.is_file() else None
+    def newest_log(self, name: str) -> Path | None:
+        """The most recent '<name>-<date>-<time>.log', or else the plain '<name>.log'."""
+        started = RunLogs(self.log_dir, name).started()
 
+        if started:
+            return started[0]
 
-def any_log(log_dir: Path) -> Path | None:
-    """A file in the logs folder to reveal in a file manager; None without logs."""
-    files = sorted(log_dir.glob("*.log"), key=lambda p: p.stat().st_mtime) if log_dir.is_dir() else []
-    return files[-1] if files else None
+        plain = self.log_dir / f"{name}.log"
 
+        if plain.is_file():
+            return plain
 
-def tail(path: Path, lines: int = LOG_LINES) -> str:
-    try:
-        text = path.read_text(encoding="utf-8", errors="replace")
-    except OSError as error:
-        return f"(could not read: {error})"
-    return "\n".join(text.splitlines()[-lines:])
+        return None
 
+    def any_log(self) -> Path | None:
+        """A file in the logs folder to reveal in a file manager; None without logs."""
+        if not self.log_dir.is_dir():
+            return None
 
-def _os_name() -> str:
-    """The distribution's name. In the Flatpak the host's file says more than the runtime's."""
-    for path in ("/run/host/os-release", "/etc/os-release"):
+        newest = None
+
+        for log in self.log_dir.glob("*.log"):
+            if newest is None or log.stat().st_mtime >= newest.stat().st_mtime:
+                newest = log
+
+        return newest
+
+    def tail(self, path: Path, lines: int | None = None) -> str:
+        """The last lines of a log."""
         try:
-            for line in Path(path).read_text(encoding="utf-8", errors="replace").splitlines():
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError as error:
+            return f"(could not read: {error})"
+
+        return "\n".join(text.splitlines()[-(lines or self.LOG_LINES) :])
+
+    def _os_name(self) -> str:
+        """The distribution's name. In the Flatpak the host's file says more than the runtime's."""
+        for path in ("/run/host/os-release", "/etc/os-release"):
+            try:
+                text = Path(path).read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+
+            for line in text.splitlines():
                 if line.startswith("PRETTY_NAME="):
                     return line.partition("=")[2].strip().strip('"')
+
+        return "unknown"
+
+    def _gpus(self) -> list[str]:
+        """One line per graphics card, as `lspci` names it; empty when `lspci` is missing or fails."""
+        if not shutil.which("lspci"):
+            return []
+
+        try:
+            out = subprocess.run(["lspci"], capture_output=True, text=True, timeout=5, check=False).stdout
+        except (OSError, subprocess.SubprocessError):
+            return []
+
+        cards = []
+
+        for line in out.splitlines():
+            if re.search(r"\b(VGA compatible controller|3D controller|Display controller)\b", line):
+                cards.append(line.partition(": ")[2] or line)
+
+        return cards
+
+    def _nvidia_driver(self) -> str | None:
+        """The NVIDIA kernel driver's version, or None without one."""
+        try:
+            text = Path("/proc/driver/nvidia/version").read_text(encoding="utf-8", errors="replace")
         except OSError:
-            continue
-    return "unknown"
+            return None
 
+        match = re.search(r"Kernel Module(?: for \S+)?\s+(\d[\d.]*)", text)
 
-def _gpus() -> list[str]:
-    """One line per graphics card, as `lspci` names it; empty when `lspci` is missing or fails."""
-    if not shutil.which("lspci"):
-        return []
-    try:
-        out = subprocess.run(["lspci"], capture_output=True, text=True, timeout=5).stdout
-    except (OSError, subprocess.SubprocessError):
-        return []
-    cards = []
-    for line in out.splitlines():
-        if re.search(r"\b(VGA compatible controller|3D controller|Display controller)\b", line):
-            cards.append(line.partition(": ")[2] or line)
-    return cards
+        if match is None:
+            return None
 
+        return match.group(1)
 
-def _nvidia_driver() -> str | None:
-    """The NVIDIA kernel driver's version, or None without one."""
-    try:
-        match = re.search(
-            r"Kernel Module(?: for \S+)?\s+(\d[\d.]*)",
-            Path("/proc/driver/nvidia/version").read_text(encoding="utf-8", errors="replace"),
-        )
-    except OSError:
-        return None
-    return match.group(1) if match else None
+    def _vulkan(self) -> str:
+        backend, why = Graphics.probe()
 
+        if backend == "unknown":
+            return why
 
-def system_lines(environ: dict[str, str] | None = None) -> list[str]:
-    """What a bug report about the display, the graphics or the window needs to know about the computer.
+        suits = "Vulkan" if backend == "vulkan" else "OpenGL"
+        return f"{why} (suits {suits})"
 
-    The window mode and click-offset problems depend on the session (X11 or Wayland) and the desktop; the graphics ones on the card
-    and driver. Each line says "unknown" or "none" rather than being left out, so a missing fact is visible.
-    """
-    env = os.environ if environ is None else environ
-    session = env.get("XDG_SESSION_TYPE") or (
-        "wayland" if env.get("WAYLAND_DISPLAY") else "x11" if env.get("DISPLAY") else "unknown"
-    )
-    lines = [
-        f"System: {_os_name()}, kernel {platform.release()}",
-        f"Desktop: {env.get('XDG_CURRENT_DESKTOP') or 'unknown'}, {session} session",
-    ]
-    gpus = _gpus()
-    lines += [f"Graphics card: {gpu}" for gpu in gpus] or ["Graphics card: unknown"]
-    lines.append(f"NVIDIA driver: {_nvidia_driver() or 'none'}")
-    lines.append(f"Vulkan: {_vulkan()}")
-    return lines
+    def _session(self, env) -> str:
+        if env.get("XDG_SESSION_TYPE"):
+            return env["XDG_SESSION_TYPE"]
 
+        if env.get("WAYLAND_DISPLAY"):
+            return "wayland"
 
-def _vulkan() -> str:
-    backend, why = graphics.probe()
+        if env.get("DISPLAY"):
+            return "x11"
 
-    if backend == "unknown":
-        return why
+        return "unknown"
 
-    return f"{why} (suits {'Vulkan' if backend == 'vulkan' else 'OpenGL'})"
+    def system_lines(self) -> list[str]:
+        """What a bug report about the display, the graphics or the window needs to know about the computer.
 
-
-def build_report(version: str, model: SetupModel, log_dir: Path, system: list[str] | None = None) -> str:
-    graphics = model.graphics_label if "graphics" in model.installed else "unknown"
-    out = [
-        "BFME Installer diagnostics",
-        f"Version: {version}",
-        f"Runner: {model.installed.get('runner', 'unknown')}",
-        f"Graphics: {graphics}",
-    ]
-    out += system_lines() if system is None else system
-    out.append(
-        "Setup: " + ", ".join(f"{k} {model.installed.get(k, 'unknown')}" for k in ("prefix", "aio-launcher", "arena"))
-    )
-    out.append("Games: " + ", ".join(f"{name} {model.installed.get(key, 'unknown')}" for key, name in GAMES))
-    out += ["", "System checks:"]
-    if model.checks:
-        marks = {"ok": "ok", "warn": "warning", "fail": "FAILED"}
-        for _cid, level, message, fix in model.check_rows:
-            out.append(f"  [{marks[level]}] {message}")
-            if fix:
-                out.append(f"      fix: {fix}")
-    else:
-        out.append("  (not run yet)")
-    for title, prefix in (("AIO Launcher", "aio-launcher"), ("Arena", "arena"), ("prefix creation", "prefix-create")):
-        log = newest_log(log_dir, prefix)
-        out += [
-            "",
-            f"--- latest {title} log ({log.name}, last {LOG_LINES} lines) ---" if log else f"--- no {title} log ---",
+        The window mode and click-offset problems depend on the session (X11 or Wayland) and the desktop; the graphics
+        ones on the card and driver. Each line says "unknown" or "none" rather than being left out, so a missing fact is
+        visible.
+        """
+        env = os.environ if self.environ is None else self.environ
+        lines = [
+            f"System: {self._os_name()}, kernel {platform.release()}",
+            f"Desktop: {env.get('XDG_CURRENT_DESKTOP') or 'unknown'}, {self._session(env)} session",
         ]
-        if log:
-            out.append(tail(log))
-    return "\n".join(out) + "\n"
+        gpus = self._gpus()
+
+        for gpu in gpus:
+            lines.append(f"Graphics card: {gpu}")
+
+        if not gpus:
+            lines.append("Graphics card: unknown")
+
+        lines.append(f"NVIDIA driver: {self._nvidia_driver() or 'none'}")
+        lines.append(f"Vulkan: {self._vulkan()}")
+        return lines
+
+    def report(self, version: str, model: SetupModel, system: list[str] | None = None) -> str:
+        graphics = "unknown"
+
+        if "graphics" in model.installed:
+            graphics = model.graphics_label
+
+        out = [
+            "BFME Installer diagnostics",
+            f"Version: {version}",
+            f"Runner: {model.installed.get('runner', 'unknown')}",
+            f"Graphics: {graphics}",
+        ]
+
+        if system is None:
+            system = self.system_lines()
+
+        out += system
+
+        setup = []
+
+        for key in ("prefix", "aio-launcher", "arena"):
+            setup.append(f"{key} {model.installed.get(key, 'unknown')}")
+
+        out.append("Setup: " + ", ".join(setup))
+
+        games = []
+
+        for key, name in GAMES:
+            games.append(f"{name} {model.installed.get(key, 'unknown')}")
+
+        out.append("Games: " + ", ".join(games))
+        out += ["", "System checks:"]
+
+        if model.checks:
+            marks = {"ok": "ok", "warn": "warning", "fail": "FAILED"}
+
+            for _cid, level, message, fix in model.check_rows:
+                out.append(f"  [{marks[level]}] {message}")
+
+                if fix:
+                    out.append(f"      fix: {fix}")
+        else:
+            out.append("  (not run yet)")
+
+        for title, name in self.LOGS:
+            log = self.newest_log(name)
+            out.append("")
+
+            if log is None:
+                out.append(f"--- no {title} log ---")
+                continue
+
+            out.append(f"--- latest {title} log ({log.name}, last {self.LOG_LINES} lines) ---")
+            out.append(self.tail(log))
+
+        return "\n".join(out) + "\n"

@@ -6,11 +6,8 @@ from gi.repository import GLib
 
 from bfme_wizard.updater import (
     Updater,
-    installed_version,
     is_newer,
     parse_version,
-    restart_command,
-    version_from_redirect,
 )
 
 
@@ -35,19 +32,19 @@ def test_nothing_is_newer_for_a_development_build_or_a_bad_answer():
 
 
 def test_redirect():
-    assert version_from_redirect("https://github.com/o/r/releases/tag/v0.2.3\n") == "0.2.3"
-    assert version_from_redirect("") is None
-    assert version_from_redirect("https://github.com/o/r/releases") is None
+    assert Updater.version_from_redirect("https://github.com/o/r/releases/tag/v0.2.3\n") == "0.2.3"
+    assert Updater.version_from_redirect("") is None
+    assert Updater.version_from_redirect("https://github.com/o/r/releases") is None
 
 
 def test_installed_version_from_the_metainfo(tmp_path):
     (tmp_path / "x.Y.metainfo.xml").write_text(
         '<releases>\n  <release version="0.2.2" date="2026-10-06"/>\n</releases>'
     )
-    assert installed_version("x.Y", str(tmp_path)) == "0.2.2"
-    assert installed_version("missing.App", str(tmp_path)) is None
+    assert Updater.installed_version("x.Y", str(tmp_path)) == "0.2.2"
+    assert Updater.installed_version("missing.App", str(tmp_path)) is None
     (tmp_path / "dev.App.metainfo.xml").write_text('<release version="dev" date="2026-10-06"/>')
-    assert installed_version("dev.App", str(tmp_path)) is None
+    assert Updater.installed_version("dev.App", str(tmp_path)) is None
 
 
 FAKE_CURL = """#!/usr/bin/env bash
@@ -208,7 +205,7 @@ def test_install_does_nothing_unless_an_update_is_available():
 
 
 def test_the_restart_waits_for_this_instance_then_starts_the_newest_version():
-    argv = restart_command("x.Y")
+    argv = Updater("x.Y", lambda: None, local="1.0.0").restart_command()
 
     assert argv[:4] == ["flatpak-spawn", "--latest-version", "sh", "-c"]
     assert "NameHasOwner x.Y" in argv[4]
@@ -228,7 +225,7 @@ echo x >> {calls}
         (tmp_path / name).chmod(0o755)
 
     monkeypatch.setenv("PATH", f"{tmp_path}:{os.environ['PATH']}")
-    script = restart_command("x.Y", command="app")[4]
+    script = Updater("x.Y", lambda: None, local="1.0.0").restart_command(command="app")[4]
 
     assert os.system(f"sh -c '{script}'") == 0
     assert (tmp_path / "started").read_text() == "started\n"

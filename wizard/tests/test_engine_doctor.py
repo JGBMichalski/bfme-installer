@@ -4,9 +4,11 @@ from collections import namedtuple
 
 import pytest
 
-from bfme_wizard.engine import doctor, graphics
-from bfme_wizard.engine.config import Config, load
+from bfme_wizard.engine import doctor
+from bfme_wizard.engine.config import Config, ConfigFile
+from bfme_wizard.engine.doctor import SystemCheck
 from bfme_wizard.engine.events import Check, Fix, Log
+from bfme_wizard.engine.graphics import Graphics
 from bfme_wizard.engine.paths import Paths
 
 Usage = namedtuple("Usage", "total used free")
@@ -21,7 +23,7 @@ def paths(tmp_path):
 @pytest.fixture
 def probe(monkeypatch):
     answer = {"value": ("vulkan", "Vulkan 1.4 on Test GPU")}
-    monkeypatch.setattr(graphics, "probe", lambda: answer["value"])
+    monkeypatch.setattr(Graphics, "probe", lambda: answer["value"])
     return answer
 
 
@@ -41,7 +43,7 @@ def lib_root(tmp_path, *files):
 
 def run(paths, config, root):
     events = []
-    ok = doctor.run_checks(paths, config, events.append, root)
+    ok = SystemCheck(paths, config, root).run(events.append)
     return ok, events
 
 
@@ -95,13 +97,15 @@ def help_lines(events):
     ],
 )
 def test_the_32bit_extensions(tmp_path, files, missing):
-    assert doctor.flatpak_32bit_missing(lib_root(tmp_path, *files)) is missing
+    assert (
+        SystemCheck(Paths(tmp_path / "data"), Config(), lib_root(tmp_path, *files)).flatpak_32bit_missing() is missing
+    )
 
 
 def test_the_fix_names_each_nvidia_drivers_32bit_match(tmp_path):
     root = lib_root(tmp_path, "x86_64-linux-gnu/GL/nvidia-560-35-03/", "x86_64-linux-gnu/GL/nvidia-550-107-02/")
 
-    assert doctor.flatpak_32bit_fix(root) == (
+    assert SystemCheck(Paths(tmp_path / "data"), Config(), root).flatpak_32bit_fix() == (
         "flatpak install --user flathub org.freedesktop.Platform.Compat.i386//25.08 "
         "org.freedesktop.Platform.GL32.default//25.08 org.freedesktop.Platform.GL32.nvidia-550-107-02 "
         "org.freedesktop.Platform.GL32.nvidia-560-35-03"
@@ -113,7 +117,10 @@ def test_missing_extensions_fail_the_check_with_help_and_a_fix(tmp_path, paths, 
 
     assert ok is False
     assert Check("flatpak-32bit", "fail", "the 32-bit Flatpak extensions are not installed") in events
-    assert Fix("flatpak-32bit", doctor.flatpak_32bit_fix(lib_root(tmp_path))) in events
+    assert (
+        Fix("flatpak-32bit", SystemCheck(Paths(tmp_path / "data"), Config(), lib_root(tmp_path)).flatpak_32bit_fix())
+        in events
+    )
     assert help_lines(events) == MISSING_32BIT_HELP
     assert logs(events)[-1] == "1 problem(s) must be fixed first."
 
@@ -197,7 +204,7 @@ def test_the_checks_for_each_graphics_answer(tmp_path, paths, probe, monkeypatch
     else:
         paths.config.write_text("")
 
-    _, events = run(paths, load(paths.config, {}), lib_root(tmp_path, LD, GL32))
+    _, events = run(paths, ConfigFile(paths.config).load({}), lib_root(tmp_path, LD, GL32))
 
     checks = []
 

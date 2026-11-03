@@ -423,13 +423,13 @@ def remote_for(data, md5=None, url="http://127.0.0.1:1/never"):
 
 
 def test_the_download_is_checked_against_moddbs_md5(paths, moddb):
-    from bfme_wizard.engine.moddb import find_aotr
+    from bfme_wizard.engine.moddb import ModDB
 
     data = os.urandom(8192)
     moddb.publish(data, name=ZIP)
     events = []
 
-    zip_path = AOTR.download_zip(paths, Config(), find_aotr(), events.append)
+    zip_path = AOTR.download_zip(paths, Config(), ModDB().find_aotr(), events.append)
 
     assert zip_path == paths.downloads / ZIP
     assert zip_path.read_bytes() == data
@@ -437,12 +437,12 @@ def test_the_download_is_checked_against_moddbs_md5(paths, moddb):
 
 
 def test_a_download_with_the_wrong_md5_is_deleted(paths, moddb):
-    from bfme_wizard.engine.moddb import find_aotr
+    from bfme_wizard.engine.moddb import ModDB
 
     moddb.publish(b"what was uploaded", name=ZIP, md5="0" * 32)
 
     with pytest.raises(SetupError, match="Checksum mismatch"):
-        AOTR.download_zip(paths, Config(), find_aotr(), [].append)
+        AOTR.download_zip(paths, Config(), ModDB().find_aotr(), [].append)
 
     assert not (paths.downloads / ZIP).exists()
 

@@ -2,14 +2,13 @@
 
 import pytest
 
-from bfme_wizard.engine import moddb
-from bfme_wizard.engine.moddb import ModdbUnavailable, find_aotr
+from bfme_wizard.engine.moddb import ModDB, ModdbUnavailable
 
 
 def test_the_file_is_found_with_its_size_md5_and_mirror(moddb):
     moddb.publish(b"x" * 5000)
 
-    found = find_aotr()
+    found = ModDB().find_aotr()
 
     assert found.name == "AotR_Standalone_10.0.0_Installer.zip"
     assert found.size == 5000
@@ -20,7 +19,7 @@ def test_the_file_is_found_with_its_size_md5_and_mirror(moddb):
 def test_every_page_is_asked_for_as_the_app(moddb):
     moddb.publish(b"x")
 
-    find_aotr()
+    ModDB().find_aotr()
 
     assert moddb.server.agents == ["bfme-installer", "bfme-installer"]
 
@@ -36,7 +35,7 @@ def test_the_real_pages_markup_is_read(moddb):
     moddb.publish(b"x")
     moddb.server.files["/mods/aotr/downloads/age-of-the-ring"] = page.encode()
 
-    found = find_aotr()
+    found = ModDB().find_aotr()
 
     assert (found.name, found.size, found.md5) == (
         "AotR_Standalone_10.0.0_Installer.zip",
@@ -63,7 +62,7 @@ def test_a_changed_file_page_says_what_changed(moddb, change, reason):
     moddb.server.files[key] = change(moddb.server.files[key].decode()).encode()
 
     with pytest.raises(ModdbUnavailable, match=reason):
-        find_aotr()
+        ModDB().find_aotr()
 
 
 def test_a_human_check_instead_of_the_download_page_means_a_browser(moddb):
@@ -71,11 +70,11 @@ def test_a_human_check_instead_of_the_download_page_means_a_browser(moddb):
     moddb.server.files["/downloads/start/290690"] = b"<html>Please verify you are human</html>"
 
     with pytest.raises(ModdbUnavailable, match="It may want a browser"):
-        find_aotr()
+        ModDB().find_aotr()
 
 
 def test_no_connection_means_a_browser(monkeypatch):
-    monkeypatch.setattr(moddb, "AOTR_PAGE_URL", "http://127.0.0.1:1/page")
+    monkeypatch.setattr(ModDB, "PAGE_URL", "http://127.0.0.1:1/page")
 
     with pytest.raises(ModdbUnavailable, match="ModDB could not be reached"):
-        find_aotr()
+        ModDB().find_aotr()

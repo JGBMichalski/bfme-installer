@@ -6,8 +6,8 @@ import tarfile
 
 import pytest
 
-from bfme_wizard.engine import download as download_module
-from bfme_wizard.engine.config import DEFAULT_PROTONPATH, Config, load
+from bfme_wizard.engine.config import DEFAULT_PROTONPATH, Config, ConfigFile
+from bfme_wizard.engine.download import Download
 from bfme_wizard.engine.errors import SetupError
 from bfme_wizard.engine.events import Log
 from bfme_wizard.engine.paths import Paths
@@ -50,7 +50,7 @@ def paths(tmp_path):
 
 @pytest.fixture(autouse=True)
 def no_retry_delay(monkeypatch):
-    monkeypatch.setattr(download_module, "RETRY_DELAY_SEC", 0)
+    monkeypatch.setattr(Download, "RETRY_DELAY_SEC", 0)
 
 
 # Getting Proton
@@ -203,7 +203,7 @@ def test_the_environment(tmp_path, monkeypatch, graphics, lspci, extra_environ, 
     paths.base.mkdir()
     paths.config.write_text(f'BFME_GRAPHICS={graphics}\nBFME_EXTRA_ENV="DXVK_HUD=fps WINEDEBUG=-all"\n')
 
-    config = load(paths.config, environ)
+    config = ConfigFile(paths.config).load(environ)
     env = Proton(paths, config, "fake-proton", environ).env(True)
 
     every_run = {
@@ -267,7 +267,7 @@ def test_the_wine_session_is_killed_and_waited_for(tmp_path):
     (paths.prefix / "drive_c/windows").mkdir(parents=True)
     (paths.prefix / "drive_c/users/steamuser").mkdir(parents=True)
 
-    Proton(paths, load(paths.config, environ), environ=environ).end_session()
+    Proton(paths, ConfigFile(paths.config).load(environ), environ=environ).end_session()
 
     assert log.read_text() == f"{paths.prefix} -k\n{paths.prefix} -w\n"
 

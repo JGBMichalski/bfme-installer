@@ -81,13 +81,13 @@ def test_the_notes_since_the_version_seen(seen, current, expected):
 
 
 def test_a_development_build_shows_nothing(paths, changelog):
-    assert whatsnew.to_show(paths, "dev", changelog) == []
-    assert whatsnew.to_show(paths, None, changelog) == []
+    assert whatsnew.WhatsNew(paths, "dev", changelog).to_show() == []
+    assert whatsnew.WhatsNew(paths, None, changelog).to_show() == []
     assert not (paths.base / "last-version").exists()
 
 
 def test_a_first_install_shows_nothing_but_remembers_the_version(paths, changelog):
-    assert whatsnew.to_show(paths, "3.0.0", changelog) == []
+    assert whatsnew.WhatsNew(paths, "3.0.0", changelog).to_show() == []
     assert (paths.base / "last-version").read_text() == "3.0.0\n"
 
 
@@ -96,7 +96,7 @@ def test_an_update_from_2x_shows_this_versions_notes(paths, changelog):
     paths.base.mkdir(parents=True)
     paths.config.write_text("BFME_GRAPHICS=vulkan\n")
 
-    shown = whatsnew.to_show(paths, "3.0.0", changelog)
+    shown = whatsnew.WhatsNew(paths, "3.0.0", changelog).to_show()
 
     assert [version for version, _notes in shown] == ["3.0.0"]
 
@@ -105,8 +105,8 @@ def test_an_update_shows_every_version_since_and_only_once(paths, changelog):
     paths.base.mkdir(parents=True)
     (paths.base / "last-version").write_text("2.0.2\n")
 
-    first = whatsnew.to_show(paths, "3.0.0", changelog)
-    again = whatsnew.to_show(paths, "3.0.0", changelog)
+    first = whatsnew.WhatsNew(paths, "3.0.0", changelog).to_show()
+    again = whatsnew.WhatsNew(paths, "3.0.0", changelog).to_show()
 
     assert [version for version, _notes in first] == ["3.0.0", "2.1.0"]
     assert again == []
@@ -117,7 +117,7 @@ def test_without_the_changelog_nothing_is_shown(paths, tmp_path):
     paths.base.mkdir(parents=True)
     (paths.base / "last-version").write_text("2.1.0\n")
 
-    assert whatsnew.to_show(paths, "3.0.0", tmp_path / "missing.md") == []
+    assert whatsnew.WhatsNew(paths, "3.0.0", tmp_path / "missing.md").to_show() == []
 
 
 # How they look

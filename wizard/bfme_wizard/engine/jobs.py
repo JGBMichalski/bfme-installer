@@ -10,18 +10,17 @@ from __future__ import annotations
 import threading
 from abc import ABC, abstractmethod
 
-from . import doctor, shortcuts
-from .config import Config, ConfigError
-from .config import load as load_config
+from .config import Config, ConfigError, ConfigFile
+from .doctor import SystemCheck
 from .errors import JobCancelled, SetupError
 from .events import Cancelled, Done, Emit, Error, Log, Progress, Status, Step
-from .lock import setup_lock
+from .lock import SetupLock
 from .moddb import ModdbUnavailable
 from .paths import Paths
-from .paths import paths as paths_for
 from .prefix import GameEnvironment
 from .programs import EVERY_PROGRAM, program
 from .proton import Proton
+from .shortcuts import MenuShortcuts
 
 OK = 0
 FAILED = 1
@@ -41,7 +40,7 @@ class Job(ABC):
         self.emit = emit
         self.cancel = cancel or threading.Event()
         self.environ = environ
-        self.paths: Paths = paths_for(environ)
+        self.paths = Paths.of(environ)
         self.environment = GameEnvironment(self.paths)
         self.config = Config()
         self.step: str | None = None
@@ -53,7 +52,7 @@ class Job(ABC):
     def run(self) -> int:
         """Run the body and turn how it ended into events and an exit status."""
         try:
-            self.config = load_config(self.paths.config, self.environ)
+            self.config = ConfigFile(self.paths.config).load(self.environ)
         except ConfigError as error:
             self.emit(Error(None, str(error)))
             return FAILED
@@ -98,7 +97,7 @@ class Job(ABC):
 
     def lock(self):
         """Only one setup changes the game environment at a time."""
-        return setup_lock(self.paths, self.environ)
+        return SetupLock(self.paths, self.environ)
 
     # Where things stand
 
@@ -151,8 +150,10 @@ class Job(ABC):
             folder.mkdir(parents=True, exist_ok=True)
 
         # Without the 32-bit extensions Proton's container fails silently, so stop here with the fix.
-        if doctor.flatpak_32bit_missing():
-            for line in doctor.FLATPAK_32BIT_HELP.splitlines():
+        check = SystemCheck(self.paths, self.config)
+
+        if check.flatpak_32bit_missing():
+            for line in check.FLATPAK_32BIT_HELP.splitlines():
                 self.emit(Log(line))
 
             raise SetupError("The 32-bit Flatpak extensions are not installed.")
@@ -184,13 +185,13 @@ class CheckJob(Job):
     """The system check alone."""
 
     def body(self) -> None:
-        if not doctor.run_checks(self.paths, self.config, self.emit):
+        if not SystemCheck(self.paths, self.config).run(self.emit):
             raise SetupError("The system check found a problem.")
 
 
 class SyncShortcutsJob(Job):
     def body(self) -> None:
-        if not shortcuts.sync(self.paths, self.emit, self.environ):
+        if not MenuShortcuts(self.paths, self.environ).sync(self.emit):
             raise SetupError("The shortcuts could not be updated.")
 
 
@@ -200,7 +201,7 @@ class PrepareJob(Job):
     def body(self) -> None:
         self.start("doctor")
 
-        if not doctor.run_checks(self.paths, self.config, self.emit):
+        if not SystemCheck(self.paths, self.config).run(self.emit):
             raise SetupError("Your system needs a change first. Fix the problems above, then try again.")
 
         self.done("doctor")
@@ -250,7 +251,7 @@ class RemoveJob(Job):
     def body(self) -> None:
         with self.lock():
             program(self.key).remove(self.paths, self.config, self.emit)
-            shortcuts.sync(self.paths, self.emit, self.environ)
+            MenuShortcuts(self.paths, self.environ).sync(self.emit)
             self.finish()
 
 
@@ -287,7 +288,7 @@ class ResetJob(Job):
     def body(self) -> None:
         with self.lock():
             self.environment.reset(self.config, self.emit)
-            shortcuts.sync(self.paths, self.emit, self.environ)
+            MenuShortcuts(self.paths, self.environ).sync(self.emit)
 
 
 class OpenJob(Job):
@@ -358,14 +359,14 @@ class Engine:
     def ready_to_open(self, key: str) -> bool:
         """Whether a shortcut can start this program without the wizard: the game environment is ready and the program is
         in it."""
-        paths = paths_for(self.environ)
+        paths = Paths.of(self.environ)
         return GameEnvironment(paths).ready() and program(key).installed(paths)
 
     def setup_complete(self) -> bool:
         job = StatusJob(lambda _event: None, None, self.environ)
 
         try:
-            job.config = load_config(job.paths.config, self.environ)
+            job.config = ConfigFile(job.paths.config).load(self.environ)
         except ConfigError:
             pass
 
