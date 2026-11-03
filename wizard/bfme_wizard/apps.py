@@ -15,9 +15,9 @@ import gi
 gi.require_version("GLib", "2.0")
 from gi.repository import GLib  # noqa: E402
 
+from .engine.programs import EVERY_PROGRAM
+
 QUICK_EXIT_SECONDS = 15
-APPS = ("aio-launcher", "arena", "aotr")
-TOOL_APPS = ("workshop", "mission-control")
 
 # engine.jobs.open_program: (program, emit, cancel) -> exit status. It returns when the program ends.
 OpenProgram = Callable[..., int]
@@ -37,7 +37,10 @@ class AppLauncher:
         self.on_change = on_change
         self.quick_seconds = quick_seconds
         self._clock = clock
-        self.state = {name: "idle" for name in (*APPS, *TOOL_APPS)}
+        self.state = {}
+
+        for program in EVERY_PROGRAM:
+            self.state[program.key] = "idle"
 
     @property
     def any_running(self) -> bool:

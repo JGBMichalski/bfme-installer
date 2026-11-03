@@ -13,8 +13,8 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, GLib, Gtk  # noqa: E402
 
-from .catalog import CATALOG, INSTALLED_TOGETHER, TOOLS, Program, program
 from .controller import Controller
+from .engine.programs import PROGRAMS, TOOLS, Program, program
 from .widgets import program_icon
 
 ROW_ICON_SIZE = 40
@@ -40,7 +40,7 @@ class ProgramsPage:
     ) -> None:
         self.controller = controller
         self._install, self._remove, self._open = install, remove, open_app
-        self._items = (*CATALOG, *TOOLS)
+        self._items = (*PROGRAMS, *TOOLS)
         self.view = Adw.ToolbarView()
         self.view.add_top_bar(Adw.HeaderBar())
         self._key: tuple | None = None
@@ -49,11 +49,11 @@ class ProgramsPage:
 
     def rows(self) -> list[Adw.ActionRow]:
         """The rows of the programs as they are now, one each."""
-        return list(self._rows[: len(CATALOG)])
+        return list(self._rows[: len(PROGRAMS)])
 
     def tool_rows(self) -> list[Adw.ActionRow]:
         """The rows of the tools as they are now, one each."""
-        return list(self._rows[len(CATALOG) :])
+        return list(self._rows[len(PROGRAMS) :])
 
     def refresh(self) -> None:
         """Rebuild the rows when what they show has changed, and not on every line of output: a button pressed or a dialog
@@ -74,7 +74,7 @@ class ProgramsPage:
         programs = Adw.PreferencesGroup()
         tools = Adw.PreferencesGroup(title="Tools")
         for info, row in zip(self._items, self._rows, strict=True):
-            (tools if info in TOOLS else programs).add(row)
+            (tools if info.is_tool else programs).add(row)
         page = Adw.PreferencesPage(description=DESCRIPTION)
         page.add(programs)
         page.add(tools)
@@ -90,7 +90,7 @@ class ProgramsPage:
             return row
         if m.is_installed(info.key):
             row.set_subtitle(GLib.markup_escape_text(self._installed_text(info, running)))
-            if info in TOOLS:
+            if info.is_tool:
                 opener = Gtk.Button(label="Open", valign=Gtk.Align.CENTER, css_classes=["suggested-action"])
                 opener.set_sensitive(c.apps.state[info.key] != "running")
                 opener.connect("clicked", lambda *_: self._open(info.key))
@@ -119,7 +119,7 @@ class ProgramsPage:
         text = f"Not installed. {info.summary}."
         if info.before_install:
             text += f" {info.before_install}"
-        partner = INSTALLED_TOGETHER.get(info.key)
+        partner = info.installed_with
         if partner and not self.controller.model.is_installed(partner):
             text += f" Installs {program(partner).name} too."
         return text

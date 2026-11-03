@@ -46,5 +46,12 @@ Set these in `config.env` in the data folder. The file wins over the environment
 ## Code
 
 `wizard/bfme_wizard/engine/` is the setup, with no GTK: `jobs.py` holds the jobs the wizard runs (prepare, install,
-remove, ...), built from `prefix.py`, `proton.py`, `programs.py`, `aotr.py`, `moddb.py`, `shortcuts.py` and `doctor.py`.
+remove, ...), built from `prefix.py`, `proton.py`, `programs/`, `moddb.py`, `shortcuts.py` and `doctor.py`.
+
+`engine/programs/` has one class per program. The base class `Program` (`base.py`) holds what they share: where the
+program is, whether it is installed, opening it with a log of its own, and removing it. Each subclass fills in its own
+facts (names, install-page steps, shortcut) and overrides what it does differently: `AioLauncher` runs a setup,
+`Arena` updates itself by checksum, `AgeOfTheRing` downloads, unpacks and runs an installer, and `Tool`
+(`WorkshopStudio`, `MissionControl`) is a single download. `programs/__init__.py` lists them; everything else in the
+wizard gets its programs from there.
 The rest of `wizard/bfme_wizard/` is the window. See [the wizard](wizard.md).

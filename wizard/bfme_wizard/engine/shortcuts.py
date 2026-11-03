@@ -3,42 +3,17 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
 from pathlib import Path
 
-from . import programs
 from .events import Emit, Log, Warn
 from .paths import Paths, menu_dir
+from .programs import PROGRAMS, Program
 
 RELEASE_APP_ID = "com.jgbmichalski.BfmeInstaller"
 FLATPAK_INFO = Path("/.flatpak-info")
 MOUNTINFO = Path("/proc/self/mountinfo")
 
 
-@dataclass(frozen=True)
-class Shortcut:
-    name: str
-    comment: str
-    suffix: str  # The end of the shortcut's file name and of its icon's name, both <app id>.<suffix>.
-
-
-SHORTCUTS = {
-    "aio-launcher": Shortcut(
-        name="BFME All-in-One Launcher",
-        comment="Install, mod and manage the Battle for Middle-earth games",
-        suffix="AioLauncher",
-    ),
-    "arena": Shortcut(
-        name="BFME Online Arena",
-        comment="Play Battle for Middle-earth online",
-        suffix="Arena",
-    ),
-    "aotr": Shortcut(
-        name="Age of the Ring",
-        comment="Play the Age of the Ring mod for Battle for Middle-earth 2",
-        suffix="Aotr",
-    ),
-}
 # Shortcuts the app wrote before, under names it no longer uses. Removed so the menu has no duplicates.
 OLD_SUFFIXES = ("Launcher",)
 
@@ -49,9 +24,20 @@ def app_id(environ: dict[str, str] | None = None) -> str:
     return env.get("FLATPAK_ID") or RELEASE_APP_ID
 
 
-def shortcut_file(app: str, program: str) -> str:
-    """Get the file name of the shortcut for the given app and program."""
-    return f"{app}.{SHORTCUTS[program].suffix}.desktop"
+def with_shortcut() -> list[Program]:
+    """The programs that have a menu shortcut when they are installed."""
+    found = []
+
+    for program in PROGRAMS:
+        if program.shortcut is not None:
+            found.append(program)
+
+    return found
+
+
+def shortcut_file(app: str, program: Program) -> str:
+    """The file name of the program's shortcut."""
+    return f"{app}.{program.shortcut.suffix}.desktop"
 
 
 def flatpak_wrapper(app: str, info: Path = FLATPAK_INFO) -> str:
@@ -112,9 +98,9 @@ def menu_folder_reachable(folder: Path, mountinfo: Path = MOUNTINFO) -> bool:
     return False
 
 
-def shortcut_text(app: str, program: str, wrapper: str) -> str:
-    """Generate the text content of a desktop shortcut for the given app, program, and wrapper script."""
-    shortcut = SHORTCUTS[program]
+def shortcut_text(app: str, program: Program, wrapper: str) -> str:
+    """The text of the program's shortcut. It opens the program through the app's Flatpak."""
+    shortcut = program.shortcut
     name = shortcut.name
 
     # A copy built under another app ID (dev/install-local.sh) says so, so it can sit beside the release.
@@ -126,7 +112,7 @@ def shortcut_text(app: str, program: str, wrapper: str) -> str:
         "Type=Application",
         f"Name={name}",
         f"Comment={shortcut.comment}",
-        f"Exec=flatpak run --command=bfme-installer {app} --open {program}",
+        f"Exec=flatpak run --command=bfme-installer {app} --open {program.key}",
     ]
 
     if wrapper:
@@ -143,7 +129,7 @@ def shortcut_text(app: str, program: str, wrapper: str) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _sync_one(folder: Path, app: str, program: str, installed: bool, wrapper: str) -> bool:
+def _sync_one(folder: Path, app: str, program: Program, installed: bool, wrapper: str) -> bool:
     """Write or remove one shortcut. A correct shortcut is left alone, so the desktop does not rebuild its menu on every
     wizard start. False when the folder cannot be written."""
     file = folder / shortcut_file(app, program)
@@ -182,10 +168,10 @@ def sync(
     installed = {}
     any_installed = False
 
-    for program in SHORTCUTS:
-        installed[program] = programs.installed(paths, program)
+    for program in with_shortcut():
+        installed[program.key] = program.installed(paths)
 
-        if installed[program]:
+        if installed[program.key]:
             any_installed = True
 
     # With nothing installed, create nothing (a first start leaves no folders). Leftover entries are still removed below.
@@ -201,8 +187,8 @@ def sync(
     wrapper = flatpak_wrapper(app, info)
     failed = False
 
-    for program in SHORTCUTS:
-        if not _sync_one(folder, app, program, installed[program], wrapper):
+    for program in with_shortcut():
+        if not _sync_one(folder, app, program, installed[program.key], wrapper):
             failed = True
 
     for suffix in OLD_SUFFIXES:

@@ -7,11 +7,12 @@ import threading
 import pytest
 
 from bfme_wizard.engine import download as download_module
-from bfme_wizard.engine import programs
+from bfme_wizard.engine import jobs
 from bfme_wizard.engine.config import Config
 from bfme_wizard.engine.errors import JobCancelled, SetupError
 from bfme_wizard.engine.events import Log, Warn
 from bfme_wizard.engine.paths import Paths
+from bfme_wizard.engine.programs import AIO_LAUNCHER, AOTR, ARENA, TOOLS, AioLauncher, program
 
 
 def executable(path, text):
@@ -27,7 +28,7 @@ def paths(tmp_path):
 
 @pytest.fixture(autouse=True)
 def fast(monkeypatch):
-    monkeypatch.setattr(programs, "POLL_SEC", 0.05)
+    monkeypatch.setattr(AioLauncher, "POLL_SEC", 0.05)
     monkeypatch.setattr(download_module, "RETRY_DELAY_SEC", 0)
 
 
@@ -108,25 +109,27 @@ STATUS_CHANGES = {
     "a game folder without its program": {"prefix": "ready"},
 }
 
+TOOL_KEYS = [tool.key for tool in TOOLS]
+
 
 def build(paths, parts):
     for part in parts:
         if part == "prefix":
             make_prefix(paths)
         elif part == "aio-launcher":
-            put(paths.aio_launcher_exe)
+            put(AIO_LAUNCHER.exe(paths))
         elif part == "aio-launcher-marker":
-            put(paths.prefix / programs.AIO_LAUNCHER_INSTALLING)
+            put(paths.prefix / AIO_LAUNCHER.INSTALLING)
         elif part == "arena":
-            put(paths.arena_exe)
+            put(ARENA.exe(paths))
         elif part == "aotr":
-            put(paths.aotr_exe)
+            put(AOTR.exe(paths))
         elif part == "aotr-marker":
-            put(paths.prefix / programs.AOTR_INSTALLING)
-        elif part in programs.TOOLS:
-            put(paths.tool_exe(part))
-        elif part in programs.GAME_EXES:
-            put(paths.drive_c / programs.GAME_EXES[part])
+            put(paths.prefix / AOTR.INSTALLING)
+        elif part in TOOL_KEYS:
+            put(program(part).exe(paths))
+        elif part in jobs.GAME_EXES:
+            put(paths.drive_c / jobs.GAME_EXES[part])
         elif part == "bfme2-folder":
             (paths.drive_c / "BFME2").mkdir(parents=True)
 
@@ -157,7 +160,7 @@ def test_the_status_of_each_layout(paths, layout, tmp_path, monkeypatch):
     }
     expected.update(STATUS_CHANGES[layout])
 
-    found = programs.status(paths, Config())
+    found = jobs.setup_status(paths, Config())
 
     assert found == expected
     assert list(found) == STATUS_KEYS
@@ -171,14 +174,14 @@ def test_a_file_that_stops_growing_is_done(tmp_path):
     timer = threading.Timer(0.1, put, [path])
     timer.start()
 
-    assert programs.wait_for_stable_file(path, 5)
+    assert AIO_LAUNCHER.wait_for_stable_file(path, 5)
 
 
 def test_an_empty_or_missing_file_is_never_done(tmp_path):
     (tmp_path / "empty").touch()
 
-    assert not programs.wait_for_stable_file(tmp_path / "empty", 0.3)
-    assert not programs.wait_for_stable_file(tmp_path / "missing", 0.3)
+    assert not AIO_LAUNCHER.wait_for_stable_file(tmp_path / "empty", 0.3)
+    assert not AIO_LAUNCHER.wait_for_stable_file(tmp_path / "missing", 0.3)
 
 
 def test_waiting_stops_when_cancelled(tmp_path):
@@ -186,7 +189,7 @@ def test_waiting_stops_when_cancelled(tmp_path):
     cancel.set()
 
     with pytest.raises(JobCancelled):
-        programs.wait_for_stable_file(tmp_path / "f", 5, cancel)
+        AIO_LAUNCHER.wait_for_stable_file(tmp_path / "f", 5, cancel)
 
 
 # The AIO Launcher
@@ -216,7 +219,7 @@ def aio_launcher_env(tmp_path, paths, monkeypatch, file_server):
     monkeypatch.setenv("UMU_LOG", str(tmp_path / "umu.log"))
     monkeypatch.setenv("WINESERVER_LOG", str(tmp_path / "wineserver.log"))
     monkeypatch.setenv("SESSION_PID", str(tmp_path / "session.pid"))
-    monkeypatch.setenv("AIO_LAUNCHER_EXE", str(paths.aio_launcher_exe))
+    monkeypatch.setenv("AIO_LAUNCHER_EXE", str(AIO_LAUNCHER.exe(paths)))
     file_server.files["/setup.exe"] = b"setup"
     make_prefix(paths)
     return {"proton": str(tmp_path / "proton"), "url": file_server.url("/setup.exe"), "tmp": tmp_path}
@@ -225,13 +228,11 @@ def aio_launcher_env(tmp_path, paths, monkeypatch, file_server):
 def test_the_aio_launcher_setup_runs_once_and_the_session_is_ended(paths, aio_launcher_env):
     events = []
 
-    programs.install_aio_launcher(
-        paths, Config(), aio_launcher_env["proton"], events.append, url=aio_launcher_env["url"]
-    )
+    AIO_LAUNCHER.install(paths, Config(), aio_launcher_env["proton"], events.append, url=aio_launcher_env["url"])
 
     tmp = aio_launcher_env["tmp"]
     setup = paths.downloads / "AllInOneLauncherSetup.exe"
-    assert programs.aio_launcher_installed(paths)
+    assert AIO_LAUNCHER.installed(paths)
     assert (tmp / "umu.log").read_text() == f"{setup}|\n"  # the first start is not runinprefix
     assert (tmp / "wineserver.log").read_text() == "-k\n-w\n"
     assert not setup.exists()
@@ -243,36 +244,34 @@ def test_the_aio_launcher_setup_runs_once_and_the_session_is_ended(paths, aio_la
 
 
 def test_an_installed_aio_launcher_is_left_alone(paths, aio_launcher_env, file_server):
-    put(paths.aio_launcher_exe)
+    put(AIO_LAUNCHER.exe(paths))
 
-    programs.install_aio_launcher(paths, Config(), aio_launcher_env["proton"], [].append, url=aio_launcher_env["url"])
+    AIO_LAUNCHER.install(paths, Config(), aio_launcher_env["proton"], [].append, url=aio_launcher_env["url"])
 
     assert file_server.requests == []
     assert not (aio_launcher_env["tmp"] / "umu.log").exists()
 
 
 def test_an_interrupted_install_is_redone_with_the_setup_already_downloaded(paths, aio_launcher_env, file_server):
-    put(paths.aio_launcher_exe, "half")
-    put(paths.prefix / programs.AIO_LAUNCHER_INSTALLING)
+    put(AIO_LAUNCHER.exe(paths), "half")
+    put(paths.prefix / AIO_LAUNCHER.INSTALLING)
     put(paths.downloads / "AllInOneLauncherSetup.exe", "setup")
 
-    programs.install_aio_launcher(paths, Config(), aio_launcher_env["proton"], [].append, url=aio_launcher_env["url"])
+    AIO_LAUNCHER.install(paths, Config(), aio_launcher_env["proton"], [].append, url=aio_launcher_env["url"])
 
     assert file_server.requests == []
-    assert paths.aio_launcher_exe.read_text() == "aio-launcher"
-    assert programs.aio_launcher_installed(paths)
+    assert AIO_LAUNCHER.exe(paths).read_text() == "aio-launcher"
+    assert AIO_LAUNCHER.installed(paths)
 
 
 def test_a_setup_that_installs_nothing_fails_and_stays_unfinished(paths, aio_launcher_env, monkeypatch):
     monkeypatch.setenv("NO_INSTALL", "1")
-    monkeypatch.setattr(programs, "AIO_LAUNCHER_WAIT_SEC", 0.3)
+    monkeypatch.setattr(AioLauncher, "WAIT_SEC", 0.3)
 
     with pytest.raises(SetupError, match="The AIO Launcher was not installed. See .*aio-launcher-setup.log"):
-        programs.install_aio_launcher(
-            paths, Config(), aio_launcher_env["proton"], [].append, url=aio_launcher_env["url"]
-        )
+        AIO_LAUNCHER.install(paths, Config(), aio_launcher_env["proton"], [].append, url=aio_launcher_env["url"])
 
-    assert (paths.prefix / programs.AIO_LAUNCHER_INSTALLING).exists()
+    assert (paths.prefix / AIO_LAUNCHER.INSTALLING).exists()
     assert (aio_launcher_env["tmp"] / "wineserver.log").read_text() == "-k\n-w\n"
 
 
@@ -284,9 +283,7 @@ def test_without_a_wine_server_it_warns(paths, aio_launcher_env, tmp_path):
     )
     events = []
 
-    programs.install_aio_launcher(
-        paths, Config(), aio_launcher_env["proton"], events.append, url=aio_launcher_env["url"]
-    )
+    AIO_LAUNCHER.install(paths, Config(), aio_launcher_env["proton"], events.append, url=aio_launcher_env["url"])
 
     assert (
         Warn(
@@ -298,8 +295,8 @@ def test_without_a_wine_server_it_warns(paths, aio_launcher_env, tmp_path):
 
 # The Arena
 
-ARENA = b"arena build"
-ARENA_MD5 = hashlib.md5(ARENA).hexdigest()
+ARENA_BUILD = b"arena build"
+ARENA_MD5 = hashlib.md5(ARENA_BUILD).hexdigest()
 HASH_PATH = "/api/applications/versionHash?name=online-arena&version=main"
 BUILD_PATH = "/application-builds/online-arena-main"
 
@@ -307,15 +304,13 @@ BUILD_PATH = "/application-builds/online-arena-main"
 @pytest.fixture
 def arena_server(file_server):
     file_server.files[HASH_PATH] = ARENA_MD5.encode()
-    file_server.files[BUILD_PATH] = ARENA
+    file_server.files[BUILD_PATH] = ARENA_BUILD
     host = file_server.url("")
     return file_server, host
 
 
 def install_arena(paths, host, events=None):
-    programs.install_or_update_arena(
-        paths, (events if events is not None else []).append, files_host=host, server_host=host
-    )
+    ARENA.update(paths, (events if events is not None else []).append, files_host=host, server_host=host)
 
 
 def test_a_missing_arena_is_downloaded_and_checked(paths, arena_server):
@@ -324,15 +319,15 @@ def test_a_missing_arena_is_downloaded_and_checked(paths, arena_server):
 
     install_arena(paths, host, events)
 
-    assert paths.arena_exe.read_bytes() == ARENA
-    assert os.access(paths.arena_exe, os.X_OK)
-    assert (paths.arena_exe.parent / "Data").is_dir()
+    assert ARENA.exe(paths).read_bytes() == ARENA_BUILD
+    assert os.access(ARENA.exe(paths), os.X_OK)
+    assert (ARENA.exe(paths).parent / "Data").is_dir()
     assert logs(events) == ["The Arena is not installed yet.", "Downloading OnlineArena.exe."]
 
 
 def test_an_up_to_date_arena_is_not_downloaded(paths, arena_server):
     server, host = arena_server
-    put(paths.arena_exe, ARENA.decode())
+    put(ARENA.exe(paths), ARENA_BUILD.decode())
 
     install_arena(paths, host)
 
@@ -341,24 +336,24 @@ def test_an_up_to_date_arena_is_not_downloaded(paths, arena_server):
 
 def test_a_newer_arena_replaces_the_old_one(paths, arena_server):
     _, host = arena_server
-    put(paths.arena_exe, "old build")
+    put(ARENA.exe(paths), "old build")
     events = []
 
     install_arena(paths, host, events)
 
-    assert paths.arena_exe.read_bytes() == ARENA
+    assert ARENA.exe(paths).read_bytes() == ARENA_BUILD
     assert logs(events) == ["A new Arena version is available.", "Downloading OnlineArena.exe."]
 
 
 def test_without_the_server_an_installed_arena_is_kept(paths, arena_server):
     server, host = arena_server
     del server.files[HASH_PATH]
-    put(paths.arena_exe, "old build")
+    put(ARENA.exe(paths), "old build")
     events = []
 
     install_arena(paths, host, events)
 
-    assert paths.arena_exe.read_text() == "old build"
+    assert ARENA.exe(paths).read_text() == "old build"
     assert events == [Warn("Could not check for Arena updates. Starting the installed version.")]
 
 
@@ -368,35 +363,35 @@ def test_without_the_hash_a_missing_arena_is_downloaded_unchecked(paths, arena_s
 
     install_arena(paths, host)
 
-    assert paths.arena_exe.read_bytes() == ARENA
+    assert ARENA.exe(paths).read_bytes() == ARENA_BUILD
 
 
 def test_a_download_with_the_wrong_checksum_keeps_the_old_arena(paths, arena_server):
     server, host = arena_server
     server.files[HASH_PATH] = b"0" * 32
-    put(paths.arena_exe, "old build")
+    put(ARENA.exe(paths), "old build")
 
     with pytest.raises(
         SetupError, match=f"Arena download failed its checksum check \\(expected {'0' * 32}, got {ARENA_MD5}\\)."
     ):
         install_arena(paths, host)
 
-    assert paths.arena_exe.read_text() == "old build"
+    assert ARENA.exe(paths).read_text() == "old build"
     assert not (paths.downloads / "OnlineArena.exe").exists()
 
 
 # The tools
 
 
-@pytest.mark.parametrize("tool", programs.TOOLS)
+@pytest.mark.parametrize("tool", TOOL_KEYS)
 def test_a_tool_is_downloaded_into_its_folder(paths, file_server, tool):
     file_server.files["/tool.exe"] = b"tool"
 
-    programs.install_tool(paths, tool, url=file_server.url("/tool.exe"))
+    program(tool).install(paths, [].append, url=file_server.url("/tool.exe"))
 
-    assert paths.tool_exe(tool).read_bytes() == b"tool"
-    assert os.access(paths.tool_exe(tool), os.X_OK)
-    assert programs.tool_installed(paths, tool)
+    assert program(tool).exe(paths).read_bytes() == b"tool"
+    assert os.access(program(tool).exe(paths), os.X_OK)
+    assert program(tool).installed(paths)
 
 
 # Removing
@@ -422,7 +417,7 @@ def everything(paths):
     put(paths.downloads / "AllInOneLauncherSetup.exe")
     put(paths.downloads / "AllInOneLauncherSetup.exe.part")
     put(paths.downloads / "OnlineArena.exe.part")
-    put(paths.aotr_unpack / "setup.exe")
+    put(AOTR.unpack_dir(paths) / "setup.exe")
     put(paths.downloads / "other.zip")
 
 
@@ -446,7 +441,7 @@ ROAMING = "prefix/drive_c/users/steamuser/AppData/Roaming"
 # and other downloads included.
 REMOVED = {
     "aio-launcher": (
-        "Removed BFME All-in-One Launcher.",
+        "Removed the AIO Launcher.",
         {
             "downloads/AllInOneLauncherSetup.exe",
             "downloads/AllInOneLauncherSetup.exe.part",
@@ -456,7 +451,7 @@ REMOVED = {
         },
     ),
     "arena": (
-        "Removed BFME Online Arena.",
+        "Removed the Arena.",
         {
             "downloads/OnlineArena.exe.part",
             f"{ROAMING}/BFME Competetive Arena",
@@ -490,29 +485,29 @@ REMOVED = {
 }
 
 
-@pytest.mark.parametrize("program", [*programs.PROGRAMS, *programs.TOOLS])
-def test_removing_takes_away_only_the_programs_files(paths, program):
-    message, gone = REMOVED[program]
+@pytest.mark.parametrize("key", list(REMOVED))
+def test_removing_takes_away_only_the_programs_files(paths, key):
+    message, gone = REMOVED[key]
     everything(paths)
     before = tree(paths)
     assert gone <= before
 
     events = []
-    programs.remove(paths, Config(), program, events.append)
+    program(key).remove(paths, Config(), events.append)
 
     assert tree(paths) == before - gone
     assert logs(events) == [message]
-    assert not programs.installed(paths, program)
+    assert not program(key).installed(paths)
 
 
 def test_an_unknown_program_is_refused(paths):
     with pytest.raises(SetupError, match="Unknown program: bfme2."):
-        programs.remove(paths, Config(), "bfme2", [].append)
+        program("bfme2").remove(paths, Config(), [].append)
 
 
 def test_the_arena_update_check_names_the_app_not_python(paths, arena_server):
     server, host = arena_server
-    put(paths.arena_exe, ARENA.decode())
+    put(ARENA.exe(paths), ARENA_BUILD.decode())
 
     install_arena(paths, host)
 
@@ -523,6 +518,6 @@ def test_a_tool_download_says_so(paths, file_server):
     file_server.files["/tool.exe"] = b"tool"
     events = []
 
-    programs.install_tool(paths, "workshop", url=file_server.url("/tool.exe"), emit=events.append)
+    program("workshop").install(paths, events.append, url=file_server.url("/tool.exe"))
 
     assert logs(events) == ["Downloading WorkshopStudio.exe."]

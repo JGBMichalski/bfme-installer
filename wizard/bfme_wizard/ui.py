@@ -12,11 +12,11 @@ from gi.repository import Adw, Gdk, Gio, GLib, GObject, Gtk  # noqa: E402
 
 from . import whatsnew
 from .aotr import AotrDownloadPage
-from .catalog import program
-from .controller import PROGRAM_OF, Controller
+from .controller import Controller
 from .diagnostics import any_log, build_report
 from .engine.moddb import AOTR_PAGE_URL
 from .engine.paths import data_dir, paths
+from .engine.programs import program
 from .home import GameFoldersPage, HomePage, TroubleshootPage
 from .model import description_of, speed_text, title_of
 from .programs import ProgramsPage
@@ -183,7 +183,7 @@ class WizardWindow(Adw.ApplicationWindow):
     def install_program(self, key: str) -> None:
         """Install from the Programs page. The setup shows on the main page, so leave this one first."""
         self.nav.pop_to_page(self.root_page)
-        self.controller.install([PROGRAM_OF[key]])
+        self.controller.install([program(key).job])
 
     def open_moddb(self) -> None:
         def opened(launcher: Gtk.UriLauncher, result: Gio.AsyncResult) -> None:

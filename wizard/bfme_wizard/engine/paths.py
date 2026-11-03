@@ -1,4 +1,5 @@
-"""Where everything lives: the data folder, the game environment (prefix) and the programs in it."""
+"""Where everything lives: the data folder, the game environment (prefix) and the games in it. Each program knows its own
+files (engine/programs/)."""
 
 from __future__ import annotations
 
@@ -14,10 +15,6 @@ GAME_DIRS = {
 }
 # Age of the Ring has its own copies of the games in C:\AgeoftheRing, and keeps its settings and maps in AppData\Roaming\Age of the Ring.
 AOTR = ("aotr", "Age of the Ring", "AgeoftheRing", "Age of the Ring", "maps")
-TOOL_FILES = {
-    "workshop": ("Workshop Studio", "WorkshopStudio.exe"),
-    "mission-control": ("Mission Control", "MissionControl.exe"),
-}
 
 
 def data_dir(environ: dict[str, str] | None = None) -> Path:
@@ -89,26 +86,6 @@ class Paths:
     @property
     def roaming(self) -> Path:
         return self.drive_c / "users/steamuser/AppData/Roaming"  # Proton always names the user steamuser
-
-    @property
-    def aio_launcher_exe(self) -> Path:
-        return self.roaming / "BFME All In One Launcher/AllInOneLauncher.exe"
-
-    @property
-    def arena_exe(self) -> Path:
-        return self.roaming / "BFME Competetive Arena/BfmeFoundationProject_OnlineArena.exe"
-
-    @property
-    def aotr_exe(self) -> Path:
-        return self.drive_c / "AgeoftheRing/AotR_Launcher.exe"
-
-    @property
-    def aotr_unpack(self) -> Path:
-        return self.downloads / "aotr"
-
-    def tool_exe(self, tool: str) -> Path:
-        folder, exe = TOOL_FILES[tool]
-        return self.drive_c / "BFME Tools" / folder / exe
 
     def game_folders(self) -> list[GameFolders]:
         games = []

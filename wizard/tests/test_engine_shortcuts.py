@@ -6,10 +6,11 @@ from pathlib import Path
 
 import pytest
 
-from bfme_wizard.engine import launch, shortcuts
+from bfme_wizard.engine import shortcuts
 from bfme_wizard.engine.config import Config
 from bfme_wizard.engine.events import Log, Warn
 from bfme_wizard.engine.paths import Paths
+from bfme_wizard.engine.programs import AIO_LAUNCHER, AOTR, ARENA
 from tests.helpers import manifest_app_id, manifest_icon_exports
 
 DEV_ID = "com.example.Dev"
@@ -29,7 +30,7 @@ def make_prefix(paths):
 
 def install(paths, program):
     """Create the executable file for the given program in the Wine prefix."""
-    exe = {"aio-launcher": paths.aio_launcher_exe, "arena": paths.arena_exe, "aotr": paths.aotr_exe}[program]
+    exe = {"aio-launcher": AIO_LAUNCHER.exe(paths), "arena": ARENA.exe(paths), "aotr": AOTR.exe(paths)}[program]
     put(exe)
 
 
@@ -273,8 +274,8 @@ def test_each_icon_is_the_one_the_manifest_exports():
 
     asked = set()
 
-    for program in shortcuts.SHORTCUTS:
-        asked.add(f"{app}.{shortcuts.SHORTCUTS[program].suffix}")
+    for program in shortcuts.with_shortcut():
+        asked.add(f"{app}.{program.shortcut.suffix}")
 
     assert asked == exported
 
@@ -313,17 +314,17 @@ def test_a_program_starts_from_its_folder(tmp_path, paths, umu):
     install(paths, "aotr")
     events = []
 
-    code = launch.start_program(paths, Config(), "fake-proton", "aotr", paths.aotr_exe, "aotr", events.append)
+    code = AOTR.open(paths, Config(), "fake-proton", events.append)
 
     # Each call is logged as "arguments|working folder|PROTON_VERB"; the game is the last call, after the prefix settings.
     calls = Path(umu["UMU_LOG"]).read_text().splitlines()
     assert code == 0
-    assert calls[-1] == f"{paths.aotr_exe}|{paths.aotr_exe.parent}|runinprefix"
-    assert events[0].text.startswith(f"Starting aotr. Log: {paths.logs}/aotr-")
+    assert calls[-1] == f"{AOTR.exe(paths)}|{AOTR.exe(paths).parent}|runinprefix"
+    assert events[0].text.startswith(f"Starting Age of the Ring. Log: {paths.logs}/aotr-")
 
 
 def test_each_start_gets_its_own_log_and_the_newest_ten_are_kept(tmp_path, paths, umu):
-    put(paths.aotr_exe)
+    put(AOTR.exe(paths))
     paths.logs.mkdir(parents=True)
 
     for number in range(12):
@@ -334,19 +335,19 @@ def test_each_start_gets_its_own_log_and_the_newest_ten_are_kept(tmp_path, paths
     put(paths.logs / "arena-20250101-000000.log", "another program's")
     events = []
 
-    launch.start_program(paths, Config(), "fake-proton", "aotr", paths.aotr_exe, "Age of the Ring", events.append)
+    AOTR.open(paths, Config(), "fake-proton", events.append)
 
     logs = sorted(paths.logs.glob("aotr-*.log"))
     newest = Path(events[0].text.split("Log: ")[1])
     assert len(logs) == 10
     assert newest in logs
-    assert newest.read_text() == f"running {paths.aotr_exe}\n"
+    assert newest.read_text() == f"running {AOTR.exe(paths)}\n"
     assert (paths.logs / "arena-20250101-000000.log").exists()
     assert events == [Log(f"Starting Age of the Ring. Log: {newest}")]
 
 
 def test_only_the_logs_of_starts_are_rotated(paths, umu):
-    put(paths.aotr_exe)
+    put(AOTR.exe(paths))
     paths.logs.mkdir(parents=True)
     put(paths.logs / "aotr-setup.log", "a log of its own")  # like aio-launcher-setup.log
 
@@ -355,7 +356,7 @@ def test_only_the_logs_of_starts_are_rotated(paths, umu):
         old.write_text("old")
         os.utime(old, (1000 + number, 1000 + number))
 
-    launch.start_program(paths, Config(), "fake-proton", "aotr", paths.aotr_exe, "Age of the Ring", [].append)
+    AOTR.open(paths, Config(), "fake-proton", [].append)
 
     assert (paths.logs / "aotr-setup.log").read_text() == "a log of its own"
-    assert len(launch.program_logs(paths.logs, "aotr")) == 10
+    assert len(AOTR.logs(paths).started()) == 10

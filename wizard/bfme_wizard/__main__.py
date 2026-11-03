@@ -16,10 +16,27 @@ import threading
 
 from .engine import jobs
 from .engine.events import Error, Event, Log
+from .engine.programs import PROGRAMS
 
-# What a shortcut passes to --open, and the program it means. Shortcuts made before the AIO Launcher was called
-# "aio-launcher" pass "launcher".
-OPENABLE = {"aio-launcher": "aio-launcher", "launcher": "aio-launcher", "arena": "arena", "aotr": "aotr"}
+
+def openable() -> dict[str, str]:
+    """What a shortcut passes to --open, and the program it means: the key of each program with a shortcut, and its older
+    names."""
+    names = {}
+
+    for program in PROGRAMS:
+        if program.shortcut is None:
+            continue
+
+        names[program.key] = program.key
+
+        for alias in program.aliases:
+            names[alias] = program.key
+
+    return names
+
+
+OPENABLE = openable()
 
 
 def has_display() -> bool:

@@ -8,23 +8,10 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, GLib, Gtk  # noqa: E402
 
-from .catalog import AOTR_DOWNLOAD_GB
 from .controller import Controller
+from .engine.programs import PROGRAMS
 from .widgets import first_icon, pill
 
-# (program, title, description) in install order. The Arena comes with the AIO Launcher.
-CHOICES = [
-    (
-        "aio-launcher",
-        "All-in-One Launcher",
-        "Install, patch and play the BFME games. Includes the Online Arena for multiplayer.",
-    ),
-    (
-        "aotr",
-        "Age of the Ring",
-        f"A large mod with its own launcher and its own copy of the games. It downloads from ModDB, about {AOTR_DOWNLOAD_GB} GB.",
-    ),
-]
 FRESH = ("Set up BFME on Linux", "Choose what to install.")
 READY = ("Choose what to install", "Your game environment is ready.")
 PAUSED = ("Setup paused", "Resume where you left off, or change what to install.")
@@ -41,13 +28,18 @@ class StartPage:
         )
         group = Adw.PreferencesGroup()
         self._checks: dict[str, Gtk.CheckButton] = {}
-        for program, title, subtitle in CHOICES:
+        # The programs offered here, in install order. The Arena is not one: it comes with the AIO Launcher.
+        for program in PROGRAMS:
+            if program.choice is None:
+                continue
+
+            title, subtitle = program.choice
             check = Gtk.CheckButton(valign=Gtk.Align.CENTER, css_classes=["selection-mode"])
             check.connect("toggled", lambda *_: self.refresh())
             row = Adw.ActionRow(title=title, subtitle=GLib.markup_escape_text(subtitle), activatable_widget=check)
             row.add_prefix(check)
             group.add(row)
-            self._checks[program] = check
+            self._checks[program.key] = check
         self.button = pill("Install", self._install)
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=18)
         box.append(group)

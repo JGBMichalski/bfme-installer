@@ -11,7 +11,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import aotr, doctor, launch, programs, proton, shortcuts
+from . import doctor, proton, shortcuts
 from .config import Config, ConfigError
 from .config import load as load_config
 from .errors import JobCancelled, SetupError
@@ -22,12 +22,14 @@ from .paths import Paths
 from .paths import paths as paths_for
 from .prefix import (
     detect_graphics,
+    fps_counter_on,
     prefix_ready,
     prepare_prefix,
     reset_prefix,
     set_graphics,
     set_option,
 )
+from .programs import AIO_LAUNCHER, AOTR, ARENA, PROGRAMS, TOOLS, program
 
 OK = 0
 FAILED = 1
@@ -38,8 +40,38 @@ AIO_LAUNCHER_DONE = [
     "Done. Start 'BFME All-in-One Launcher' to install the games, and 'BFME Online Arena' to play online.",
     "Do not switch patches in the AIO Launcher after a game is installed. On Wine this once broke the BFME 2 files.",
 ]
+# Each game's program, under drive_c. A game counts as installed once it is there.
+GAME_EXES = {"bfme1": "BFME1/lotrbfme.exe", "bfme2": "BFME2/lotrbfme2.exe", "rotwk": "RotWK/lotrbfme2ep1.exe"}
 
-LABELS = {"aio-launcher": "the AIO Launcher", "workshop": "Workshop Studio", "mission-control": "Mission Control"}
+
+def setup_status(paths: Paths, config: Config) -> dict[str, str]:
+    """Where the setup stands, as the wizard reads it. Complete means the game environment is ready and holds at least one
+    program; the tools do not count."""
+    ready = prefix_ready(paths)
+    out = {
+        "runner": "proton",
+        "graphics": config.graphics,
+        "gpu": config.gpu,
+        "fps-counter": "1" if fps_counter_on(config) else "0",
+        # The window offers the choice of card only on a computer that has more than one.
+        "graphics-cards": str(len(proton.graphics_cards())),
+        "prefix": "ready" if ready else "missing",
+    }
+    any_program = False
+
+    for each in (*PROGRAMS, *TOOLS):
+        is_installed = each.installed(paths)
+        out[each.key] = "installed" if is_installed else "missing"
+
+        if is_installed and not each.is_tool:
+            any_program = True
+
+    for game, exe in GAME_EXES.items():
+        out[game] = "installed" if (paths.drive_c / exe).is_file() else "missing"
+
+    out["complete"] = "yes" if ready and any_program else "no"
+
+    return out
 
 
 @dataclass
@@ -76,7 +108,7 @@ class Job:
 
     def report_status(self) -> None:
         """Report the current status of all programs."""
-        for key, value in programs.status(self.paths, self.config).items():
+        for key, value in setup_status(self.paths, self.config).items():
             self.emit(Status(key, value))
 
     def lock(self):
@@ -212,17 +244,17 @@ def aio_launcher_install(
             raise SetupError(SET_UP_FIRST)
 
         with job.lock():
-            if programs.aio_launcher_installed(job.paths):
+            if AIO_LAUNCHER.installed(job.paths):
                 job.skip("aio-launcher")
             else:
                 job.start("aio-launcher")
                 proton_path = _ensure_prefix(job)
-                programs.install_aio_launcher(job.paths, job.config, proton_path, job.emit, job.cancel)
+                AIO_LAUNCHER.install(job.paths, job.config, proton_path, job.emit, job.cancel)
                 job.done("aio-launcher")
 
             job.start("arena")
             _ensure_prefix(job)
-            programs.install_or_update_arena(job.paths, job.emit, job.cancel)
+            ARENA.update(job.paths, job.emit, job.cancel)
             job.done("arena")
 
             # The programs are installed whatever happens here, and sync says what went wrong.
@@ -255,10 +287,10 @@ def aotr_install(
                 job.start("aotr-download")
                 remote = find_aotr()
                 # A retry after a failed install needs no download when the installer is still unpacked.
-                resumed = aotr.from_unpacked(job.paths, remote.name)
+                resumed = AOTR.from_unpacked(job.paths, remote.name)
 
                 if resumed is None:
-                    aotr_zip_path = aotr.download_zip(job.paths, job.config, remote, job.emit, job.cancel)
+                    aotr_zip_path = AOTR.download_zip(job.paths, job.config, remote, job.emit, job.cancel)
                 else:
                     aotr_zip_path = resumed.path
 
@@ -266,13 +298,13 @@ def aotr_install(
 
             if resumed is None:
                 job.start("aotr-check")
-                aotr_zip = aotr.check_zip(aotr_zip_path)
-                aotr.check_space(job.paths, aotr_zip)
+                aotr_zip = AOTR.check_zip(aotr_zip_path)
+                AOTR.check_space(job.paths, aotr_zip)
                 proton_path = _ensure_prefix(job)
                 job.done("aotr-check")
 
                 job.start("aotr-unpack")
-                aotr.unpack(job.paths, aotr_zip, job.emit, job.cancel)
+                AOTR.unpack(job.paths, aotr_zip, job.emit, job.cancel)
 
                 # The zip the app downloaded goes once it is unpacked, unless the player keeps it. The player's own stays.
                 if downloaded and not job.config.keep_aotr_download:
@@ -286,11 +318,11 @@ def aotr_install(
                 job.skip("aotr-unpack")
 
             job.start("aotr-install")
-            aotr.run_installer(job.paths, job.config, proton_path, aotr_zip, job.emit, job.cancel)
+            AOTR.run_installer(job.paths, job.config, proton_path, aotr_zip, job.emit, job.cancel)
             job.done("aotr-install")
 
             job.start("aotr-settings")
-            aotr.clean_up(job.paths)
+            AOTR.clean_up(job.paths)
             job.done("aotr-settings")
 
             shortcuts.sync(job.paths, job.emit, job.environ)
@@ -309,7 +341,9 @@ def tool_install(
     """Install Workshop Studio or Mission Control. Needs the game environment."""
 
     def body(job: Job) -> None:
-        if tool not in programs.TOOLS:
+        chosen = program(tool)
+
+        if not chosen.is_tool:
             raise SetupError(f"Unknown tool: {tool}.")
 
         if not prefix_ready(job.paths):
@@ -320,21 +354,19 @@ def tool_install(
                 folder.mkdir(parents=True, exist_ok=True)
 
             job.start(tool)
-            programs.install_tool(job.paths, tool, job.cancel, emit=job.emit)
+            chosen.install(job.paths, job.emit, job.cancel)
             job.done(tool)
-            _finish(job, f"{programs.NAMES[tool]} is installed.")
+            _finish(job, f"{chosen.name} is installed.")
 
     return _run(body, emit, cancel, environ)
 
 
-def remove(
-    program: str, emit: Emit, cancel: threading.Event | None = None, environ: dict[str, str] | None = None
-) -> int:
+def remove(key: str, emit: Emit, cancel: threading.Event | None = None, environ: dict[str, str] | None = None) -> int:
     """Remove one program from the game environment, with its shortcut."""
 
     def body(job: Job) -> None:
         with job.lock():
-            programs.remove(job.paths, job.config, program, job.emit)
+            program(key).remove(job.paths, job.config, job.emit)
             shortcuts.sync(job.paths, job.emit, job.environ)
             _finish(job)
 
@@ -385,59 +417,33 @@ def reset(emit: Emit, cancel: threading.Event | None = None, environ: dict[str, 
 
 
 def open_program(
-    program: str, emit: Emit, cancel: threading.Event | None = None, environ: dict[str, str] | None = None
+    key: str, emit: Emit, cancel: threading.Event | None = None, environ: dict[str, str] | None = None
 ) -> int:
-    """Open a program and wait until it ends. The AIO Launcher is installed first if it is missing, and the Arena updated.
-    The lock is held only while the game environment is got ready, not while the program runs."""
+    """Open a program and wait until it ends. What it needs first is done before: the AIO Launcher is installed if it is
+    missing, and the Arena updated. The lock is held only while the game environment is got ready, not while the program
+    runs."""
 
     def body(job: Job) -> None:
-        if program in programs.TOOLS or program == "aotr":
-            if not programs.installed(job.paths, program):
-                raise SetupError(f"{programs.NAMES[program]} is not installed.")
+        chosen = program(key)
 
-        elif program not in ("aio-launcher", "arena"):
-            raise SetupError(f"Unknown program: {program}.")
+        # The AIO Launcher and the Arena install themselves when they are opened.
+        if not chosen.prepare_installs and not chosen.installed(job.paths):
+            raise SetupError(f"{chosen.title} is not installed.")
 
         with job.lock():
             proton_path = _ensure_prefix(job)
+            chosen.prepare_to_open(job.paths, job.config, proton_path, job.emit, job.cancel)
 
-            if program == "aio-launcher":
-                programs.install_aio_launcher(job.paths, job.config, proton_path, job.emit, job.cancel)
-
-            if program == "arena":
-                programs.install_or_update_arena(job.paths, job.emit, job.cancel)
-
-        launch.start_program(
-            job.paths,
-            job.config,
-            proton_path,
-            program,
-            _exe(job.paths, program),
-            LABELS.get(program, program),
-            job.emit,
-        )
+        chosen.open(job.paths, job.config, proton_path, job.emit)
 
     return _run(body, emit, cancel, environ)
 
 
-def _exe(paths: Paths, program: str) -> Path:
-    if program == "aio-launcher":
-        return paths.aio_launcher_exe
-
-    if program == "arena":
-        return paths.arena_exe
-
-    if program == "aotr":
-        return paths.aotr_exe
-
-    return paths.tool_exe(program)
-
-
-def ready_to_open(program: str, environ: dict[str, str] | None = None) -> bool:
+def ready_to_open(key: str, environ: dict[str, str] | None = None) -> bool:
     """Whether a shortcut can start this program without the wizard: the game environment is ready and the program is in
     it."""
     paths = paths_for(environ)
-    return prefix_ready(paths) and programs.installed(paths, program)
+    return prefix_ready(paths) and program(key).installed(paths)
 
 
 def setup_complete(environ: dict[str, str] | None = None) -> bool:
@@ -449,4 +455,4 @@ def setup_complete(environ: dict[str, str] | None = None) -> bool:
     except ConfigError:
         config = Config()
 
-    return programs.status(paths, config)["complete"] == "yes"
+    return setup_status(paths, config)["complete"] == "yes"

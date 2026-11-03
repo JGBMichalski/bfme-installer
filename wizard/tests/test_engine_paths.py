@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from bfme_wizard.engine.paths import data_dir, menu_dir, paths
+from bfme_wizard.engine.programs import AIO_LAUNCHER, AOTR, ARENA, program
 
 
 def test_data_dir():
@@ -23,13 +24,13 @@ def test_proton_layout():
     assert p.downloads == Path("/b/downloads")
     assert p.logs == Path("/b/logs")
     assert p.prefix == Path("/b/prefix")
-    assert p.aotr_unpack == Path("/b/downloads/aotr")
+    assert AOTR.unpack_dir(p) == Path("/b/downloads/aotr")
     roaming = "/b/prefix/drive_c/users/steamuser/AppData/Roaming"
-    assert p.aio_launcher_exe == Path(f"{roaming}/BFME All In One Launcher/AllInOneLauncher.exe")
-    assert p.arena_exe == Path(f"{roaming}/BFME Competetive Arena/BfmeFoundationProject_OnlineArena.exe")
-    assert p.aotr_exe == Path("/b/prefix/drive_c/AgeoftheRing/AotR_Launcher.exe")
-    assert p.tool_exe("workshop") == Path("/b/prefix/drive_c/BFME Tools/Workshop Studio/WorkshopStudio.exe")
-    assert p.tool_exe("mission-control") == Path("/b/prefix/drive_c/BFME Tools/Mission Control/MissionControl.exe")
+    assert AIO_LAUNCHER.exe(p) == Path(f"{roaming}/BFME All In One Launcher/AllInOneLauncher.exe")
+    assert ARENA.exe(p) == Path(f"{roaming}/BFME Competetive Arena/BfmeFoundationProject_OnlineArena.exe")
+    assert AOTR.exe(p) == Path("/b/prefix/drive_c/AgeoftheRing/AotR_Launcher.exe")
+    assert program("workshop").exe(p) == Path("/b/prefix/drive_c/BFME Tools/Workshop Studio/WorkshopStudio.exe")
+    assert program("mission-control").exe(p) == Path("/b/prefix/drive_c/BFME Tools/Mission Control/MissionControl.exe")
 
 
 # The game folders

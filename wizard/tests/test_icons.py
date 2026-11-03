@@ -8,8 +8,9 @@ import re
 
 import pytest
 
-from bfme_wizard import catalog
-from bfme_wizard.catalog import CATALOG, ICONS_DIR, TOOLS, program
+from bfme_wizard.engine.programs import PROGRAMS, TOOLS, program
+from bfme_wizard.engine.programs import base as programs_base
+from bfme_wizard.engine.programs.base import ICONS_DIR
 from tests.fake_jobs import idle_controller
 from tests.helpers import (
     EXPORT_SUFFIX,
@@ -22,7 +23,7 @@ from tests.helpers import (
     png_size,
 )
 
-EVERY_PROGRAM = (*CATALOG, *TOOLS)  # each has a picture; only the CATALOG ones have menu shortcuts
+EVERY_PROGRAM = (*PROGRAMS, *TOOLS)  # each has a picture; only the PROGRAMS ones have menu shortcuts
 
 # The icon of BFME Installer itself: the file as it was downloaded, the page it came from, and the licence it is used under.
 APP_ICON_SHA256 = "5d6fe21c636b0c3ba598afa2d81a635b267a3d70e70325016e390248702a22cf"
@@ -66,10 +67,10 @@ def test_they_are_six_different_pictures():
 
 def test_each_picture_is_exported_as_an_icon_of_the_app():
     exported = manifest_icon_exports()
-    assert sorted(exported) == sorted(f"{p.key}.png" for p in CATALOG)
+    assert sorted(exported) == sorted(f"{p.key}.png" for p in PROGRAMS)
 
 
-@pytest.mark.parametrize("info", CATALOG, ids=lambda info: info.key)
+@pytest.mark.parametrize("info", PROGRAMS, ids=lambda info: info.key)
 def test_each_picture_is_exported_in_the_folder_for_its_real_size(info):
     width, height = png_size(info.icon)
     assert manifest_icon_exports()[f"{info.key}.png"] == (
@@ -116,7 +117,7 @@ def test_app_icon_is_a_whole_square_png_in_a_size_a_menu_can_use():
 def test_app_icon_is_not_the_picture_of_a_program():
     # The menu shows the installer and the programs it added side by side, so they have to look different.
     digest = hashlib.sha256(APP_ICON.read_bytes()).hexdigest()
-    assert digest not in {hashlib.sha256(info.icon.read_bytes()).hexdigest() for info in CATALOG}
+    assert digest not in {hashlib.sha256(info.icon.read_bytes()).hexdigest() for info in PROGRAMS}
 
 
 def test_app_icon_file_is_exactly_what_was_downloaded():
@@ -170,7 +171,7 @@ def make_controller(installed):
 
 
 @pytest.mark.parametrize("size", (64, 40))
-@pytest.mark.parametrize("info", CATALOG, ids=lambda info: info.key)
+@pytest.mark.parametrize("info", PROGRAMS, ids=lambda info: info.key)
 def test_a_program_icon_is_its_own_picture_as_a_circle_of_the_size_asked_for(widgets, info, size):
     from gi.repository import Adw, Gdk
 
@@ -189,9 +190,9 @@ def test_it_is_drawn_at_exactly_that_size_and_not_stretched_by_its_container(gtk
 
 
 def test_the_picture_is_not_mixed_up_between_programs(widgets):
-    shown = {info.key: widgets.program_icon(info, 64).get_custom_image() for info in CATALOG}
+    shown = {info.key: widgets.program_icon(info, 64).get_custom_image() for info in PROGRAMS}
     assert len({id(t) for t in shown.values()}) == 3  # three different textures...
-    for info in CATALOG:  # ...each from its own file
+    for info in PROGRAMS:  # ...each from its own file
         assert shown[info.key] is widgets.read_picture(str(info.icon))
 
 
@@ -206,7 +207,7 @@ def test_a_picture_is_read_from_its_file_once_and_kept(widgets):
 
 
 def test_a_missing_file_gives_the_initials_in_a_circle_and_not_a_broken_image(widgets, monkeypatch, tmp_path):
-    monkeypatch.setattr(catalog, "ICONS_DIR", tmp_path)
+    monkeypatch.setattr(programs_base, "ICONS_DIR", tmp_path)
     avatar = widgets.program_icon(program("aotr"), 64)
     assert avatar.get_custom_image() is None
     assert avatar.get_show_initials()
@@ -217,7 +218,7 @@ def test_a_missing_file_gives_the_initials_in_a_circle_and_not_a_broken_image(wi
 def test_a_damaged_file_does_the_same(widgets, monkeypatch, tmp_path):
     (tmp_path / "aio-launcher.png").write_bytes(b"\x89PNG\r\n\x1a\n this is not a picture")
     (tmp_path / "arena.png").write_bytes(b"")
-    monkeypatch.setattr(catalog, "ICONS_DIR", tmp_path)
+    monkeypatch.setattr(programs_base, "ICONS_DIR", tmp_path)
     shown = [widgets.program_icon(program(key), 64) for key in ("aio-launcher", "arena")]
     assert [a.get_custom_image() for a in shown] == [None, None]
     assert [a.get_text() for a in shown] == ["AIO Launcher", "Arena"]
@@ -225,7 +226,7 @@ def test_a_damaged_file_does_the_same(widgets, monkeypatch, tmp_path):
 
 def test_a_failure_to_read_is_not_kept_so_a_file_that_appears_later_is_found(widgets, monkeypatch, tmp_path):
     real = program("arena").icon.read_bytes()  # before the folder is pointed somewhere else
-    monkeypatch.setattr(catalog, "ICONS_DIR", tmp_path)
+    monkeypatch.setattr(programs_base, "ICONS_DIR", tmp_path)
     assert widgets.program_icon(program("arena"), 64).get_custom_image() is None
     (tmp_path / "arena.png").write_bytes(real)
     assert widgets.program_icon(program("arena"), 64).get_custom_image() is not None

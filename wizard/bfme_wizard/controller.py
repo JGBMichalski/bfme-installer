@@ -9,16 +9,9 @@ from types import ModuleType
 from .apps import AppLauncher
 from .engine import jobs as engine_jobs
 from .engine.events import Event
+from .engine.programs import program
 from .model import ALL_PROGRAMS, TOOLS, SetupModel
 from .runner import JobRunner
-
-# Shortcut target to the program that provides it.
-PROGRAM_OF = {
-    "aio-launcher": "aio-launcher",
-    "arena": "aio-launcher",
-    "aotr": "aotr",
-    **{tool: tool for tool in TOOLS},
-}
 
 
 class Controller:
@@ -216,7 +209,7 @@ class Controller:
     def _status_done(self, code: int) -> None:
         """Handle the completion of the status job."""
         self.model.finish_status(code)
-        offered = PROGRAM_OF.get(self._offer or "")
+        offered = program(self._offer).job if self._offer else None
         self._offer = None  # a shortcut is answered once, not every time the player comes back to the home screen
         done = self.model.state == "done"
         wants_aotr = done and offered == "aotr" and not self.model.aotr_installed

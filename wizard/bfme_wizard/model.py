@@ -26,44 +26,48 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 
 from .engine import events
+from .engine import programs as engine_programs
 from .engine.paths import GAME_DIRS
 
-# Start page choices, in install order. The Arena is not one: it comes with the AIO Launcher.
-PROGRAMS = ("aio-launcher", "aotr")
-# Everything that can be opened, and removed again.
-ALL_PROGRAMS = ("aio-launcher", "arena", "aotr")
-# Extra programs of the Tools page. Each installs as a job of its own, from the home screen.
-TOOLS = ("workshop", "mission-control")
+ENVIRONMENT_STEPS = [
+    ("doctor", "Check your system", "Making sure your computer has what the games need."),
+    ("runner", "Get Proton", "Downloading the compatibility layer that runs Windows games."),
+    ("prefix", "Create the game environment", "Setting up a private folder for the launchers and games."),
+]
 
-JOB_STEPS: dict[str, list[tuple[str, str, str]]] = {
-    "environment": [
-        ("doctor", "Check your system", "Making sure your computer has what the games need."),
-        ("runner", "Get Proton", "Downloading the compatibility layer that runs Windows games."),
-        ("prefix", "Create the game environment", "Setting up a private folder for the launchers and games."),
-    ],
-    "aio-launcher": [
-        ("aio-launcher", "Download the AIO Launcher", "Fetching the All-in-One Launcher for managing the games."),
-        ("arena", "Download the Arena", "Fetching the Online Arena for playing multiplayer."),
-        ("shortcuts", "Add menu shortcuts", "Adding the AIO Launcher and the Arena to your application menu."),
-    ],
-    "aotr": [
-        (
-            "aotr-download",
-            "Download Age of the Ring",
-            "Downloading the file from ModDB. It is large and can take a while.",
-        ),
-        ("aotr-check", "Check the download", "Making sure the file is complete and there is room for it."),
-        ("aotr-unpack", "Unpack the download", "Extracting the installer files. This takes a few minutes."),
-        ("aotr-install", "Install Age of the Ring", "Copying the game and the mod. This can take an hour."),
-        ("aotr-settings", "Finish up", "Removing the temporary files."),
-    ],
-    "workshop": [
-        ("workshop", "Download Workshop Studio", "Fetching Workshop Studio from the BFME Arena site."),
-    ],
-    "mission-control": [
-        ("mission-control", "Download Mission Control", "Fetching Mission Control from the BFME Arena site."),
-    ],
-}
+
+def _job_steps() -> dict[str, list[tuple[str, str, str]]]:
+    """The steps of each job: the game environment's, then each program's that has a job of its own."""
+    steps = {"environment": ENVIRONMENT_STEPS}
+
+    for program in engine_programs.EVERY_PROGRAM:
+        if program.steps:
+            steps[program.key] = list(program.steps)
+
+    return steps
+
+
+JOB_STEPS = _job_steps()
+
+
+def _keys(only_choices: bool = False, tools: bool = False) -> tuple[str, ...]:
+    keys = []
+
+    for program in engine_programs.EVERY_PROGRAM:
+        if program.is_tool != tools:
+            continue
+
+        if only_choices and program.choice is None:
+            continue
+
+        keys.append(program.key)
+
+    return tuple(keys)
+
+
+PROGRAMS = _keys(only_choices=True) # Start page choices, in install order.
+ALL_PROGRAMS = _keys() # Everything that can be opened, and removed again.
+TOOLS = _keys(tools=True) # Extra programs of the Tools page. Each installs as a job of its own, from the home screen.
 
 
 def _games() -> list[tuple[str, str]]:

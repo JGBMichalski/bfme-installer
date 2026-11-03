@@ -8,8 +8,8 @@ import os
 
 import pytest
 
-from bfme_wizard.catalog import AOTR_INSTALLED_GB
 from bfme_wizard.controller import Controller
+from bfme_wizard.engine.programs.aotr import INSTALLED_GB as AOTR_INSTALLED_GB
 from bfme_wizard.runner import JobRunner
 from tests.fake_jobs import FakeJobs
 from tests.helpers import buttons, descendants, labels, wait_for

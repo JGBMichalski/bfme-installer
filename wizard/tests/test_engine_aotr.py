@@ -10,11 +10,14 @@ from pathlib import Path
 
 import pytest
 
-from bfme_wizard.engine import aotr, prefix, programs
+from bfme_wizard.engine import prefix
 from bfme_wizard.engine.config import Config
 from bfme_wizard.engine.errors import JobCancelled, SetupError
 from bfme_wizard.engine.events import Progress
 from bfme_wizard.engine.paths import Paths
+from bfme_wizard.engine.programs import AOTR, AgeOfTheRing
+from bfme_wizard.engine.programs import aotr as aotr_module
+from bfme_wizard.engine.programs.aotr import AotrZip
 
 SEVENZIP = shutil.which("7zz") or shutil.which("7z") or shutil.which("7za")
 needs_7zip = pytest.mark.skipif(SEVENZIP is None, reason="7-Zip is needed to read the Age of the Ring download")
@@ -50,7 +53,7 @@ def paths(tmp_path):
 
 @pytest.fixture(autouse=True)
 def fast(monkeypatch):
-    monkeypatch.setattr(aotr, "WATCH_SEC", 0.05)
+    monkeypatch.setattr(AgeOfTheRing, "WATCH_SEC", 0.05)
 
 
 @pytest.fixture
@@ -153,14 +156,14 @@ def test_a_bad_download_says_what_is_wrong(tmp_path):
 
     for case, zip_path in zips.items():
         with pytest.raises(SetupError) as raised:
-            aotr.check_zip(zip_path)
+            AOTR.check_zip(zip_path)
 
         assert str(raised.value) == expected[case], case
 
 
 @needs_7zip
 def test_a_good_download_names_its_installer_and_size(tmp_path):
-    aotr_zip = aotr.check_zip(make_zip(tmp_path, GOOD))
+    aotr_zip = AOTR.check_zip(make_zip(tmp_path, GOOD))
 
     assert aotr_zip.exe_name == EXE
     assert aotr_zip.unpacked_bytes == sum(len(data) for data in GOOD.values())
@@ -172,31 +175,31 @@ def test_without_7zip_it_says_what_to_install(tmp_path, monkeypatch):
     monkeypatch.setenv("PATH", str(tmp_path / "empty"))
 
     with pytest.raises(SetupError, match="7-Zip is needed to read the download"):
-        aotr.check_zip(zip_path)
+        AOTR.check_zip(zip_path)
 
 
 # Free space
 
 
 def test_too_little_space_says_how_much_more_is_needed(paths, monkeypatch):
-    monkeypatch.setattr(aotr.shutil, "disk_usage", lambda path: Usage(0, 0, 3_500_000_000))
-    aotr_zip = aotr.AotrZip(Path(ZIP), EXE, unpacked_bytes=2_000_000_000)
+    monkeypatch.setattr(aotr_module.shutil, "disk_usage", lambda path: Usage(0, 0, 3_500_000_000))
+    aotr_zip = AotrZip(Path(ZIP), EXE, unpacked_bytes=2_000_000_000)
 
     with pytest.raises(
         SetupError, match="^Not enough free space: Age of the Ring needs 6 GB more, but only 3 GB is free.$"
     ):
-        aotr.check_space(paths, aotr_zip)
+        AOTR.check_space(paths, aotr_zip)
 
 
 def test_what_is_already_unpacked_or_installed_counts(paths, monkeypatch):
     # 1400 unpacked + 2240 installed = 3640 needed, of which 2600 is already there.
-    monkeypatch.setattr(aotr.shutil, "disk_usage", lambda path: Usage(0, 0, 2000))
-    (paths.aotr_unpack).mkdir(parents=True)
-    (paths.aotr_unpack / "part.bin").write_bytes(b"x" * 1600)
-    paths.aotr_exe.parent.mkdir(parents=True)
-    (paths.aotr_exe.parent / "game.big").write_bytes(b"x" * 1000)
+    monkeypatch.setattr(aotr_module.shutil, "disk_usage", lambda path: Usage(0, 0, 2000))
+    (AOTR.unpack_dir(paths)).mkdir(parents=True)
+    (AOTR.unpack_dir(paths) / "part.bin").write_bytes(b"x" * 1600)
+    AOTR.exe(paths).parent.mkdir(parents=True)
+    (AOTR.exe(paths).parent / "game.big").write_bytes(b"x" * 1000)
 
-    aotr.check_space(paths, aotr.AotrZip(Path(ZIP), EXE, unpacked_bytes=1400))
+    AOTR.check_space(paths, AotrZip(Path(ZIP), EXE, unpacked_bytes=1400))
 
 
 # Unpacking
@@ -204,32 +207,32 @@ def test_what_is_already_unpacked_or_installed_counts(paths, monkeypatch):
 
 @needs_7zip
 def test_unpacking_reports_progress_and_is_not_repeated(tmp_path, paths):
-    aotr_zip = aotr.check_zip(make_zip(tmp_path, GOOD))
+    aotr_zip = AOTR.check_zip(make_zip(tmp_path, GOOD))
     events = []
 
-    aotr.unpack(paths, aotr_zip, events.append)
+    AOTR.unpack(paths, aotr_zip, events.append)
 
     assert progress(events)[-1] == 100
-    assert (paths.aotr_unpack / EXE).read_bytes() == b"installer"
-    assert (paths.aotr_unpack / ".complete").read_text() == ZIP + "\n"
+    assert (AOTR.unpack_dir(paths) / EXE).read_bytes() == b"installer"
+    assert (AOTR.unpack_dir(paths) / ".complete").read_text() == ZIP + "\n"
 
     events.clear()
-    aotr.unpack(paths, aotr_zip, events.append)
+    AOTR.unpack(paths, aotr_zip, events.append)
 
     assert events == []
 
 
 @needs_7zip
 def test_a_different_zip_is_unpacked_again(tmp_path, paths):
-    aotr_zip = aotr.check_zip(make_zip(tmp_path, GOOD))
-    paths.aotr_unpack.mkdir(parents=True)
-    (paths.aotr_unpack / "stale.bin").write_bytes(b"old")
-    (paths.aotr_unpack / ".complete").write_text("AotR_Standalone_9.2.0_Installer.zip\n")
+    aotr_zip = AOTR.check_zip(make_zip(tmp_path, GOOD))
+    AOTR.unpack_dir(paths).mkdir(parents=True)
+    (AOTR.unpack_dir(paths) / "stale.bin").write_bytes(b"old")
+    (AOTR.unpack_dir(paths) / ".complete").write_text("AotR_Standalone_9.2.0_Installer.zip\n")
 
-    aotr.unpack(paths, aotr_zip, [].append)
+    AOTR.unpack(paths, aotr_zip, [].append)
 
-    assert not (paths.aotr_unpack / "stale.bin").exists()
-    assert (paths.aotr_unpack / EXE).exists()
+    assert not (AOTR.unpack_dir(paths) / "stale.bin").exists()
+    assert (AOTR.unpack_dir(paths) / EXE).exists()
 
 
 def test_a_failed_unpack_says_where_to_look(tmp_path, paths, monkeypatch):
@@ -237,9 +240,9 @@ def test_a_failed_unpack_says_where_to_look(tmp_path, paths, monkeypatch):
     monkeypatch.setenv("PATH", str(tmp_path / "bin"))
 
     with pytest.raises(SetupError, match="The file could not be unpacked. It may be damaged: .* See .*aotr-unpack.log"):
-        aotr.unpack(paths, aotr.AotrZip(tmp_path / ZIP, EXE, 100), [].append)
+        AOTR.unpack(paths, AotrZip(tmp_path / ZIP, EXE, 100), [].append)
 
-    assert not (paths.aotr_unpack / ".complete").exists()
+    assert not (AOTR.unpack_dir(paths) / ".complete").exists()
     assert "CRC Failed" in (paths.logs / "aotr-unpack.log").read_text()
 
 
@@ -250,9 +253,9 @@ def test_unpacking_stops_when_cancelled(tmp_path, paths, monkeypatch):
     threading.Timer(0.2, cancel.set).start()
 
     with pytest.raises(JobCancelled):
-        aotr.unpack(paths, aotr.AotrZip(tmp_path / ZIP, EXE, 100), [].append, cancel)
+        AOTR.unpack(paths, AotrZip(tmp_path / ZIP, EXE, 100), [].append, cancel)
 
-    assert not (paths.aotr_unpack / ".complete").exists()
+    assert not (AOTR.unpack_dir(paths) / ".complete").exists()
 
 
 # The installer's progress
@@ -262,7 +265,7 @@ def test_progress_is_how_far_the_installer_has_read_its_data_files(tmp_path):
     for name, size in (("X-1a.bin", 1000), ("X-1b.bin", 1000), ("X-2a.bin", 2000), ("notes.bin", 500)):
         (tmp_path / name).write_bytes(b"x" * size)
 
-    assert aotr.install_percent(tmp_path) is None
+    assert AOTR.install_percent(tmp_path) is None
 
     # A process reading the third file, 500 bytes in: 1000 + 1000 + 500 of 4000.
     reader = subprocess.Popen(
@@ -278,7 +281,7 @@ def test_progress_is_how_far_the_installer_has_read_its_data_files(tmp_path):
 
     try:
         assert reader.stdout.readline() == "ready\n"
-        assert aotr.install_percent(tmp_path) == 62
+        assert AOTR.install_percent(tmp_path) == 62
     finally:
         reader.kill()
         reader.wait()
@@ -290,7 +293,7 @@ def test_data_files_are_read_by_number_then_letter(tmp_path):
 
     names = []
 
-    for path in aotr._parts(tmp_path):
+    for path in AOTR._parts(tmp_path):
         names.append(path.name)
 
     assert names == ["X-1a.bin", "X-2a.bin", "X-2b.bin", "X-10a.bin"]
@@ -300,22 +303,22 @@ def test_data_files_are_read_by_number_then_letter(tmp_path):
 
 
 def unpacked(paths):
-    paths.aotr_unpack.mkdir(parents=True, exist_ok=True)
-    (paths.aotr_unpack / EXE).write_text("installer")
-    return aotr.AotrZip(Path(ZIP), EXE, 100)
+    AOTR.unpack_dir(paths).mkdir(parents=True, exist_ok=True)
+    (AOTR.unpack_dir(paths) / EXE).write_text("installer")
+    return AotrZip(Path(ZIP), EXE, 100)
 
 
 def test_the_installer_runs_silently_in_the_unpack_folder(env, paths):
     make_prefix(paths)
     events = []
 
-    aotr.run_installer(paths, Config(), "fake-proton", unpacked(paths), events.append)
+    AOTR.run_installer(paths, Config(), "fake-proton", unpacked(paths), events.append)
 
     assert (
         Path(env["UMU_LOG"]).read_text()
-        == f"./{EXE} /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /LOG=C:\\aotr-install.log|{paths.aotr_unpack}\n"
+        == f"./{EXE} /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /LOG=C:\\aotr-install.log|{AOTR.unpack_dir(paths)}\n"
     )
-    assert programs.aotr_installed(paths)
+    assert AOTR.installed(paths)
     assert (paths.logs / "aotr-installer.log").read_text() == "installer log"
     assert not (paths.drive_c / "aotr-install.log").exists()
     assert progress(events)[-1] == 100
@@ -326,9 +329,9 @@ def test_an_installer_that_fails_leaves_it_unfinished(env, paths, monkeypatch):
     monkeypatch.setenv("NO_INSTALL", "1")
 
     with pytest.raises(SetupError, match=r"Age of the Ring was not installed \(exit 3\). See .*aotr-installer.log"):
-        aotr.run_installer(paths, Config(), "fake-proton", unpacked(paths), [].append)
+        AOTR.run_installer(paths, Config(), "fake-proton", unpacked(paths), [].append)
 
-    assert (paths.prefix / programs.AOTR_INSTALLING).exists()
+    assert (paths.prefix / AOTR.INSTALLING).exists()
 
 
 def test_cancelling_the_installer_ends_the_wine_session(tmp_path, env, paths, monkeypatch):
@@ -343,10 +346,10 @@ def test_cancelling_the_installer_ends_the_wine_session(tmp_path, env, paths, mo
     threading.Timer(0.3, cancel.set).start()
 
     with pytest.raises(JobCancelled):
-        aotr.run_installer(paths, Config(), str(tmp_path / "proton"), unpacked(paths), [].append, cancel)
+        AOTR.run_installer(paths, Config(), str(tmp_path / "proton"), unpacked(paths), [].append, cancel)
 
     assert log.read_text().startswith("-k\n")
-    assert not programs.aotr_installed(paths)
+    assert not AOTR.installed(paths)
 
 
 # The whole install
@@ -386,12 +389,12 @@ def test_a_whole_install_leaves_the_game_and_cleans_up(tmp_path, env, paths):
     zip_path = make_zip(tmp_path, GOOD)
     make_prefix(paths)
 
-    aotr_zip = aotr.check_zip(zip_path)
-    aotr.check_space(paths, aotr_zip)
+    aotr_zip = AOTR.check_zip(zip_path)
+    AOTR.check_space(paths, aotr_zip)
     prefix.prepare_prefix(paths, Config(), "fake-proton", [].append)
-    aotr.unpack(paths, aotr_zip, [].append)
-    aotr.run_installer(paths, Config(), "fake-proton", aotr_zip, [].append)
-    aotr.clean_up(paths)
+    AOTR.unpack(paths, aotr_zip, [].append)
+    AOTR.run_installer(paths, Config(), "fake-proton", aotr_zip, [].append)
+    AOTR.clean_up(paths)
 
     # Each call is logged as "arguments|working folder".
     expected_calls = []
@@ -400,7 +403,7 @@ def test_a_whole_install_leaves_the_game_and_cleans_up(tmp_path, env, paths):
         expected_calls.append(f"{setting}|{os.getcwd()}")
 
     expected_calls.append(
-        f"./{EXE} /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /LOG=C:\\aotr-install.log|{paths.aotr_unpack}"
+        f"./{EXE} /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /LOG=C:\\aotr-install.log|{AOTR.unpack_dir(paths)}"
     )
 
     assert tree(paths) == WHOLE_INSTALL_TREE
@@ -425,7 +428,7 @@ def test_the_download_is_checked_against_moddbs_md5(paths, moddb):
     moddb.publish(data, name=ZIP)
     events = []
 
-    zip_path = aotr.download_zip(paths, Config(), find_aotr(), events.append)
+    zip_path = AOTR.download_zip(paths, Config(), find_aotr(), events.append)
 
     assert zip_path == paths.downloads / ZIP
     assert zip_path.read_bytes() == data
@@ -438,7 +441,7 @@ def test_a_download_with_the_wrong_md5_is_deleted(paths, moddb):
     moddb.publish(b"what was uploaded", name=ZIP, md5="0" * 32)
 
     with pytest.raises(SetupError, match="Checksum mismatch"):
-        aotr.download_zip(paths, Config(), find_aotr(), [].append)
+        AOTR.download_zip(paths, Config(), find_aotr(), [].append)
 
     assert not (paths.downloads / ZIP).exists()
 
@@ -448,41 +451,41 @@ def test_a_finished_download_is_not_repeated(paths):
     paths.downloads.mkdir(parents=True)
     (paths.downloads / ZIP).write_bytes(data)
 
-    assert aotr.download_zip(paths, Config(), remote_for(data), [].append) == paths.downloads / ZIP
+    assert AOTR.download_zip(paths, Config(), remote_for(data), [].append) == paths.downloads / ZIP
 
 
 def test_before_downloading_there_must_be_room_for_the_unpacked_installer_and_the_game(paths, monkeypatch):
-    monkeypatch.setattr(aotr.shutil, "disk_usage", lambda path: Usage(0, 0, 2_700_000_000))
+    monkeypatch.setattr(aotr_module.shutil, "disk_usage", lambda path: Usage(0, 0, 2_700_000_000))
     remote = remote_for(b"")
     remote = remote.__class__(remote.name, 1_000_000_000, remote.md5, remote.url)
 
-    aotr.check_download_space(paths, Config(), remote)  # 1 GB unpacked + 1.6 GB installed
+    AOTR.check_download_space(paths, Config(), remote)  # 1 GB unpacked + 1.6 GB installed
 
-    monkeypatch.setattr(aotr.shutil, "disk_usage", lambda path: Usage(0, 0, 2_000_000_000))
+    monkeypatch.setattr(aotr_module.shutil, "disk_usage", lambda path: Usage(0, 0, 2_000_000_000))
 
     with pytest.raises(SetupError, match="needs 3 GB more, but only 2 GB is free"):
-        aotr.check_download_space(paths, Config(), remote)
+        AOTR.check_download_space(paths, Config(), remote)
 
 
 def test_keeping_the_download_needs_room_for_it_too(paths, monkeypatch):
-    monkeypatch.setattr(aotr.shutil, "disk_usage", lambda path: Usage(0, 0, 3_000_000_000))
+    monkeypatch.setattr(aotr_module.shutil, "disk_usage", lambda path: Usage(0, 0, 3_000_000_000))
     remote = remote_for(b"")
     remote = remote.__class__(remote.name, 1_000_000_000, remote.md5, remote.url)
 
-    aotr.check_download_space(paths, Config(), remote)
+    AOTR.check_download_space(paths, Config(), remote)
 
     with pytest.raises(SetupError, match="needs 4 GB more"):
-        aotr.check_download_space(paths, Config(keep_aotr_download=True), remote)
+        AOTR.check_download_space(paths, Config(keep_aotr_download=True), remote)
 
 
 def test_an_unpacked_installer_of_the_same_zip_is_used_again(paths):
-    assert aotr.from_unpacked(paths, ZIP) is None
+    assert AOTR.from_unpacked(paths, ZIP) is None
     unpacked(paths)
-    (paths.aotr_unpack / "AotR_Standalone_9.3.0_Installer-1a.bin").write_bytes(b"x" * 10)
+    (AOTR.unpack_dir(paths) / "AotR_Standalone_9.3.0_Installer-1a.bin").write_bytes(b"x" * 10)
 
-    assert aotr.from_unpacked(paths, ZIP) is None  # its unpack did not finish
-    (paths.aotr_unpack / ".complete").write_text(ZIP + "\n")
-    found = aotr.from_unpacked(paths, ZIP)
+    assert AOTR.from_unpacked(paths, ZIP) is None  # its unpack did not finish
+    (AOTR.unpack_dir(paths) / ".complete").write_text(ZIP + "\n")
+    found = AOTR.from_unpacked(paths, ZIP)
 
     assert (found.exe_name, found.unpacked_bytes) == (EXE, len("installer") + 10 + len(ZIP) + 1)
-    assert aotr.from_unpacked(paths, "AotR_Standalone_10.1.0_Installer.zip") is None
+    assert AOTR.from_unpacked(paths, "AotR_Standalone_10.1.0_Installer.zip") is None

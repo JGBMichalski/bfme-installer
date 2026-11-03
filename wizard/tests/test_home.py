@@ -11,6 +11,7 @@ from bfme_wizard.apps import AppLauncher
 from bfme_wizard.controller import Controller
 from bfme_wizard.diagnostics import any_log, build_report, newest_log, system_lines, tail
 from bfme_wizard.engine.events import Cancelled, Check, Done, Fix, Status
+from bfme_wizard.engine.programs import AIO_LAUNCHER
 from bfme_wizard.model import SetupModel, games_line
 from bfme_wizard.runner import JobRunner
 from tests.fake_jobs import FakeJobs, idle_controller
@@ -330,8 +331,8 @@ def test_a_2x_shortcut_is_replaced_the_first_time_it_is_used(tmp_path, monkeypat
     for folder in ("windows", "users/steamuser"):
         (data.drive_c / folder).mkdir(parents=True)
 
-    data.aio_launcher_exe.parent.mkdir(parents=True)
-    data.aio_launcher_exe.write_text("x")
+    AIO_LAUNCHER.exe(data).parent.mkdir(parents=True)
+    AIO_LAUNCHER.exe(data).write_text("x")
     mountinfo = tmp_path / "mountinfo"
     mountinfo.write_text(f"20 1 0:20 / / rw - tmpfs tmpfs rw\n40 20 0:40 / {home} rw - ext4 /dev/sda1 rw\n")
     monkeypatch.setattr(shortcuts, "MOUNTINFO", mountinfo)

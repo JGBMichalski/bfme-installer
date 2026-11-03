@@ -11,9 +11,9 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, GLib, Gtk  # noqa: E402
 
-from .catalog import CATALOG, Program
 from .controller import Controller
 from .engine.paths import paths
+from .engine.programs import PROGRAMS, Program
 from .model import games_line
 from .widgets import clear, first_icon, pill, program_icon
 
@@ -90,7 +90,7 @@ class HomePage:
             self.content.append(
                 Gtk.Label(label=line, wrap=True, justify=Gtk.Justification.CENTER, css_classes=["heading"])
             )
-        installed = [info for info in CATALOG if self.controller.model.is_installed(info.key)]
+        installed = [info for info in PROGRAMS if self.controller.model.is_installed(info.key)]
         if not installed:
             self.content.append(
                 Gtk.Label(

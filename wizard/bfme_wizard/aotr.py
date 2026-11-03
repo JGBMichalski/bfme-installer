@@ -14,11 +14,10 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, GLib, Gtk  # noqa: E402
 
-from .catalog import AOTR_DOWNLOAD_GB as DOWNLOAD_GB
-from .catalog import AOTR_INSTALLED_GB
+from .engine.programs.aotr import DOWNLOAD_GB, INSTALLED_GB
 from .widgets import pill
 
-SPACE_GB = DOWNLOAD_GB + AOTR_INSTALLED_GB  # the unpacked download (about as big as the zip), then the installed game
+SPACE_GB = DOWNLOAD_GB + INSTALLED_GB  # the unpacked download (about as big as the zip), then the installed game
 INTRO = (
     "It comes with its own launcher and its own copy of the games, so the games you already have stay as they are. "
     "This app could not download it itself, so you do that part in your web browser and this app does the rest."

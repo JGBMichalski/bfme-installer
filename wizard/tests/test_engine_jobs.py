@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from bfme_wizard.engine import aotr, doctor, download, graphics, jobs, programs, shortcuts
+from bfme_wizard.engine import doctor, download, graphics, jobs, shortcuts
 from bfme_wizard.engine.events import (
     Cancelled,
     Check,
@@ -24,6 +24,17 @@ from bfme_wizard.engine.events import (
 )
 from bfme_wizard.engine.lock import setup_lock
 from bfme_wizard.engine.paths import Paths
+from bfme_wizard.engine.programs import (
+    AIO_LAUNCHER,
+    AOTR,
+    ARENA,
+    AgeOfTheRing,
+    AioLauncher,
+    Arena,
+    MissionControl,
+    WorkshopStudio,
+    program,
+)
 
 SEVENZIP = shutil.which("7zz") or shutil.which("7z") or shutil.which("7za")
 needs_7zip = pytest.mark.skipif(SEVENZIP is None, reason="7-Zip is needed to read the Age of the Ring download")
@@ -80,14 +91,11 @@ class World:
             hashlib.md5(b"arena-binary").hexdigest().encode()
         )
         file_server.files["/application-builds/online-arena-main"] = b"arena-binary"
-        monkeypatch.setattr(programs, "AIO_LAUNCHER_URL", file_server.url("/setup.exe"))
-        monkeypatch.setattr(programs, "ARENA_FILES_HOST", file_server.url(""))
-        monkeypatch.setattr(programs, "ARENA_SERVER_HOST", file_server.url(""))
-        monkeypatch.setattr(
-            programs,
-            "TOOL_URLS",
-            {"workshop": file_server.url("/tool.exe"), "mission-control": file_server.url("/tool.exe")},
-        )
+        monkeypatch.setattr(AioLauncher, "URL", file_server.url("/setup.exe"))
+        monkeypatch.setattr(Arena, "FILES_HOST", file_server.url(""))
+        monkeypatch.setattr(Arena, "SERVER_HOST", file_server.url(""))
+        monkeypatch.setattr(WorkshopStudio, "url", file_server.url("/tool.exe"))
+        monkeypatch.setattr(MissionControl, "url", file_server.url("/tool.exe"))
 
         # The 32-bit extensions are there, the menu folder is shared, and the computer suits Vulkan.
         lib = tmp_path / "lib"
@@ -98,8 +106,8 @@ class World:
         mountinfo.write_text(f"20 1 0:20 / / rw - tmpfs tmpfs rw\n40 20 0:40 / {self.home} rw - ext4 /dev/sda1 rw\n")
         monkeypatch.setattr(shortcuts, "MOUNTINFO", mountinfo)
         monkeypatch.setattr(graphics, "probe", lambda: ("vulkan", "Vulkan 1.4 on Test GPU"))
-        monkeypatch.setattr(programs, "POLL_SEC", 0.05)
-        monkeypatch.setattr(aotr, "WATCH_SEC", 0.05)
+        monkeypatch.setattr(AioLauncher, "POLL_SEC", 0.05)
+        monkeypatch.setattr(AgeOfTheRing, "WATCH_SEC", 0.05)
         monkeypatch.setattr(download, "SPEED_INTERVAL_SEC", 0)
 
     def make_prefix(self):
@@ -199,8 +207,8 @@ def test_status_of_nothing(world):
 
 def test_status_of_a_ready_environment(world):
     world.make_prefix()
-    world.paths.aotr_exe.parent.mkdir(parents=True)
-    world.paths.aotr_exe.write_text("x")
+    AOTR.exe(world.paths).parent.mkdir(parents=True)
+    AOTR.exe(world.paths).write_text("x")
 
     code, events = world.engine(jobs.status)
 
@@ -213,8 +221,8 @@ def test_setup_complete_and_ready_to_open(world):
     world.make_prefix()
     assert not jobs.setup_complete()
     assert not jobs.ready_to_open("aotr")
-    world.paths.aotr_exe.parent.mkdir(parents=True)
-    world.paths.aotr_exe.write_text("x")
+    AOTR.exe(world.paths).parent.mkdir(parents=True)
+    AOTR.exe(world.paths).write_text("x")
     assert jobs.setup_complete()
     assert jobs.ready_to_open("aotr")
     assert not jobs.ready_to_open("arena")
@@ -284,7 +292,7 @@ def test_the_aio_launcher_needs_the_game_environment(world):
     assert lines(events) == ["@bfme ERROR - Set up the game environment first."]
 
 
-@pytest.mark.parametrize("tool", programs.TOOLS)
+@pytest.mark.parametrize("tool", ["workshop", "mission-control"])
 def test_a_tool(world, tool):
     world.make_prefix()
 
@@ -305,7 +313,7 @@ def test_an_unknown_tool(world):
     code, events = world.engine(jobs.tool_install, "bogus")
 
     assert code == jobs.FAILED
-    assert lines(events) == ["@bfme ERROR - Unknown tool: bogus."]
+    assert lines(events) == ["@bfme ERROR - Unknown program: bogus."]
 
 
 def aotr_zip(world, version="10.0.0"):
@@ -412,21 +420,21 @@ def test_a_retry_after_a_failed_install_does_not_download_again(world, moddb, mo
 # Changing what is there
 
 
-@pytest.mark.parametrize("program", ["aio-launcher", "arena", "aotr", "workshop", "mission-control"])
-def test_remove(world, program):
+@pytest.mark.parametrize("key", ["aio-launcher", "arena", "aotr", "workshop", "mission-control"])
+def test_remove(world, key):
     world.make_prefix()
 
     for exe in (
-        world.paths.aio_launcher_exe,
-        world.paths.arena_exe,
-        world.paths.aotr_exe,
-        world.paths.tool_exe("workshop"),
-        world.paths.tool_exe("mission-control"),
+        AIO_LAUNCHER.exe(world.paths),
+        ARENA.exe(world.paths),
+        AOTR.exe(world.paths),
+        program("workshop").exe(world.paths),
+        program("mission-control").exe(world.paths),
     ):
         exe.parent.mkdir(parents=True, exist_ok=True)
         exe.write_text("x")
 
-    code, events = world.engine(jobs.remove, program)
+    code, events = world.engine(jobs.remove, key)
 
     everything_but_this = {
         "aio_launcher": "installed",
@@ -436,7 +444,7 @@ def test_remove(world, program):
         "mission_control": "installed",
         "complete": "yes",
     }
-    everything_but_this[program.replace("-", "_")] = "missing"
+    everything_but_this[key.replace("-", "_")] = "missing"
 
     assert code == jobs.OK
     assert lines(events) == [
@@ -458,8 +466,8 @@ def test_switching_graphics(world, backend):
 
 def test_reset(world):
     world.make_prefix()
-    world.paths.aotr_exe.parent.mkdir(parents=True)
-    world.paths.aotr_exe.write_text("x")
+    AOTR.exe(world.paths).parent.mkdir(parents=True)
+    AOTR.exe(world.paths).write_text("x")
 
     code, events = world.engine(jobs.reset)
 
@@ -538,14 +546,14 @@ def test_progress_is_reported_while_proton_downloads(world, monkeypatch, file_se
 
 def test_opening_age_of_the_ring_starts_it_from_its_folder(world):
     world.make_prefix()
-    world.paths.aotr_exe.parent.mkdir(parents=True)
-    world.paths.aotr_exe.write_text("x")
+    AOTR.exe(world.paths).parent.mkdir(parents=True)
+    AOTR.exe(world.paths).write_text("x")
 
     code, events = world.engine(jobs.open_program, "aotr")
 
     assert code == jobs.OK
-    assert Path(world.env["UMU_LOG"]).read_text().splitlines()[-1] == f"umu {world.paths.aotr_exe}"
-    assert events[-1].text.startswith("Starting aotr. Log: ")
+    assert Path(world.env["UMU_LOG"]).read_text().splitlines()[-1] == f"umu {AOTR.exe(world.paths)}"
+    assert events[-1].text.startswith("Starting Age of the Ring. Log: ")
 
 
 def test_opening_a_missing_program_says_so(world):
@@ -563,24 +571,24 @@ def test_opening_the_aio_launcher_installs_it_first(world):
     code, events = world.engine(jobs.open_program, "aio-launcher")
 
     assert code == jobs.OK
-    assert programs.aio_launcher_installed(world.paths)
+    assert AIO_LAUNCHER.installed(world.paths)
     assert events[-1].text.startswith("Starting the AIO Launcher. Log: ")
     assert list(world.paths.logs.glob("aio-launcher-2*.log"))
 
 
 def test_the_lock_is_free_while_the_program_runs(world, monkeypatch):
     world.make_prefix()
-    world.paths.aotr_exe.parent.mkdir(parents=True)
-    world.paths.aotr_exe.write_text("x")
+    AOTR.exe(world.paths).parent.mkdir(parents=True)
+    AOTR.exe(world.paths).write_text("x")
     held = []
 
-    def start_program(*args):
+    def open_aotr(*args):
         with setup_lock(world.paths):
             held.append(True)
 
         return 0
 
-    monkeypatch.setattr(jobs.launch, "start_program", start_program)
+    monkeypatch.setattr(AgeOfTheRing, "open", open_aotr)
     world.engine(jobs.open_program, "aotr")
 
     assert held == [True]

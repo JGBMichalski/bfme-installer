@@ -13,7 +13,7 @@ import subprocess
 from pathlib import Path
 
 from .engine import graphics
-from .engine.launch import program_logs
+from .engine.logs import RunLogs
 from .model import GAMES, SetupModel
 
 LOG_LINES = 40
@@ -21,7 +21,7 @@ LOG_LINES = 40
 
 def newest_log(log_dir: Path, prefix: str) -> Path | None:
     """The most recent '<prefix>-<date>-<time>.log', or else the plain '<prefix>.log'."""
-    started = program_logs(log_dir, prefix)
+    started = RunLogs(log_dir, prefix).started()
 
     if started:
         return started[0]
