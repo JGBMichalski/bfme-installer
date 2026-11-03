@@ -4,11 +4,10 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable
 from functools import partial
-from types import ModuleType
 
 from .apps import AppLauncher
-from .engine import jobs as engine_jobs
 from .engine.events import Event
+from .engine.jobs import Engine
 from .engine.programs import program
 from .model import ALL_PROGRAMS, TOOLS, SetupModel
 from .runner import JobRunner
@@ -20,13 +19,13 @@ class Controller:
         runner: JobRunner,
         on_change: Callable[[], None],
         offer: str | None = None,
-        jobs: ModuleType | object = engine_jobs,
+        jobs: Engine | None = None,
     ) -> None:
         self.runner = runner
-        self.jobs = jobs  # engine/jobs.py; the tests give a stand-in
+        self.jobs = jobs or Engine()  # the tests give a stand-in
         self.model = SetupModel()
         self._on_change = on_change
-        self.apps = AppLauncher(jobs.open_program, on_change)
+        self.apps = AppLauncher(self.jobs.open_program, on_change)
         self._aotr_zip: str | None = None  # the file the player chose for Age of the Ring, kept for Retry and Resume
         self._offer = offer  # what the shortcut that opened the wizard wanted, used once (see start)
 
@@ -191,14 +190,11 @@ class Controller:
             return
         self.model.begin_job(name)
         self._on_change()
-        if name in TOOLS:
-            job = partial(self.jobs.tool_install, name)
-        elif name == "aotr":
-            job = partial(self.jobs.aotr_install, self._aotr_zip)
-        elif name == "aio-launcher":
-            job = self.jobs.aio_launcher_install
-        else:
+        if name == "environment":
             job = self.jobs.prepare
+        else:
+            # Only Age of the Ring's job uses the file the player chose.
+            job = partial(self.jobs.install, name, self._aotr_zip)
         self.runner.run(job, self._event, self._job_done)
 
     def _event(self, event: Event) -> None:

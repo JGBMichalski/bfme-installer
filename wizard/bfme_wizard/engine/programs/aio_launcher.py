@@ -5,14 +5,18 @@ from __future__ import annotations
 import threading
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from .. import proton
+from .. import proton, shortcuts
 from ..config import Config
 from ..download import download
 from ..errors import JobCancelled, SetupError
 from ..events import Emit, Log, Warn, report_speed
 from ..paths import Paths
 from .base import Program, Shortcut
+
+if TYPE_CHECKING:
+    from ..jobs import InstallJob
 
 
 class AioLauncher(Program):
@@ -47,6 +51,10 @@ class AioLauncher(Program):
     INSTALLING = ".bfme-aio-launcher-installing"
     POLL_SEC = 3
     WAIT_SEC = 180
+    DONE = (
+        "Done. Start 'BFME All-in-One Launcher' to install the games, and 'BFME Online Arena' to play online.",
+        "Do not switch patches in the AIO Launcher after a game is installed. On Wine this once broke the BFME 2 files.",
+    )
 
     def exe(self, paths: Paths) -> Path:
         return paths.roaming / "BFME All In One Launcher/AllInOneLauncher.exe"
@@ -60,6 +68,29 @@ class AioLauncher(Program):
     def leftovers(self, paths: Paths) -> list[Path]:
         setup = self.setup_file(paths)
         return [paths.prefix / self.INSTALLING, setup, setup.with_name(setup.name + ".part")]
+
+    def run_install(self, job: InstallJob) -> None:
+        """It, then the Arena that comes with it, then their shortcuts."""
+        from . import ARENA
+
+        if self.installed(job.paths):
+            job.skip("aio-launcher")
+        else:
+            job.start("aio-launcher")
+            proton_path = job.ensure_prefix()
+            self.install(job.paths, job.config, proton_path, job.emit, job.cancel)
+            job.done("aio-launcher")
+
+        job.start("arena")
+        job.ensure_prefix()
+        ARENA.update(job.paths, job.emit, job.cancel)
+        job.done("arena")
+
+        # The programs are installed whatever happens here, and sync says what went wrong.
+        job.start("shortcuts")
+        shortcuts.sync(job.paths, job.emit, job.environ)
+        job.done("shortcuts")
+        job.finish(*self.DONE)
 
     def prepare_to_open(
         self, paths: Paths, config: Config, proton_path: str, emit: Emit, cancel: threading.Event | None = None

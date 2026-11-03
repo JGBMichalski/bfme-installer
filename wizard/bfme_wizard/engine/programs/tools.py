@@ -5,11 +5,15 @@ from __future__ import annotations
 
 import threading
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from ..download import download
 from ..events import Emit, Log, report_speed
 from ..paths import Paths
 from .base import Program, Step
+
+if TYPE_CHECKING:
+    from ..jobs import InstallJob
 
 
 class Tool(Program):
@@ -31,6 +35,12 @@ class Tool(Program):
 
     def exe(self, paths: Paths) -> Path:
         return paths.drive_c / "BFME Tools" / self.folder_name / self.exe_name
+
+    def run_install(self, job: InstallJob) -> None:
+        job.start(self.key)
+        self.install(job.paths, job.emit, job.cancel)
+        job.done(self.key)
+        job.finish(f"{self.name} is installed.")
 
     def install(self, paths: Paths, emit: Emit, cancel: threading.Event | None = None, url: str | None = None) -> None:
         exe = self.exe(paths)

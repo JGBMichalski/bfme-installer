@@ -1,15 +1,14 @@
 """The jobs the wizard runs. Each wraps the setup's steps with what a whole job needs: the setup lock, the steps it reports,
 where things stand when it ends, and its errors.
 
-Every job takes (emit, cancel) and returns an exit status: 0 done, 1 failed, 130 stopped by the player.
+`Engine` is what the window calls. Every job takes (emit, cancel) and returns an exit status: 0 done, 1 failed, 2 the
+player must choose the Age of the Ring file, 130 stopped by the player.
 """
 
 from __future__ import annotations
 
 import threading
-from collections.abc import Callable
-from dataclasses import dataclass
-from pathlib import Path
+from abc import ABC, abstractmethod
 
 from . import doctor, proton, shortcuts
 from .config import Config, ConfigError
@@ -17,7 +16,7 @@ from .config import load as load_config
 from .errors import JobCancelled, SetupError
 from .events import Cancelled, Done, Emit, Error, Log, Progress, Status, Step
 from .lock import setup_lock
-from .moddb import ModdbUnavailable, find_aotr
+from .moddb import ModdbUnavailable
 from .paths import Paths
 from .paths import paths as paths_for
 from .prefix import (
@@ -29,61 +28,60 @@ from .prefix import (
     set_graphics,
     set_option,
 )
-from .programs import AIO_LAUNCHER, AOTR, ARENA, PROGRAMS, TOOLS, program
+from .programs import EVERY_PROGRAM, program
 
 OK = 0
 FAILED = 1
 NEEDS_FILE = 2  # the app cannot download Age of the Ring itself: the player downloads it and chooses the file
 STOPPED = 130
 SET_UP_FIRST = "Set up the game environment first."
-AIO_LAUNCHER_DONE = [
-    "Done. Start 'BFME All-in-One Launcher' to install the games, and 'BFME Online Arena' to play online.",
-    "Do not switch patches in the AIO Launcher after a game is installed. On Wine this once broke the BFME 2 files.",
-]
 # Each game's program, under drive_c. A game counts as installed once it is there.
 GAME_EXES = {"bfme1": "BFME1/lotrbfme.exe", "bfme2": "BFME2/lotrbfme2.exe", "rotwk": "RotWK/lotrbfme2ep1.exe"}
 
 
-def setup_status(paths: Paths, config: Config) -> dict[str, str]:
-    """Where the setup stands, as the wizard reads it. Complete means the game environment is ready and holds at least one
-    program; the tools do not count."""
-    ready = prefix_ready(paths)
-    out = {
-        "runner": "proton",
-        "graphics": config.graphics,
-        "gpu": config.gpu,
-        "fps-counter": "1" if fps_counter_on(config) else "0",
-        # The window offers the choice of card only on a computer that has more than one.
-        "graphics-cards": str(len(proton.graphics_cards())),
-        "prefix": "ready" if ready else "missing",
-    }
-    any_program = False
+class Job(ABC):
+    """One run of a job: what it works with, the step it is on (an error names it), and how it ends."""
 
-    for each in (*PROGRAMS, *TOOLS):
-        is_installed = each.installed(paths)
-        out[each.key] = "installed" if is_installed else "missing"
+    def __init__(
+        self, emit: Emit, cancel: threading.Event | None = None, environ: dict[str, str] | None = None
+    ) -> None:
+        self.emit = emit
+        self.cancel = cancel or threading.Event()
+        self.environ = environ
+        self.paths: Paths = paths_for(environ)
+        self.config = Config()
+        self.step: str | None = None
 
-        if is_installed and not each.is_tool:
-            any_program = True
+    @abstractmethod
+    def body(self) -> None:
+        """What the job does. Raises SetupError when it fails."""
 
-    for game, exe in GAME_EXES.items():
-        out[game] = "installed" if (paths.drive_c / exe).is_file() else "missing"
+    def run(self) -> int:
+        """Run the body and turn how it ended into events and an exit status."""
+        try:
+            self.config = load_config(self.paths.config, self.environ)
+        except ConfigError as error:
+            self.emit(Error(None, str(error)))
+            return FAILED
 
-    out["complete"] = "yes" if ready and any_program else "no"
+        try:
+            self.body()
+        except JobCancelled:
+            self.emit(Cancelled())
+            self.emit(Log("Stopped before the next step."))
+            return STOPPED
+        except SetupError as error:
+            self.emit(Log(f"ERROR: {error}"))
+            self.emit(Error(self.step, str(error)))
+            return FAILED
+        except ModdbUnavailable as error:
+            self.emit(Log(f"The app cannot download it itself: {error}"))
+            self.emit(Error(self.step, str(error)))
+            return NEEDS_FILE
 
-    return out
+        return OK
 
-
-@dataclass
-class Job:
-    """What a running job works with, and the step it is on (an error names it)."""
-
-    paths: Paths
-    config: Config
-    emit: Emit
-    cancel: threading.Event
-    environ: dict[str, str] | None
-    step: str | None = None
+    # Steps
 
     def stop_if_asked(self) -> None:
         """Stop the job if the player asked for it."""
@@ -97,362 +95,281 @@ class Job:
         self.emit(Step(step, "start"))
 
     def done(self, step: str) -> None:
-        """Mark a step as done."""
         self.emit(Step(step, "done"))
         self.step = None
 
     def skip(self, step: str) -> None:
-        """Skip a step."""
         self.stop_if_asked()
         self.emit(Step(step, "skip"))
 
-    def report_status(self) -> None:
-        """Report the current status of all programs."""
-        for key, value in setup_status(self.paths, self.config).items():
-            self.emit(Status(key, value))
-
     def lock(self):
-        """Acquire a lock for the job's paths and environment."""
+        """Only one setup changes the game environment at a time."""
         return setup_lock(self.paths, self.environ)
 
+    # Where things stand
 
-def _run(
-    body: Callable[[Job], None], emit: Emit, cancel: threading.Event | None, environ: dict[str, str] | None
-) -> int:
-    """Run a job's body and turn how it ended into events and an exit status."""
-    paths = paths_for(environ)
+    def setup_status(self) -> dict[str, str]:
+        """Where the setup stands, as the wizard reads it. Complete means the game environment is ready and holds at least
+        one program; the tools do not count."""
+        ready = prefix_ready(self.paths)
+        out = {
+            "runner": "proton",
+            "graphics": self.config.graphics,
+            "gpu": self.config.gpu,
+            "fps-counter": "1" if fps_counter_on(self.config) else "0",
+            # The window offers the choice of card only on a computer that has more than one.
+            "graphics-cards": str(len(proton.graphics_cards())),
+            "prefix": "ready" if ready else "missing",
+        }
+        any_program = False
 
-    try:
-        config = load_config(paths.config, environ)
-    except ConfigError as error:
-        emit(Error(None, str(error)))
-        return FAILED
+        for each in EVERY_PROGRAM:
+            is_installed = each.installed(self.paths)
+            out[each.key] = "installed" if is_installed else "missing"
 
-    job = Job(paths=paths, config=config, emit=emit, cancel=cancel or threading.Event(), environ=environ)
+            if is_installed and not each.is_tool:
+                any_program = True
 
-    try:
-        body(job)
-    except JobCancelled:
-        emit(Cancelled())
-        emit(Log("Stopped before the next step."))
-        return STOPPED
-    except SetupError as error:
-        emit(Log(f"ERROR: {error}"))
-        emit(Error(job.step, str(error)))
-        return FAILED
-    except ModdbUnavailable as error:
-        emit(Log(f"The app cannot download it itself: {error}"))
-        emit(Error(job.step, str(error)))
-        return NEEDS_FILE
+        for game, exe in GAME_EXES.items():
+            out[game] = "installed" if (self.paths.drive_c / exe).is_file() else "missing"
 
-    return OK
+        out["complete"] = "yes" if ready and any_program else "no"
 
+        return out
 
-def _ensure_runner(job: Job) -> str:
-    """Proton, ready to run programs. Returns PROTONPATH for umu."""
-    for folder in (job.paths.base, job.paths.downloads, job.paths.logs):
-        folder.mkdir(parents=True, exist_ok=True)
+    def report_status(self) -> None:
+        for key, value in self.setup_status().items():
+            self.emit(Status(key, value))
 
-    # Without the 32-bit extensions Proton's container fails silently, so stop here with the fix.
-    if doctor.flatpak_32bit_missing():
-        for line in doctor.FLATPAK_32BIT_HELP.splitlines():
-            job.emit(Log(line))
+    def finish(self, *lines: str) -> None:
+        """End with where things stand, then any last words for the player."""
+        self.report_status()
+        self.emit(Done())
 
-        raise SetupError("The 32-bit Flatpak extensions are not installed.")
+        for line in lines:
+            self.emit(Log(line))
 
-    def progress(percent: int) -> None:
-        job.emit(Progress(percent))
+    # The game environment
 
-    return proton.ensure_proton(job.paths, job.config, progress, job.cancel, emit=job.emit)
+    def ensure_runner(self) -> str:
+        """Proton, ready to run programs. Returns PROTONPATH for umu."""
+        for folder in (self.paths.base, self.paths.downloads, self.paths.logs):
+            folder.mkdir(parents=True, exist_ok=True)
 
+        # Without the 32-bit extensions Proton's container fails silently, so stop here with the fix.
+        if doctor.flatpak_32bit_missing():
+            for line in doctor.FLATPAK_32BIT_HELP.splitlines():
+                self.emit(Log(line))
 
-def _ensure_prefix(job: Job) -> str:
-    """Proton and a ready game environment with the current settings. Returns PROTONPATH for umu."""
-    proton_path = _ensure_runner(job)
-    prepare_prefix(job.paths, job.config, proton_path, job.emit)
-    return proton_path
+            raise SetupError("The 32-bit Flatpak extensions are not installed.")
 
+        def progress(percent: int) -> None:
+            self.emit(Progress(percent))
 
-def _finish(job: Job, *lines: str) -> None:
-    """Finish the job, reporting its status and any final messages."""
-    job.report_status()
-    job.emit(Done())
+        return proton.ensure_proton(self.paths, self.config, progress, self.cancel, emit=self.emit)
 
-    for line in lines:
-        job.emit(Log(line))
+    def ensure_prefix(self) -> str:
+        """Proton and a ready game environment with the current settings. Returns PROTONPATH for umu."""
+        proton_path = self.ensure_runner()
+        prepare_prefix(self.paths, self.config, proton_path, self.emit)
+        return proton_path
+
+    def need_prefix(self) -> None:
+        if not prefix_ready(self.paths):
+            raise SetupError(SET_UP_FIRST)
 
 
-def status(emit: Emit, cancel: threading.Event | None = None, environ: dict[str, str] | None = None) -> int:
-    """Report the current status of the system."""
-    return _run(Job.report_status, emit, cancel, environ)
+class StatusJob(Job):
+    def body(self) -> None:
+        self.report_status()
 
 
-def check(emit: Emit, cancel: threading.Event | None = None, environ: dict[str, str] | None = None) -> int:
-    """Run the system check alone."""
+class CheckJob(Job):
+    """The system check alone."""
 
-    def body(job: Job) -> None:
-        if not doctor.run_checks(job.paths, job.config, job.emit):
+    def body(self) -> None:
+        if not doctor.run_checks(self.paths, self.config, self.emit):
             raise SetupError("The system check found a problem.")
 
-    return _run(body, emit, cancel, environ)
 
-
-def sync_shortcuts(emit: Emit, cancel: threading.Event | None = None, environ: dict[str, str] | None = None) -> int:
-    """Synchronize the game shortcuts."""
-
-    def body(job: Job) -> None:
-        if not shortcuts.sync(job.paths, job.emit, job.environ):
+class SyncShortcutsJob(Job):
+    def body(self) -> None:
+        if not shortcuts.sync(self.paths, self.emit, self.environ):
             raise SetupError("The shortcuts could not be updated.")
 
-    return _run(body, emit, cancel, environ)
 
+class PrepareJob(Job):
+    """The game environment: the system check, Proton, and the prefix."""
 
-def prepare(emit: Emit, cancel: threading.Event | None = None, environ: dict[str, str] | None = None) -> int:
-    """Prepare the game environment: the system check, Proton, and the prefix."""
+    def body(self) -> None:
+        self.start("doctor")
 
-    def body(job: Job) -> None:
-        job.start("doctor")
-
-        if not doctor.run_checks(job.paths, job.config, job.emit):
+        if not doctor.run_checks(self.paths, self.config, self.emit):
             raise SetupError("Your system needs a change first. Fix the problems above, then try again.")
 
-        job.done("doctor")
+        self.done("doctor")
 
-        with job.lock():
-            job.start("runner")
-            proton_path = _ensure_runner(job)
-            job.done("runner")
-            job.start("prefix")
+        with self.lock():
+            self.start("runner")
+            proton_path = self.ensure_runner()
+            self.done("runner")
+            self.start("prefix")
 
-            if not prefix_ready(job.paths):
-                job.config = detect_graphics(job.paths, job.config, job.emit)
+            if not prefix_ready(self.paths):
+                self.config = detect_graphics(self.paths, self.config, self.emit)
 
-            prepare_prefix(job.paths, job.config, proton_path, job.emit)
-            job.done("prefix")
-            _finish(job, "The game environment is ready.")
-
-    return _run(body, emit, cancel, environ)
+            prepare_prefix(self.paths, self.config, proton_path, self.emit)
+            self.done("prefix")
+            self.finish("The game environment is ready.")
 
 
-def aio_launcher_install(
-    emit: Emit, cancel: threading.Event | None = None, environ: dict[str, str] | None = None
-) -> int:
-    """Install the AIO Launcher and the Arena, with their shortcuts. Needs the game environment."""
+class InstallJob(Job):
+    """Install one program, by its own steps (Program.run_install). Needs the game environment. `zip_path` is the Age of
+    the Ring file the player chose; the other programs ignore it."""
 
-    def body(job: Job) -> None:
-        if not prefix_ready(job.paths):
-            raise SetupError(SET_UP_FIRST)
+    def __init__(self, key: str, zip_path: str | None, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.key = key
+        self.zip_path = zip_path
 
-        with job.lock():
-            if AIO_LAUNCHER.installed(job.paths):
-                job.skip("aio-launcher")
-            else:
-                job.start("aio-launcher")
-                proton_path = _ensure_prefix(job)
-                AIO_LAUNCHER.install(job.paths, job.config, proton_path, job.emit, job.cancel)
-                job.done("aio-launcher")
+    def body(self) -> None:
+        chosen = program(self.key)
+        self.need_prefix()
 
-            job.start("arena")
-            _ensure_prefix(job)
-            ARENA.update(job.paths, job.emit, job.cancel)
-            job.done("arena")
-
-            # The programs are installed whatever happens here, and sync says what went wrong.
-            job.start("shortcuts")
-            shortcuts.sync(job.paths, job.emit, job.environ)
-            job.done("shortcuts")
-            _finish(job, *AIO_LAUNCHER_DONE)
-
-    return _run(body, emit, cancel, environ)
-
-
-def aotr_install(
-    zip_path: str | None, emit: Emit, cancel: threading.Event | None = None, environ: dict[str, str] | None = None
-) -> int:
-    """Install Age of the Ring. Without a zip from the player, the app downloads it from ModDB; when it cannot, the job
-    ends with NEEDS_FILE and the player downloads it in a browser. Needs the game environment."""
-
-    def body(job: Job) -> None:
-        if not prefix_ready(job.paths):
-            raise SetupError(SET_UP_FIRST)
-
-        with job.lock():
-            downloaded = not zip_path
-            resumed = None
-
-            if zip_path:
-                job.emit(Step("aotr-download", "done"))  # the player did this step
-                aotr_zip_path = Path(zip_path)
-            else:
-                job.start("aotr-download")
-                remote = find_aotr()
-                # A retry after a failed install needs no download when the installer is still unpacked.
-                resumed = AOTR.from_unpacked(job.paths, remote.name)
-
-                if resumed is None:
-                    aotr_zip_path = AOTR.download_zip(job.paths, job.config, remote, job.emit, job.cancel)
-                else:
-                    aotr_zip_path = resumed.path
-
-                job.done("aotr-download")
-
-            if resumed is None:
-                job.start("aotr-check")
-                aotr_zip = AOTR.check_zip(aotr_zip_path)
-                AOTR.check_space(job.paths, aotr_zip)
-                proton_path = _ensure_prefix(job)
-                job.done("aotr-check")
-
-                job.start("aotr-unpack")
-                AOTR.unpack(job.paths, aotr_zip, job.emit, job.cancel)
-
-                # The zip the app downloaded goes once it is unpacked, unless the player keeps it. The player's own stays.
-                if downloaded and not job.config.keep_aotr_download:
-                    aotr_zip.path.unlink(missing_ok=True)
-
-                job.done("aotr-unpack")
-            else:
-                aotr_zip = resumed
-                job.skip("aotr-check")
-                proton_path = _ensure_prefix(job)
-                job.skip("aotr-unpack")
-
-            job.start("aotr-install")
-            AOTR.run_installer(job.paths, job.config, proton_path, aotr_zip, job.emit, job.cancel)
-            job.done("aotr-install")
-
-            job.start("aotr-settings")
-            AOTR.clean_up(job.paths)
-            job.done("aotr-settings")
-
-            shortcuts.sync(job.paths, job.emit, job.environ)
-
-            if downloaded:
-                _finish(job, "Age of the Ring is installed.")
-            else:
-                _finish(job, f"Age of the Ring is installed. You can delete {aotr_zip_path.name} now.")
-
-    return _run(body, emit, cancel, environ)
-
-
-def tool_install(
-    tool: str, emit: Emit, cancel: threading.Event | None = None, environ: dict[str, str] | None = None
-) -> int:
-    """Install Workshop Studio or Mission Control. Needs the game environment."""
-
-    def body(job: Job) -> None:
-        chosen = program(tool)
-
-        if not chosen.is_tool:
-            raise SetupError(f"Unknown tool: {tool}.")
-
-        if not prefix_ready(job.paths):
-            raise SetupError(SET_UP_FIRST)
-
-        with job.lock():
-            for folder in (job.paths.downloads, job.paths.logs):
+        with self.lock():
+            for folder in (self.paths.downloads, self.paths.logs):
                 folder.mkdir(parents=True, exist_ok=True)
 
-            job.start(tool)
-            chosen.install(job.paths, job.emit, job.cancel)
-            job.done(tool)
-            _finish(job, f"{chosen.name} is installed.")
-
-    return _run(body, emit, cancel, environ)
+            chosen.run_install(self)
 
 
-def remove(key: str, emit: Emit, cancel: threading.Event | None = None, environ: dict[str, str] | None = None) -> int:
+class RemoveJob(Job):
     """Remove one program from the game environment, with its shortcut."""
 
-    def body(job: Job) -> None:
-        with job.lock():
-            program(key).remove(job.paths, job.config, job.emit)
-            shortcuts.sync(job.paths, job.emit, job.environ)
-            _finish(job)
+    def __init__(self, key: str, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.key = key
 
-    return _run(body, emit, cancel, environ)
-
-
-def switch_graphics(
-    backend: str, emit: Emit, cancel: threading.Event | None = None, environ: dict[str, str] | None = None
-) -> int:
-    """Switch the graphics backend for the game environment."""
-
-    def body(job: Job) -> None:
-        with job.lock():
-            job.config = set_graphics(job.paths, job.config, backend, job.emit)
-            job.emit(Status("graphics", job.config.graphics))
-            job.emit(Done())
-
-    return _run(body, emit, cancel, environ)
+    def body(self) -> None:
+        with self.lock():
+            program(self.key).remove(self.paths, self.config, self.emit)
+            shortcuts.sync(self.paths, self.emit, self.environ)
+            self.finish()
 
 
-def change_option(
-    option: str,
-    value: str | int,
-    emit: Emit,
-    cancel: threading.Event | None = None,
-    environ: dict[str, str] | None = None,
-) -> int:
+class SwitchGraphicsJob(Job):
+    def __init__(self, backend: str, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.backend = backend
+
+    def body(self) -> None:
+        with self.lock():
+            self.config = set_graphics(self.paths, self.config, self.backend, self.emit)
+            self.emit(Status("graphics", self.config.graphics))
+            self.emit(Done())
+
+
+class ChangeOptionJob(Job):
     """Save the graphics card or the FPS counter."""
 
-    def body(job: Job) -> None:
-        with job.lock():
-            job.config = set_option(job.paths, job.config, option, value, job.emit)
-            job.report_status()
-            job.emit(Done())
+    def __init__(self, option: str, value: str | int, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.option = option
+        self.value = value
 
-    return _run(body, emit, cancel, environ)
-
-
-def reset(emit: Emit, cancel: threading.Event | None = None, environ: dict[str, str] | None = None) -> int:
-    """Reset the game environment, deleting every game and program in it."""
-
-    def body(job: Job) -> None:
-        with job.lock():
-            reset_prefix(job.paths, job.config, job.emit)
-            shortcuts.sync(job.paths, job.emit, job.environ)
-
-    return _run(body, emit, cancel, environ)
+    def body(self) -> None:
+        with self.lock():
+            self.config = set_option(self.paths, self.config, self.option, self.value, self.emit)
+            self.report_status()
+            self.emit(Done())
 
 
-def open_program(
-    key: str, emit: Emit, cancel: threading.Event | None = None, environ: dict[str, str] | None = None
-) -> int:
+class ResetJob(Job):
+    """Delete the game environment, with every game and program in it."""
+
+    def body(self) -> None:
+        with self.lock():
+            reset_prefix(self.paths, self.config, self.emit)
+            shortcuts.sync(self.paths, self.emit, self.environ)
+
+
+class OpenJob(Job):
     """Open a program and wait until it ends. What it needs first is done before: the AIO Launcher is installed if it is
     missing, and the Arena updated. The lock is held only while the game environment is got ready, not while the program
     runs."""
 
-    def body(job: Job) -> None:
-        chosen = program(key)
+    def __init__(self, key: str, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.key = key
+
+    def body(self) -> None:
+        chosen = program(self.key)
 
         # The AIO Launcher and the Arena install themselves when they are opened.
-        if not chosen.prepare_installs and not chosen.installed(job.paths):
+        if not chosen.prepare_installs and not chosen.installed(self.paths):
             raise SetupError(f"{chosen.title} is not installed.")
 
-        with job.lock():
-            proton_path = _ensure_prefix(job)
-            chosen.prepare_to_open(job.paths, job.config, proton_path, job.emit, job.cancel)
+        with self.lock():
+            proton_path = self.ensure_prefix()
+            chosen.prepare_to_open(self.paths, self.config, proton_path, self.emit, self.cancel)
 
-        chosen.open(job.paths, job.config, proton_path, job.emit)
-
-    return _run(body, emit, cancel, environ)
+        chosen.open(self.paths, self.config, proton_path, self.emit)
 
 
-def ready_to_open(key: str, environ: dict[str, str] | None = None) -> bool:
-    """Whether a shortcut can start this program without the wizard: the game environment is ready and the program is in
-    it."""
-    paths = paths_for(environ)
-    return prefix_ready(paths) and program(key).installed(paths)
+class Engine:
+    """The jobs the window runs, each as (emit, cancel) -> exit status. The tests give the window a stand-in with the same
+    methods (tests/fake_jobs.py)."""
 
+    OK = OK
+    FAILED = FAILED
+    NEEDS_FILE = NEEDS_FILE
+    STOPPED = STOPPED
 
-def setup_complete(environ: dict[str, str] | None = None) -> bool:
-    """Check if the setup of the game environment is complete."""
-    paths = paths_for(environ)
+    def __init__(self, environ: dict[str, str] | None = None) -> None:
+        self.environ = environ
 
-    try:
-        config = load_config(paths.config, environ)
-    except ConfigError:
-        config = Config()
+    def status(self, emit: Emit, cancel: threading.Event | None = None) -> int:
+        return StatusJob(emit, cancel, self.environ).run()
 
-    return setup_status(paths, config)["complete"] == "yes"
+    def check(self, emit: Emit, cancel: threading.Event | None = None) -> int:
+        return CheckJob(emit, cancel, self.environ).run()
+
+    def sync_shortcuts(self, emit: Emit, cancel: threading.Event | None = None) -> int:
+        return SyncShortcutsJob(emit, cancel, self.environ).run()
+
+    def prepare(self, emit: Emit, cancel: threading.Event | None = None) -> int:
+        return PrepareJob(emit, cancel, self.environ).run()
+
+    def install(self, key: str, zip_path: str | None, emit: Emit, cancel: threading.Event | None = None) -> int:
+        return InstallJob(key, zip_path, emit, cancel, self.environ).run()
+
+    def remove(self, key: str, emit: Emit, cancel: threading.Event | None = None) -> int:
+        return RemoveJob(key, emit, cancel, self.environ).run()
+
+    def switch_graphics(self, backend: str, emit: Emit, cancel: threading.Event | None = None) -> int:
+        return SwitchGraphicsJob(backend, emit, cancel, self.environ).run()
+
+    def change_option(self, option: str, value: str | int, emit: Emit, cancel: threading.Event | None = None) -> int:
+        return ChangeOptionJob(option, value, emit, cancel, self.environ).run()
+
+    def reset(self, emit: Emit, cancel: threading.Event | None = None) -> int:
+        return ResetJob(emit, cancel, self.environ).run()
+
+    def open_program(self, key: str, emit: Emit, cancel: threading.Event | None = None) -> int:
+        return OpenJob(key, emit, cancel, self.environ).run()
+
+    def ready_to_open(self, key: str) -> bool:
+        """Whether a shortcut can start this program without the wizard: the game environment is ready and the program is
+        in it."""
+        paths = paths_for(self.environ)
+        return prefix_ready(paths) and program(key).installed(paths)
+
+    def setup_complete(self) -> bool:
+        job = StatusJob(lambda _event: None, None, self.environ)
+
+        try:
+            job.config = load_config(job.paths.config, self.environ)
+        except ConfigError:
+            pass
+
+        return job.setup_status()["complete"] == "yes"

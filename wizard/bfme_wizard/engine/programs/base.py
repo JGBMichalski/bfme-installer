@@ -8,6 +8,7 @@ import threading
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from .. import proton
 from ..config import Config
@@ -15,6 +16,9 @@ from ..errors import SetupError
 from ..events import Emit, Log, Warn
 from ..logs import RunLogs
 from ..paths import Paths
+
+if TYPE_CHECKING:
+    from ..jobs import InstallJob
 
 # Where the programs' pictures are: one PNG for each, named for its key. Files shipped with the wizard, so they show with
 # no network.
@@ -82,6 +86,10 @@ class Program(ABC):
     def leftovers(self, paths: Paths) -> list[Path]:
         """Files and folders an interrupted install leaves behind. Removing the program deletes them too."""
         return []
+
+    def run_install(self, job: InstallJob) -> None:
+        """The steps of its install job, with the setup lock held. A program installed by another one's job has none."""
+        raise SetupError(f"{self.title} is installed with {self.installed_by}.")
 
     def prepare_to_open(
         self, paths: Paths, config: Config, proton_path: str, emit: Emit, cancel: threading.Event | None = None

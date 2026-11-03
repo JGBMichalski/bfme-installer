@@ -14,8 +14,8 @@ import os
 import sys
 import threading
 
-from .engine import jobs
 from .engine.events import Error, Event, Log
+from .engine.jobs import Engine
 from .engine.programs import PROGRAMS
 
 
@@ -66,6 +66,8 @@ def main() -> int:
 
     # A shortcut whose program is there starts it without a window. The shortcuts are brought in line first, so a player who
     # only uses the menu still gets them renamed or removed. A failed sync is no reason not to open the program.
+    jobs = Engine()
+
     if offer and jobs.ready_to_open(offer):
         jobs.sync_shortcuts(print_event, threading.Event())
         return jobs.open_program(offer, print_event, threading.Event())

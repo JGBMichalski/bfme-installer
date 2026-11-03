@@ -3,8 +3,8 @@
 The player's choice on the start page becomes a plan: jobs run one after the other, each one job of engine/jobs.py.
 
   environment   prepare                doctor, runner, prefix                   left out when it is already ready
-  aio-launcher  aio_launcher_install   aio-launcher, arena, shortcuts
-  aotr          aotr_install           aotr-download, aotr-check, aotr-unpack, aotr-install, aotr-settings. The job
+  aio-launcher  install aio-launcher   aio-launcher, arena, shortcuts
+  aotr          install aotr           aotr-download, aotr-check, aotr-unpack, aotr-install, aotr-settings. The job
                                        downloads the file itself, or the player does and chooses it (waiting)
 
 States:
@@ -65,9 +65,9 @@ def _keys(only_choices: bool = False, tools: bool = False) -> tuple[str, ...]:
     return tuple(keys)
 
 
-PROGRAMS = _keys(only_choices=True) # Start page choices, in install order.
-ALL_PROGRAMS = _keys() # Everything that can be opened, and removed again.
-TOOLS = _keys(tools=True) # Extra programs of the Tools page. Each installs as a job of its own, from the home screen.
+PROGRAMS = _keys(only_choices=True)  # Start page choices, in install order.
+ALL_PROGRAMS = _keys()  # Everything that can be opened, and removed again.
+TOOLS = _keys(tools=True)  # Extra programs of the Tools page. Each installs as a job of its own, from the home screen.
 
 
 def _games() -> list[tuple[str, str]]:

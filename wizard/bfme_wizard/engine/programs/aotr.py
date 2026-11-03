@@ -15,15 +15,19 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from .. import proton
+from .. import proton, shortcuts
 from ..config import Config
 from ..download import download, verify_md5
 from ..errors import JobCancelled, SetupError
-from ..events import Emit, Log, Progress, report_speed
-from ..moddb import RemoteFile
+from ..events import Emit, Log, Progress, Step, report_speed
+from ..moddb import RemoteFile, find_aotr
 from ..paths import Paths
 from .base import Program, Shortcut
+
+if TYPE_CHECKING:
+    from ..jobs import InstallJob
 
 # Age of the Ring 10.0.0. Shown to the player, so they know what they are in for before they start.
 DOWNLOAD_GB = 19
@@ -96,6 +100,64 @@ class AgeOfTheRing(Program):
 
     def leftovers(self, paths: Paths) -> list[Path]:
         return [paths.prefix / self.INSTALLING, self.unpack_dir(paths)]
+
+    def run_install(self, job: InstallJob) -> None:
+        """Without a zip from the player the app downloads it from ModDB; when it cannot, the job ends with NEEDS_FILE and
+        the player downloads it in a browser."""
+        downloaded = not job.zip_path
+        resumed = None
+
+        if job.zip_path:
+            job.emit(Step("aotr-download", "done"))  # the player did this step
+            zip_path = Path(job.zip_path)
+        else:
+            job.start("aotr-download")
+            remote = find_aotr()
+            # A retry after a failed install needs no download when the installer is still unpacked.
+            resumed = self.from_unpacked(job.paths, remote.name)
+
+            if resumed is None:
+                zip_path = self.download_zip(job.paths, job.config, remote, job.emit, job.cancel)
+            else:
+                zip_path = resumed.path
+
+            job.done("aotr-download")
+
+        if resumed is None:
+            job.start("aotr-check")
+            aotr_zip = self.check_zip(zip_path)
+            self.check_space(job.paths, aotr_zip)
+            proton_path = job.ensure_prefix()
+            job.done("aotr-check")
+
+            job.start("aotr-unpack")
+            self.unpack(job.paths, aotr_zip, job.emit, job.cancel)
+
+            # The zip the app downloaded goes once it is unpacked, unless the player keeps it. The player's own stays.
+            if downloaded and not job.config.keep_aotr_download:
+                aotr_zip.path.unlink(missing_ok=True)
+
+            job.done("aotr-unpack")
+        else:
+            aotr_zip = resumed
+            job.skip("aotr-check")
+            proton_path = job.ensure_prefix()
+            job.skip("aotr-unpack")
+
+        job.start("aotr-install")
+        self.run_installer(job.paths, job.config, proton_path, aotr_zip, job.emit, job.cancel)
+        job.done("aotr-install")
+
+        job.start("aotr-settings")
+        self.clean_up(job.paths)
+        job.done("aotr-settings")
+
+        shortcuts.sync(job.paths, job.emit, job.environ)
+
+        if downloaded:
+            job.finish("Age of the Ring is installed.")
+        else:
+            job.finish(f"Age of the Ring is installed. You can delete {zip_path.name} now.")
 
     # The download
 

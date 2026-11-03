@@ -4,10 +4,15 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import TYPE_CHECKING
 
+from . import programs
 from .events import Emit, Log, Warn
 from .paths import Paths, menu_dir
-from .programs import PROGRAMS, Program
+
+# The programs install their shortcuts through this module, so it asks for them only when it runs.
+if TYPE_CHECKING:
+    from .programs import Program
 
 RELEASE_APP_ID = "com.jgbmichalski.BfmeInstaller"
 FLATPAK_INFO = Path("/.flatpak-info")
@@ -28,7 +33,7 @@ def with_shortcut() -> list[Program]:
     """The programs that have a menu shortcut when they are installed."""
     found = []
 
-    for program in PROGRAMS:
+    for program in programs.PROGRAMS:
         if program.shortcut is not None:
             found.append(program)
 

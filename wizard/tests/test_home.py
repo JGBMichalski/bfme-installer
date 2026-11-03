@@ -293,9 +293,9 @@ def test_a_shortcut_whose_program_is_there_opens_it_without_a_window():
         return 0
 
     with (
-        mock.patch("bfme_wizard.__main__.jobs.ready_to_open", return_value=True) as ready,
-        mock.patch("bfme_wizard.__main__.jobs.sync_shortcuts", side_effect=sync_shortcuts),
-        mock.patch("bfme_wizard.__main__.jobs.open_program", side_effect=open_program),
+        mock.patch("bfme_wizard.__main__.Engine.ready_to_open", return_value=True) as ready,
+        mock.patch("bfme_wizard.__main__.Engine.sync_shortcuts", side_effect=sync_shortcuts),
+        mock.patch("bfme_wizard.__main__.Engine.open_program", side_effect=open_program),
         mock.patch("sys.argv", ["bfme-installer", "--open", "launcher"]),
     ):
         assert main() == 0
@@ -306,9 +306,9 @@ def test_a_shortcut_whose_program_is_there_opens_it_without_a_window():
 
 def test_the_program_opens_even_when_the_shortcuts_cannot_be_synced():
     with (
-        mock.patch("bfme_wizard.__main__.jobs.ready_to_open", return_value=True),
-        mock.patch("bfme_wizard.__main__.jobs.sync_shortcuts", return_value=1),
-        mock.patch("bfme_wizard.__main__.jobs.open_program", return_value=0) as open_program,
+        mock.patch("bfme_wizard.__main__.Engine.ready_to_open", return_value=True),
+        mock.patch("bfme_wizard.__main__.Engine.sync_shortcuts", return_value=1),
+        mock.patch("bfme_wizard.__main__.Engine.open_program", return_value=0) as open_program,
         mock.patch("sys.argv", ["bfme-installer", "--open", "arena"]),
     ):
         assert main() == 0
@@ -341,7 +341,7 @@ def test_a_2x_shortcut_is_replaced_the_first_time_it_is_used(tmp_path, monkeypat
         monkeypatch.setenv(name, value)
 
     with (
-        mock.patch("bfme_wizard.__main__.jobs.open_program", return_value=0),
+        mock.patch("bfme_wizard.__main__.Engine.open_program", return_value=0),
         mock.patch("sys.argv", ["bfme-installer", "--open", "launcher"]),
     ):
         assert main() == 0
@@ -358,8 +358,8 @@ def test_a_shortcut_whose_program_is_gone_opens_the_wizard_offering_it(monkeypat
     from bfme_wizard import ui
 
     with (
-        mock.patch("bfme_wizard.__main__.jobs.ready_to_open", return_value=False),
-        mock.patch("bfme_wizard.__main__.jobs.open_program") as open_program,
+        mock.patch("bfme_wizard.__main__.Engine.ready_to_open", return_value=False),
+        mock.patch("bfme_wizard.__main__.Engine.open_program") as open_program,
         mock.patch("bfme_wizard.__main__.has_display", return_value=True),
         mock.patch.object(ui, "WizardApp") as app,
         mock.patch("sys.argv", ["bfme-installer", "--open", "aotr"]),

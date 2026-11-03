@@ -45,12 +45,14 @@ Set these in `config.env` in the data folder. The file wins over the environment
 
 ## Code
 
-`wizard/bfme_wizard/engine/` is the setup, with no GTK: `jobs.py` holds the jobs the wizard runs (prepare, install,
-remove, ...), built from `prefix.py`, `proton.py`, `programs/`, `moddb.py`, `shortcuts.py` and `doctor.py`.
+`wizard/bfme_wizard/engine/` is the setup, with no GTK. `jobs.py` holds the jobs: a `Job` base class (setup lock,
+steps, errors, exit status) with one subclass per job, and `Engine`, the jobs the window runs (prepare, install,
+remove, ...). They are built from `prefix.py`, `proton.py`, `programs/`, `moddb.py`, `shortcuts.py` and `doctor.py`.
 
 `engine/programs/` has one class per program. The base class `Program` (`base.py`) holds what they share: where the
 program is, whether it is installed, opening it with a log of its own, and removing it. Each subclass fills in its own
-facts (names, install-page steps, shortcut) and overrides what it does differently: `AioLauncher` runs a setup,
+facts (names, install-page steps, shortcut) and overrides what it does differently, starting with `run_install`, the
+steps of its install job: `AioLauncher` runs a setup,
 `Arena` updates itself by checksum, `AgeOfTheRing` downloads, unpacks and runs an installer, and `Tool`
 (`WorkshopStudio`, `MissionControl`) is a single download. `programs/__init__.py` lists them; everything else in the
 wizard gets its programs from there.

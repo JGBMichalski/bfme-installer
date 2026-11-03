@@ -1,14 +1,14 @@
-"""A stand-in for engine/jobs.py, for the tests of the controller and the window.
+"""A stand-in for engine/jobs.py's Engine, for the tests of the controller and the window.
 
 What is installed lives in flag files in `dir`; every job that runs is added to `calls`. Flags:
   prefix, aio-launcher, arena, aotr, workshop, mission-control, bfme2   what is installed
   checks-pass             the system check passes (without it `prepare` stops at its check)
   broken                  the system check also finds the 32-bit extensions missing
   flaky                   `prepare` fails once, in the runner step
-  aio-launcher-flaky      `aio_launcher_install` fails once, in the aio-launcher step
-  cancel-once             `aio_launcher_install` is stopped once, before the arena step
-  aotr-bad                `aotr_install` fails once, in the check
-  moddb-down              `aotr_install` without a file cannot download it: the player must choose it
+  aio-launcher-flaky      `install aio-launcher` fails once, in the aio-launcher step
+  cancel-once             `install aio-launcher` is stopped once, before the arena step
+  aotr-bad                `install aotr` fails once, in the check
+  moddb-down              `install aotr` without a file cannot download it: the player must choose it
   shortcuts-fails         `sync_shortcuts` fails (the permission is gone, say)
   remove-fails            `remove` fails and deletes nothing
   reset-fails             `reset` fails and deletes nothing
@@ -150,8 +150,14 @@ class FakeJobs:
         emit(Done())
         return 0
 
-    def aio_launcher_install(self, emit, cancel=None):
-        self.calls.append("aio_launcher_install")
+    def install(self, key, zip_path, emit, cancel=None):
+        if key == "aotr":
+            return self._aotr_install(zip_path, emit)
+
+        if key != "aio-launcher":
+            return self._tool_install(key, emit)
+
+        self.calls.append("install aio-launcher")
         emit(Step("aio-launcher", "start"))
 
         if self.once("aio-launcher-flaky"):
@@ -173,8 +179,8 @@ class FakeJobs:
 
     NEEDS_FILE = 2
 
-    def aotr_install(self, zip_path, emit, cancel=None):
-        self.calls.append(f"aotr_install {zip_path}")
+    def _aotr_install(self, zip_path, emit):
+        self.calls.append(f"install aotr {zip_path}")
 
         if zip_path is None:
             emit(Step("aotr-download", "start"))
@@ -201,8 +207,8 @@ class FakeJobs:
         emit(Done())
         return 0
 
-    def tool_install(self, tool, emit, cancel=None):
-        self.calls.append(f"tool_install {tool}")
+    def _tool_install(self, tool, emit):
+        self.calls.append(f"install {tool}")
         emit(Step(tool, "start"))
         emit(Step(tool, "done"))
         self.flag(tool)

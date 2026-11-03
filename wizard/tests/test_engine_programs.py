@@ -11,6 +11,7 @@ from bfme_wizard.engine import jobs
 from bfme_wizard.engine.config import Config
 from bfme_wizard.engine.errors import JobCancelled, SetupError
 from bfme_wizard.engine.events import Log, Warn
+from bfme_wizard.engine.jobs import StatusJob
 from bfme_wizard.engine.paths import Paths
 from bfme_wizard.engine.programs import AIO_LAUNCHER, AOTR, ARENA, TOOLS, AioLauncher, program
 
@@ -160,7 +161,7 @@ def test_the_status_of_each_layout(paths, layout, tmp_path, monkeypatch):
     }
     expected.update(STATUS_CHANGES[layout])
 
-    found = jobs.setup_status(paths, Config())
+    found = StatusJob([].append, environ={"BFME_HOME": str(paths.base)}).setup_status()
 
     assert found == expected
     assert list(found) == STATUS_KEYS
