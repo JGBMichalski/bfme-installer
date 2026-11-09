@@ -70,23 +70,24 @@ modules:
         sha256: fc0327ba27e89bd086cf426dff17d77de582953cdbbc10a6576540a06853ffcd
         strip-components: 0
 
-  - name: bfme-linux-setup
+  # The app's own menu entry, icon and description.
+  - name: bfme-installer-data
     buildsystem: simple
     build-commands:
-      - install -Dm755 bfme-linux-setup.sh /app/bin/bfme-linux-setup
       - install -Dm644 com.jgbmichalski.BfmeInstaller.desktop /app/share/applications/com.jgbmichalski.BfmeInstaller.desktop
       - install -Dm644 com.jgbmichalski.BfmeInstaller.png /app/share/icons/hicolor/256x256/apps/com.jgbmichalski.BfmeInstaller.png
       - install -Dm644 com.jgbmichalski.BfmeInstaller.metainfo.xml /app/share/metainfo/com.jgbmichalski.BfmeInstaller.metainfo.xml
+      # Read by the app to show what changed after an update.
+      - install -Dm644 CHANGELOG.md /app/share/bfme-installer/CHANGELOG.md
     sources:
-      - type: file
-        path: ../scripts/bfme-linux-setup.sh
-        dest-filename: bfme-linux-setup.sh
       - type: file
         path: com.jgbmichalski.BfmeInstaller.desktop
       - type: file
         path: com.jgbmichalski.BfmeInstaller.png
       - type: file
         path: com.jgbmichalski.BfmeInstaller.metainfo.xml
+      - type: file
+        path: ../CHANGELOG.md
 
   # The setup wizard (Python, GTK4/libadwaita). `bfme-installer` is the app's main command.
   - name: bfme-wizard
@@ -96,9 +97,9 @@ modules:
       - cp -r bfme_wizard /app/lib/bfme-wizard/
       - install -Dm755 bfme-installer /app/bin/bfme-installer
       # The pictures of the programs, exported as icons of the app for the shortcuts it writes (Icon=<app id>.<Name>, see
-      # "shortcuts" in bfme-linux-setup.sh). Only the pictures: the programs get no menu entry from the Flatpak. Flatpak
+      # engine/shortcuts.py). Only the pictures: the programs get no menu entry from the Flatpak. Flatpak
       # exports an icon only when its name is the app ID plus a suffix, and each goes in the folder for its real size.
-      - install -Dm644 bfme_wizard/icons/launcher.png /app/share/icons/hicolor/128x128/apps/com.jgbmichalski.BfmeInstaller.Launcher.png
+      - install -Dm644 bfme_wizard/icons/aio-launcher.png /app/share/icons/hicolor/128x128/apps/com.jgbmichalski.BfmeInstaller.AioLauncher.png
       - install -Dm644 bfme_wizard/icons/arena.png /app/share/icons/hicolor/256x256/apps/com.jgbmichalski.BfmeInstaller.Arena.png
       - install -Dm644 bfme_wizard/icons/aotr.png /app/share/icons/hicolor/128x128/apps/com.jgbmichalski.BfmeInstaller.Aotr.png
     sources:

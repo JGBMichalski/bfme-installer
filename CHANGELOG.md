@@ -4,6 +4,36 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.0]
+
+### Added
+
+- The app downloads Age of the Ring from ModDB itself. `BFME_KEEP_AOTR_DOWNLOAD=1` in `config.env` keeps the zip.
+- The running page shows the download speed.
+- Troubleshoot can choose the graphics card on a computer with two, show an FPS counter, and open the settings file.
+- After an update, the app shows what changed, and **Restart** starts the new version.
+
+### Changed
+
+- The menu shortcut of a program that is no longer installed installs it again.
+- Applying the game environment's settings and switching between Vulkan and OpenGL take seconds instead of about a minute.
+- Error messages no longer ask you to run terminal commands.
+- Age of the Ring sizes match version 10.0.0: about 19 GB to download and 47 GB of free space to install.
+- **Stop now** works like Cancel: downloads, unpacking and installers stop at once.
+
+### Removed
+
+- Choosing an Age of the Ring file you downloaded in your browser. The app always downloads it.
+- The terminal script (`bfme-linux-setup.sh`). Use the app.
+- The system Wine option and its `config.env` settings. The setup always uses Proton.
+- Desktop notifications.
+
+### Fixed
+
+- The Arena can start games, connection tests and replays again, instead of failing with "A task was canceled". This needs Vulkan graphics.
+- The AIO Launcher's setup log is no longer deleted with its old logs.
+- DXVK's fix for slowdowns in BFME 2 and Rise of the Witch-king now applies.
+
 ## [2.1.0]
 
 ### Added

@@ -1,1 +1,1 @@
-"""BFME Installer setup wizard: a GTK4/libadwaita front end for scripts/bfme-linux-setup.sh."""
+"""BFME Installer: a GTK4/libadwaita setup wizard (this package) and the setup it runs (engine/)."""

@@ -5,23 +5,24 @@ remove them when the app is uninstalled. The script runs for real in a temporary
 front, so nothing is uninstalled and nothing outside the temporary folder is touched. What matters most here is what it
 must NOT delete: it is deleting files in the player's menu folder.
 """
+
 import os
 import shutil
 import stat
 import subprocess
-from types import SimpleNamespace
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 INSTALLER = Path(__file__).resolve().parents[2] / "flatpak" / "install-flatpak.sh"
 APP_ID = "com.jgbmichalski.BfmeInstaller"
-SHORTCUTS = [f"{APP_ID}.{program}.desktop" for program in ("Launcher", "Arena", "Aotr")]
+SHORTCUTS = [f"{APP_ID}.{program}.desktop" for program in ("AioLauncher", "Launcher", "Arena", "Aotr")]
 # Files in the same folder that belong to somebody else, or to another copy of the app. None may go.
 BYSTANDERS = [
-    "com.jgbmichalski.BfmeInstallerDev.Launcher.desktop",   # a build made by dev/install-local.sh
-    "com.jgbmichalski.BfmeInstaller.desktop",                # the app's own entry (Flatpak exports it, not the app)
-    "bfme-launcher.desktop",                                  # written by the script outside the Flatpak
+    "com.jgbmichalski.BfmeInstallerDev.AioLauncher.desktop",  # a build made by dev/install-local.sh
+    "com.jgbmichalski.BfmeInstaller.desktop",  # the app's own entry (Flatpak exports it, not the app)
+    "bfme-aio-launcher.desktop",  # written by the script outside the Flatpak
     "firefox.desktop",
 ]
 
@@ -50,8 +51,9 @@ def put(folder, names):
 
 
 def uninstall(box, *options, env=None):
-    return subprocess.run([str(INSTALLER), "--uninstall", *options], env=env or box.env,
-                          capture_output=True, text=True, timeout=60)
+    return subprocess.run(
+        [str(INSTALLER), "--uninstall", *options], env=env or box.env, capture_output=True, text=True, timeout=60
+    )
 
 
 def names(folder):
@@ -73,7 +75,7 @@ def test_the_app_is_uninstalled_too(box):
 
 
 def test_one_shortcut_alone_is_removed_and_the_others_are_not_invented(box):
-    put(box.apps, SHORTCUTS[1:2] + BYSTANDERS)   # only the Arena's
+    put(box.apps, SHORTCUTS[2:3] + BYSTANDERS)  # only the Arena's
     uninstall(box)
     assert names(box.apps) == sorted(BYSTANDERS)
 
@@ -94,7 +96,7 @@ def test_a_computer_without_a_menu_folder_is_fine(box):
 def test_a_menu_folder_somewhere_else_is_found_through_xdg_data_home(box):
     elsewhere = box.tmp / "elsewhere"
     put(elsewhere / "applications", SHORTCUTS + BYSTANDERS)
-    put(box.apps, SHORTCUTS)                        # the usual place is not the one in use here
+    put(box.apps, SHORTCUTS)  # the usual place is not the one in use here
     uninstall(box, env={**box.env, "XDG_DATA_HOME": str(elsewhere)})
     assert names(elsewhere / "applications") == sorted(BYSTANDERS)
     assert names(box.apps) == sorted(SHORTCUTS)

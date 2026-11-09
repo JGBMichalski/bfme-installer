@@ -2,47 +2,24 @@
 
 # BFME Installer
 
-**Play Battle for the Middle-earth on Linux, from one guided setup.**
+**Play Battle for Middle-earth on Linux.**
 
-Installs and runs the All-in-One Launcher, Online Arena, and Age of the Ring under Proton.
+Installs and runs the All-in-One Launcher, the Online Arena and Age of the Ring under Proton.
 
-[![Latest release](https://img.shields.io/github/v/release/JGBMichalski/bfme-installer?label=release)](https://github.com/JGBMichalski/bfme-installer/releases/latest)
-[![Build](https://img.shields.io/github/actions/workflow/status/JGBMichalski/bfme-installer/build-linux.yml?label=build)](https://github.com/JGBMichalski/bfme-installer/actions/workflows/build-linux.yml)
-[![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)](LICENSE)
+[![Latest release](https://img.shields.io/github/v/release/JGBMichalski/bfme-installer?label=release)](https://github.com/JGBMichalski/bfme-installer/releases/latest) [![Build](https://img.shields.io/github/actions/workflow/status/JGBMichalski/bfme-installer/build-linux.yml?label=build)](https://github.com/JGBMichalski/bfme-installer/actions/workflows/build-linux.yml) [![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)](LICENSE)
 
 <img src="docs/images/home.png" alt="The BFME Installer home screen with the AIO Launcher, the Arena and Age of the Ring" width="460">
 
 </div>
-
-## Why
-
-Running these games on Linux used to mean hand-building a Wine prefix, picking the right DLL overrides, and fixing the
-multiplayer "Out of Sync" error by trial and error. BFME Installer does that once, the same way every time, and then
-gets out of your way.
-
-- **One command to install.** Paste one line into a terminal and the wizard opens on a page where you choose what to install.
-- **Install only what you want.** Choose the All-in-One Launcher (the Arena comes with it), Age of the Ring, or both.
-- **A guided window.** Checks your system, downloads Proton, builds the game environment and tells you in plain words
-  when something needs your attention.
-- **AIO Launcher and Arena side by side.** Both share one game environment, so maps and games installed in one are there
-  in the other.
-- **Age of the Ring.** You download the file from ModDB and the app does the rest.
-- **Online play with Windows players.** The prefix settings that stop "Out of Sync" errors are applied for you.
-- **Updates itself.** The app tells you when a new release exists and installs it through Flatpak.
-- **Easy to fix.** A Troubleshoot page re-runs the system checks, copies a report for bug reports, opens the logs, and
-  can reset the game environment.
 
 ## Screenshots
 
 | Set up | Home | Programs |
 | :---: | :---: | :---: |
 | <img src="docs/images/running.png" alt="Setup in progress, downloading Proton" width="280"> | <img src="docs/images/home.png" alt="Home screen" width="280"> | <img src="docs/images/programs.png" alt="The Programs page" width="280"> |
-| Step-by-step progress, with Cancel and Resume. | Open what you installed. The buttons at the top right lead to the other pages. | Install a program you skipped, or remove one. |
 
 <details>
 <summary>More screenshots</summary>
-
-<br>
 
 | Start | Game folders | Troubleshoot |
 | :---: | :---: | :---: |
@@ -52,117 +29,68 @@ gets out of your way.
 
 ## Install
 
-Copy this into a terminal:
+Run this in a terminal, and the setup walks you through the rest:
 
 ```sh
 curl -fsSL https://github.com/JGBMichalski/bfme-installer/releases/latest/download/install-flatpak.sh | bash
 ```
 
-It installs the app as a Flatpak, adds the 32-bit parts Flatpak needs, and opens the setup wizard, which walks you through the rest.
+You need:
 
-The same commands are also available on the [install page](https://jgbmichalski.github.io/bfme-installer/).
+- A 64-bit (x86_64) Linux distribution with [Flatpak](https://flatpak.org/setup/).
+- Working 64-bit and 32-bit Vulkan drivers. Older graphics cards can use OpenGL instead (see [Troubleshooting](#troubleshooting)).
+- About 30 GB of free disk space, and about 47 GB more for Age of the Ring.
 
-To update, press **Update** in the app when it offers one, or run the same command again.
+To update, press **Update** in the app, or run the install command again. To uninstall, run it with `--uninstall`, which keeps your games, or `--purge`, which deletes them too:
 
-The app asks for one permission beyond its own data: access to `~/.local/share/applications`, your menu folder, which is how it adds and removes the shortcuts of the programs you install.
-
-### Requirements
-
-- A 64-bit (x86_64) Linux distribution with [Flatpak](https://flatpak.org/setup/). The installer prints the command for
-  your distribution if Flatpak is missing.
-- Working Vulkan drivers, 64-bit and 32-bit. The wizard checks this and shows the fix when something is missing. On an older
-  graphics card that handles OpenGL better, switch the graphics backend to OpenGL in Troubleshoot.
-- Enough free disk space for Proton and the games. The wizard checks this too.
-- A copy of the games. The AIO Launcher installs and patches them.
+```sh
+curl -fsSL https://github.com/JGBMichalski/bfme-installer/releases/latest/download/install-flatpak.sh | bash -s -- --uninstall
+```
 
 ## Using it
 
-1. Open **BFME Installer** from your menu. Tick what you want, the **All-in-One Launcher**, **Age of the Ring**, or
-   both, and press **Install**. Nothing is ticked at first. The first run downloads Proton, so it takes a few minutes.
-   You can cancel and resume.
-2. If you chose the AIO Launcher, open it from the home screen and install your games.
+1. Open **BFME Installer** from your menu, tick what you want and press **Install**. The first run downloads Proton, which takes a few minutes.
+2. Open the **AIO Launcher** and install your games.
+3. To play online, open the **Arena** from the home screen or its menu shortcut, not from the AIO Launcher's Multiplayer tab.
 
-The home screen shows only what you installed. Three buttons in the top right corner lead to everything else:
+Don't switch patches in the AIO Launcher once a game is installed. It has broken BFME 2 under Wine before.
+
+The buttons in the top right corner of the home screen open:
 
 | Button | Opens |
 | :---: | --- |
-| download arrow | **Programs**: install one you skipped, or remove one you no longer use. |
-| folder | **Game folders**: your games' folders and maps. |
-| lifebuoy | **Troubleshoot**: when something goes wrong. |
+| download arrow | **Programs**: install something you skipped, or remove a program. Your games stay. |
+| folder | **Game folders**: each game's files, and its maps and settings. |
+| lifebuoy | **Troubleshoot**: see [Troubleshooting](#troubleshooting). |
 
-Skipped something? Press the download arrow and then **Install** next to it. Changed your mind? **Remove** takes one program out (its files and its shortcut) and keeps your games, your other programs and the settings Age of the Ring keeps in your own folder. You can install it again later.
+### Age of the Ring
 
-Each program you install gets a shortcut in your application menu, and only while it is installed. **Reset** removes them all, and a program you delete yourself loses its shortcut the next time you open BFME Installer.
+[Age of the Ring](https://www.moddb.com/mods/the-horse-lords-a-total-modification-for-bfme) has its own launcher and its own copies of BFME 2 and Rise of the Witch-king, so it leaves your other games alone and doesn't need the AIO Launcher. Tick it on the first page, or press **Install** next to it on the Programs page. The app downloads it from ModDB (about 19 GB) and installs it, which can take an hour or more. If the download fails, press **Retry** later.
 
-### Install Age of the Ring
+## Troubleshooting
 
-[Age of the Ring](https://www.moddb.com/mods/the-horse-lords-a-total-modification-for-bfme) is not part of the AIO Launcher. It has its own launcher and its own copies of BFME 2 and the Rise of the Witch-king, so it does not touch the games you already have. It does not need the AIO Launcher or the Arena either.
+**Troubleshoot** (the lifebuoy button, on every page) can:
 
-1. Tick **Age of the Ring** on the first page, or press **Install** next to it on the Programs page later. The setup prepares the game environment first, then stops at the download step.
-2. Press **Open ModDB**, click **Download Now**, and wait until your browser has finished the file (about 14 GB). ModDB only lets a web browser download it, so the app cannot do this step for you.
-3. Back in the app, press **Choose file...** and pick the zip you downloaded. Do not unpack it. The app checks it, unpacks it, installs the mod and shows its progress. You need about 40 GB of free space, and the install can take an hour.
-4. When it is done you can delete the zip. The card now says **Open**. The Age of the Ring Launcher updates the mod itself.
+- run the system checks again and give you the fix for anything that fails;
+- switch the graphics between Vulkan (the default) and OpenGL, choose the graphics card on a computer with two, and show an FPS counter;
+- copy a diagnostics report for a bug report (read it first, it can contain your home folder name);
+- open the logs folder and the settings file;
+- **reset** the game environment, which deletes *every installed game* and starts the setup again.
 
-Not ready to download 14 GB? Press **Back to start** (or **Back to home**) on the download step. Whatever finished before it stays installed. If the file turns out to be unfinished or damaged, the app says so and offers **Choose another file**.
+If the games are slow or won't start on an older graphics card, try OpenGL. The Arena needs Vulkan, though: its in-game overlay doesn't work with OpenGL, so the Arena can't start games or replays.
 
-Resetting the game environment also deletes Age of the Ring. To take out only Age of the Ring, use **Remove** on the Programs page.
+### Settings file
 
-### Add maps and copy files
+**Open settings file** opens `config.env` in the app's data folder, `~/.var/app/com.jgbmichalski.BfmeInstaller/data/bfme-installer`, which also holds the game environment and the logs.
 
-Press the folder button in the top right corner of the home screen. Each installed game, and Age of the Ring, has two buttons:
-
-- **Game folder**: the installed files and patches.
-- **Maps and user data**: where the game keeps its maps, replays and settings. The game creates this folder the first
-  time it runs, so for a game you have not started yet the button opens the game folder instead.
-
-The folders open in your file manager, so you can drop in maps or copy over existing files. A game that is not installed
-is not listed.
-
-### When something goes wrong
-
-Open **Troubleshoot** with the lifebuoy button in the top right corner, which is there on every page. It can:
-
-- re-run the system checks and show a fix command you can copy;
-- switch the graphics backend between Vulkan (the default) and OpenGL, which older graphics cards may handle better;
-- copy a diagnostics report for a bug report (check it first, because it can contain your home folder name);
-- open the logs folder;
-- **reset** the game environment. This deletes the environment *and every installed game*, then starts the setup again.
-  Downloads and Proton are kept.
-
-The graphics switch takes effect the next time you open a program, and nothing is reinstalled. If the games are slow or will
-not start on a card without working Vulkan, try OpenGL; if OpenGL is worse, switch back.
-
-## Without Flatpak
-
-Run the setup script in a terminal. It does the same setup without the wizard.
-
-```sh
-./scripts/bfme-linux-setup.sh doctor     # check requirements
-./scripts/bfme-linux-setup.sh install    # set up the runner, AIO Launcher, Arena and menu shortcuts
-```
-
-Then open **BFME All-in-One Launcher** from your menu and install the games. Start the Arena from its own
-**BFME Online Arena** shortcut.
-
-Only want Age of the Ring? Skip `install` and prepare the game environment on its own, then give it the file you downloaded from ModDB:
-
-```sh
-./scripts/bfme-linux-setup.sh prepare
-./scripts/bfme-linux-setup.sh aotr-install ~/Downloads/AotR_Standalone_9.3.0_Installer.zip
-```
-
-Other commands: `launcher-install` (the AIO Launcher and the Arena, after `prepare`), `launcher`, `arena`, `aotr`,
-`game bfme1|bfme2|rotwk`, `graphics opengl|vulkan`, `shortcuts`, `status`, `reset-prefix --yes`, `version`, `help`.
-Configuration variables (such as `BFME_HOME` and `BFME_RUNNER=wine`) are in [How it works](docs/how-it-works.md).
-
-## Planned
-
-This is a direction, not a promise, and it has no dates.
-
-- [ ] **Repair.** Fix a damaged setup without deleting the game environment, so [Reset](#when-something-goes-wrong) is not the only way out.
-- [ ] **Error details.** An expandable log on the "Something went wrong" screen, so you can see what failed without opening the logs folder.
+| Setting | Purpose |
+| --- | --- |
+| `BFME_GRAPHICS` | `vulkan` or `opengl`. |
+| `BFME_GPU` | `auto`, `dedicated` or `integrated`: which card runs the games on a computer with two. |
+| `BFME_EXTRA_ENV` | Extra environment variables for the programs, such as `DXVK_HUD=fps`. |
+| `BFME_PROTONPATH` | A Proton to use instead of the built-in one. |
+| `BFME_KEEP_AOTR_DOWNLOAD` | `1` keeps the Age of the Ring download after installing it. |
 
 ## Contributing
 
-Bug reports and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for more information. When you report a problem, press **Copy diagnostics** on the Troubleshoot page and paste the report into the issue.
-
+Bug reports and pull requests are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md). When you report a problem, include the report from Troubleshoot's **Copy diagnostics**.

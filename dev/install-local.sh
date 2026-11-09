@@ -17,13 +17,13 @@ command -v flatpak-builder >/dev/null 2>&1 || { echo "ERROR: flatpak-builder is 
 
 rm -rf "$WORK/src" "$WORK/build"
 mkdir -p "$WORK/src"
-cp -r "$root/flatpak" "$root/wizard" "$root/scripts" "$WORK/src/"
+cp -r "$root/flatpak" "$root/wizard" "$root/CHANGELOG.md" "$WORK/src/"
 find "$WORK/src" -name __pycache__ -prune -exec rm -rf {} +
 cd "$WORK/src/flatpak"
 
 for f in "$OLD"*; do mv "$f" "${f/$OLD/$NEW}"; done
 sed -i -e "s/$OLD/$NEW/g" -e 's/^Name=BFME \(.*\)/Name=BFME \1 (Dev)/' \
-  -e 's/@BFME_VERSION@/dev/' -e "s/@BFME_DATE@/$(date +%F)/" "$NEW"*.yml ./*.desktop ./*.xml
+  -e 's/@BFME_VERSION@/3.0.0/' -e "s/@BFME_DATE@/$(date +%F)/" "$NEW"*.yml ./*.desktop ./*.xml
 
 flatpak-builder --user --install --force-clean --install-deps-from=flathub \
   --state-dir="$WORK/state" "$WORK/build" "$NEW.yml"
