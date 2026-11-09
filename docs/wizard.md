@@ -10,19 +10,17 @@ and needs a display.
    After a stop it offers **Resume**.
 3. **Running**: step *n* of *N* for the whole plan, with progress. **Cancel** stops after the current step, or at once
    during a download or an install.
-4. **Download Age of the Ring**: only when the app cannot download it itself. Says why, then offers **Open ModDB** and
-   **Choose file...**.
-5. **Your system needs a change**: a failed system check, with a fix to copy and **Recheck**.
-6. **Something went wrong**: a failed step, with **Retry** and **Copy log**.
-7. **Home screen**: a card with **Open** for each installed program.
-8. **Programs**: install or remove a program or tool.
+4. **Your system needs a change**: a failed system check, with a fix to copy and **Recheck**.
+5. **Something went wrong**: a failed step, with **Retry** and **Copy log**.
+6. **Home screen**: a card with **Open** for each installed program.
+7. **Programs**: install or remove a program or tool.
 
 ## The plan
 
 | Chosen | Steps |
 | --- | --- |
 | AIO Launcher | Check your system, Get Proton, Create the game environment, Download the AIO Launcher, Download the Arena, Add menu shortcuts |
-| Age of the Ring | The first three, then Download Age of the Ring, Check the download, Unpack the download, Install Age of the Ring, Finish up |
+| Age of the Ring | The first three, then Download Age of the Ring, Unpack the download, Install Age of the Ring, Finish up |
 
 The first three are left out when the game environment is ready.
 
@@ -58,7 +56,7 @@ data folder), once. A first install and development builds show nothing.
 | `model.py` | The setup's state and the plan. |
 | `apps.py` | Opens programs and watches whether they still run. |
 | `diagnostics.py`, `updater.py`, `whatsnew.py` | `Diagnostics` (Copy diagnostics); `Updater` (release check, portal update, restart); `WhatsNew` (the notes after an update). |
-| `ui.py`, `start.py`, `home.py`, `programs.py`, `aotr.py`, `widgets.py` | The window and its pages (need GTK). |
+| `ui.py`, `start.py`, `home.py`, `programs.py`, `widgets.py` | The window and its pages (need GTK). |
 | `__main__.py` | Entry point; `CommandLine` handles `--open`. |
 
 ## Build, run and test

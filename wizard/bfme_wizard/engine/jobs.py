@@ -1,8 +1,7 @@
 """The jobs the wizard runs. Each wraps the setup's steps with what a whole job needs: the setup lock, the steps it reports,
 where things stand when it ends, and its errors.
 
-`Engine` is what the window calls. Every job takes (emit, cancel) and returns an exit status: 0 done, 1 failed, 2 the
-player must choose the Age of the Ring file, 130 stopped by the player.
+`Engine` is what the window calls. Every job takes (emit, cancel) and returns an exit status.
 """
 
 from __future__ import annotations
@@ -17,7 +16,6 @@ from .errors import JobCancelled, SetupError
 from .events import Cancelled, Done, Emit, Error, Log, Progress, SetupStatus, Step
 from .games import GAMES
 from .lock import SetupLock
-from .moddb import ModdbUnavailable
 from .paths import Paths
 from .prefix import GameEnvironment
 from .programs import EVERY_PROGRAM, program
@@ -26,7 +24,6 @@ from .shortcuts import MenuShortcuts
 
 OK = 0
 FAILED = 1
-NEEDS_FILE = 2  # the app cannot download Age of the Ring itself: the player downloads it and chooses the file
 STOPPED = 130
 SET_UP_FIRST = "Set up the game environment first."
 
@@ -63,10 +60,6 @@ class Job(Context, ABC):
             self.emit(Log(f"ERROR: {error}"))
             self.emit(Error(self.step, str(error)))
             return FAILED
-        except ModdbUnavailable as error:
-            self.emit(Log(f"The app cannot download it itself: {error}"))
-            self.emit(Error(self.step, str(error)))
-            return NEEDS_FILE
 
         return OK
 
@@ -222,16 +215,14 @@ class PrepareJob(Job):
 
 
 class InstallJob(Job):
-    """Install one program, by its own steps (Program.run_install). Needs the game environment. `zip_path` is the Age of
-    the Ring file the player chose; the other programs ignore it."""
+    """Install one program, by its own steps (Program.run_install). Needs the game environment."""
 
     # A program that shows its shortcuts as a step of its own lists this among its steps.
     SHORTCUTS_STEP = "shortcuts"
 
-    def __init__(self, key: str, zip_path: str | None, *args, **kwargs) -> None:
+    def __init__(self, key: str, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.key = key
-        self.zip_path = zip_path
 
     def body(self) -> None:
         chosen = program(self.key)
@@ -338,7 +329,6 @@ class Engine:
 
     OK = OK
     FAILED = FAILED
-    NEEDS_FILE = NEEDS_FILE
     STOPPED = STOPPED
 
     def __init__(self, environ: dict[str, str] | None = None) -> None:
@@ -356,8 +346,8 @@ class Engine:
     def prepare(self, emit: Emit, cancel: threading.Event | None = None) -> int:
         return PrepareJob(emit, cancel, self.environ).run()
 
-    def install(self, key: str, zip_path: str | None, emit: Emit, cancel: threading.Event | None = None) -> int:
-        return InstallJob(key, zip_path, emit, cancel, self.environ).run()
+    def install(self, key: str, emit: Emit, cancel: threading.Event | None = None) -> int:
+        return InstallJob(key, emit, cancel, self.environ).run()
 
     def remove(self, key: str, emit: Emit, cancel: threading.Event | None = None) -> int:
         return RemoveJob(key, emit, cancel, self.environ).run()

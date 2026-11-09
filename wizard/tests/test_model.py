@@ -129,7 +129,6 @@ def test_age_of_the_ring_alone_does_not_download_the_aio_launcher_or_the_arena()
         "runner",
         "prefix",
         "aotr-download",
-        "aotr-check",
         "aotr-unpack",
         "aotr-install",
         "aotr-settings",
@@ -140,8 +139,8 @@ def test_age_of_the_ring_alone_does_not_download_the_aio_launcher_or_the_arena()
 
 def test_both_programs_make_one_long_list_of_steps():
     m = planned("aio-launcher", "aotr")
-    assert len(m.step_defs) == 11
-    assert m.step_ids.index("aotr-check") + 1 == 8
+    assert len(m.step_defs) == 10
+    assert m.step_ids.index("aotr-unpack") + 1 == 8
 
 
 def test_with_the_environment_ready_only_the_programs_are_listed():
@@ -268,11 +267,11 @@ def test_unknown_step_ids_are_ignored():
 
 def test_a_step_of_a_job_that_is_not_in_the_plan_is_ignored():
     m = started("aio-launcher")
-    feed(m, Step("aotr-check", "start"))
+    feed(m, Step("aotr-unpack", "start"))
     assert m.current is None
 
 
-def test_the_next_job_waits_for_nobody_unless_it_needs_a_file():
+def test_the_next_job_waits_for_nobody():
     m = planned("aio-launcher", "aotr")
     assert run_next(m) == "environment"
     feed(m, *ENVIRONMENT_DONE)
@@ -281,26 +280,6 @@ def test_the_next_job_waits_for_nobody_unless_it_needs_a_file():
     feed(m, Step("aio-launcher", "done"), Step("arena", "done"), Step("shortcuts", "skip"), Done())
     assert m.finish_install(0) == "aotr"
     assert (m.state, m.just_finished) == ("running", False)  # not finished: Age of the Ring is left
-
-
-def test_age_of_the_ring_waits_for_the_player_to_choose_the_file():
-    m = planned("aotr", environment_ready=True)
-    run_next(m)  # the job ends: the app cannot download the file
-    m.wait_for_file()
-    assert (m.state, m.job, m.current, m.step_number) == ("waiting", "aotr", "aotr-download", 1)
-    assert m.steps["aotr-download"] == "running"
-    m.begin_job("aotr")  # the file was chosen
-    feed(m, Step("aotr-download", "done"))  # the job says the player did this step
-    assert (m.state, m.steps["aotr-download"], m.steps["aotr-check"]) == ("running", "done", "pending")
-
-
-def test_the_app_can_say_why_the_player_must_download_it():
-    m = planned("aotr", environment_ready=True)
-    run_next(m)
-    m.wait_for_file("ModDB did not offer a download link.")
-    assert m.file_note == "ModDB did not offer a download link."
-    m.wait_for_file()
-    assert m.file_note is None
 
 
 def test_the_counter_never_runs_past_the_last_step():
@@ -314,8 +293,8 @@ def test_the_counter_never_runs_past_the_last_step():
 def test_the_download_step_is_counted_in_the_numbering():
     m = planned("aio-launcher", "aotr")
     m.begin_job("aotr")
-    feed(m, Step("aotr-check", "start"))
-    assert (m.current, m.step_number) == ("aotr-check", 8)
+    feed(m, Step("aotr-unpack", "start"))
+    assert (m.current, m.step_number) == ("aotr-unpack", 8)
 
 
 def test_finishing_the_last_job_finishes_the_setup():

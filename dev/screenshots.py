@@ -15,44 +15,47 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SCENES = ("start", "running", "home", "programs", "folders", "troubleshoot", "aotr-download", "aotr-running", "aotr-home")
+SCENES = ("start", "running", "home", "programs", "folders", "troubleshoot", "aotr-running", "aotr-home")
 
 class StubJobs:
-    """A stand-in for engine/jobs.py. The scene says what is installed:
+    """A stand-in for engine/jobs.py's Engine. The scene says what is installed:
       start, running                  nothing is set up yet
-      aotr-download, aotr-running     the game environment is ready, no program is installed
+      aotr-running                    the game environment is ready, no program is installed
       aotr-home                       only Age of the Ring is installed
       home                            the AIO Launcher, the Arena and Age of the Ring are installed
       anything else                   the AIO Launcher and the Arena are installed (the Programs page shows Age of the Ring
                                       as missing)
     """
-    NEEDS_FILE = 2
-
     def __init__(self, scene: str) -> None:
         self.scene = scene
 
     def status(self, emit, cancel=None) -> int:
-        """Return the current status of the installation, emitting Status events for each program and the overall completion."""
-        from bfme_wizard.engine.events import Status
+        """Report what the scene has installed."""
+        from bfme_wizard.engine.events import SetupStatus
 
-        if self.scene in ("start", "running"):
-            installed = {}
-        elif self.scene in ("aotr-download", "aotr-running"):
-            installed = {"prefix": "ready"}
-        elif self.scene == "aotr-home":
-            installed = {"prefix": "ready", "aotr": "installed"}
-        else:
-            installed = {"prefix": "ready", "aio-launcher": "installed", "arena": "installed", "bfme1": "installed",
-                         "bfme2": "installed", "rotwk": "installed"}
+        prefix_ready = self.scene not in ("start", "running")
+        programs = set()
+        games = set()
+
+        if self.scene == "aotr-home":
+            programs = {"aotr"}
+            games = {"aotr-games"}
+        elif self.scene not in ("start", "running", "aotr-running"):
+            programs = {"aio-launcher", "arena"}
+            games = {"bfme1", "bfme2", "rotwk"}
 
             if self.scene == "home":
-                installed["aotr"] = "installed"
+                programs.add("aotr")
+                games.add("aotr-games")
 
-        for key in ("prefix", "aio-launcher", "arena", "aotr", "bfme1", "bfme2", "rotwk"):
-            emit(Status(key, installed.get(key, "missing")))
-
-        complete = installed.get("prefix") == "ready" and len(installed) > 1
-        emit(Status("complete", "yes" if complete else "no"))
+        emit(
+            SetupStatus(
+                prefix_ready=prefix_ready,
+                programs=frozenset(programs),
+                games=frozenset(games),
+                complete=prefix_ready and bool(programs),
+            )
+        )
         return 0
 
     def check(self, emit, cancel=None) -> int:
@@ -80,15 +83,11 @@ class StubJobs:
         time.sleep(30)
         return 0
 
-    def aotr_install(self, zip_path, emit, cancel=None) -> int:
-        """Install Age of the Ring from the given zip file, emitting Progress and Step events."""
+    def install(self, key, emit, cancel=None) -> int:
+        """Install a program: a download that stays at its first step, for the running page."""
         from bfme_wizard.engine.events import Progress, Step
 
-        # The download page: the app could not download it itself.
-        if self.scene == "aotr-download":
-            return self.NEEDS_FILE
-
-        emit(Step("aotr-download", "start"))
+        emit(Step("aotr-download" if key == "aotr" else key, "start"))
         emit(Progress(38))
         time.sleep(30)
         return 0
@@ -125,7 +124,7 @@ def run_scene(scene: str, out: str) -> None:
     # one paints about once a second) would leave a photograph in the middle of one. GTK jumps to the end state without them.
     Gtk.Settings.get_default().set_property("gtk-enable-animations", False)
 
-    if scene in ("folders", "troubleshoot", "aotr-download"):                 # tall window
+    if scene in ("folders", "troubleshoot"):                 # tall window
         init = ui.WizardWindow.__init__
         def tall(self, *args, **kwargs):
             init(self, *args, **kwargs)
@@ -149,8 +148,6 @@ def run_scene(scene: str, out: str) -> None:
             window.show_game_folders()
         elif scene == "troubleshoot":
             window.show_troubleshoot()
-        elif scene == "aotr-download":                    # environment ready: go to download
-            window.controller.install(["aotr"])
         elif scene == "aotr-running":                     # the app downloading it
             window.controller.install(["aotr"])
 
@@ -159,7 +156,6 @@ def run_scene(scene: str, out: str) -> None:
     ready = {
         "start": lambda w: w.stack.get_visible_child_name() == "start",
         "running": lambda w: w.model.state == "running" and w.model.progress is not None,
-        "aotr-download": lambda w: w.model.state == "waiting",
         "aotr-running": lambda w: w.model.state == "running" and w.model.progress is not None,
     }.get(scene, lambda w: True)
     FRAMES = 2         # frames painted after the scene was set up: the layout of what it changed has happened

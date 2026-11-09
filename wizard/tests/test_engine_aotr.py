@@ -1,4 +1,4 @@
-"""engine.aotr: the Age of the Ring download, unpacking and installer."""
+"""engine.programs.aotr: the Age of the Ring download, unpacking and installer."""
 
 import os
 import shutil
@@ -16,8 +16,8 @@ from bfme_wizard.engine.events import Progress
 from bfme_wizard.engine.paths import Paths
 from bfme_wizard.engine.prefix import GameEnvironment
 from bfme_wizard.engine.programs import AOTR, AgeOfTheRing
-from bfme_wizard.engine.programs import aotr as aotr_module
-from bfme_wizard.engine.programs.aotr import AotrZip
+from bfme_wizard.engine.programs.aotr import ModDB, RemoteFile, ZipContents
+from bfme_wizard.engine.programs.aotr import program as aotr_module
 from tests.helpers import context
 
 SEVENZIP = shutil.which("7zz") or shutil.which("7z") or shutil.which("7za")
@@ -116,12 +116,12 @@ def progress(events):
 # Checking the download
 
 BAD_DOWNLOAD_MESSAGES = {
-    "unfinished": "This download is not finished yet. Wait until your browser has finished, then choose the file again.",
-    "wrong name": "This is not the Age of the Ring installer. Choose the file named like AotR_Standalone_10.0.0_Installer.zip.",
-    "damaged": "This file is incomplete or damaged. Download it again from ModDB.",
-    "no installer": "The installer program is missing from this file. Download it again from ModDB.",
-    "no data files": "The installer's data files are missing from this file. Download it again from ModDB.",
-    "another installer's data files": "The installer's data files are missing from this file. Download it again from ModDB.",
+    "damaged": "This file is incomplete or damaged. Try again, and the app downloads it again.",
+    "no installer": "The installer program is missing from this file. Try again, and the app downloads it again.",
+    "no data files": "The installer's data files are missing from this file. Try again, and the app downloads it again.",
+    "another installer's data files": (
+        "The installer's data files are missing from this file. Try again, and the app downloads it again."
+    ),
 }
 
 
@@ -133,15 +133,9 @@ def bad_downloads(tmp_path):
     garbage = tmp_path / "garbage" / ZIP
     garbage.parent.mkdir()
     garbage.write_bytes(b"PK\x03\x04 not really a zip")
-    unfinished = tmp_path / (ZIP + ".crdownload")
-    unfinished.write_bytes(b"x")
-    wrong_name = tmp_path / "AgeOfTheRing.zip"
-    wrong_name.write_bytes(b"x")
 
     return {
         "missing": tmp_path / "nothing" / ZIP,
-        "unfinished": unfinished,
-        "wrong name": wrong_name,
         "damaged": garbage,
         "no installer": make_zip(tmp_path / "a", {"AotR_Standalone_9.3.0_Installer-1a.bin": b"x"}),
         "no data files": make_zip(tmp_path / "b", {EXE: b"installer", "readme.txt": b"x"}),
@@ -182,79 +176,121 @@ def test_without_7zip_it_says_what_to_install(tmp_path, monkeypatch):
 # Free space
 
 
-def test_too_little_space_says_how_much_more_is_needed(paths, monkeypatch):
-    monkeypatch.setattr(aotr_module.shutil, "disk_usage", lambda path: Usage(0, 0, 3_500_000_000))
-    aotr_zip = AotrZip(Path(ZIP), EXE, unpacked_bytes=2_000_000_000)
+def remote_for(data, md5=None, url="http://127.0.0.1:1/never", size=None):
+    import hashlib
+
+    return RemoteFile(
+        name=ZIP, size=len(data) if size is None else size, md5=md5 or hashlib.md5(data).hexdigest(), url=url
+    )
+
+
+def test_there_must_be_room_for_the_unpacked_installer_and_the_game(paths, monkeypatch):
+    monkeypatch.setattr(aotr_module.shutil, "disk_usage", lambda path: Usage(0, 0, 2_700_000_000))
+    remote = remote_for(b"", size=1_000_000_000)
+
+    AOTR.check_space(context(paths), remote)  # 1 GB unpacked + 1.5 GB installed
+
+    monkeypatch.setattr(aotr_module.shutil, "disk_usage", lambda path: Usage(0, 0, 2_000_000_000))
 
     with pytest.raises(
-        SetupError, match="^Not enough free space: Age of the Ring needs 6 GB more, but only 3 GB is free.$"
+        SetupError, match="^Not enough free space: Age of the Ring needs 3 GB more, but only 2 GB is free.$"
     ):
-        AOTR.check_space(paths, aotr_zip)
+        AOTR.check_space(context(paths), remote)
 
 
-def test_what_is_already_unpacked_or_installed_counts(paths, monkeypatch):
-    # 1400 unpacked + 2240 installed = 3640 needed, of which 2600 is already there.
-    monkeypatch.setattr(aotr_module.shutil, "disk_usage", lambda path: Usage(0, 0, 2000))
-    (AOTR.unpack_dir(paths)).mkdir(parents=True)
-    (AOTR.unpack_dir(paths) / "part.bin").write_bytes(b"x" * 1600)
+def test_keeping_the_download_needs_room_for_it_too(paths, monkeypatch):
+    monkeypatch.setattr(aotr_module.shutil, "disk_usage", lambda path: Usage(0, 0, 3_000_000_000))
+    remote = remote_for(b"", size=1_000_000_000)
+
+    AOTR.check_space(context(paths), remote)
+
+    with pytest.raises(SetupError, match="needs 4 GB more"):
+        AOTR.check_space(context(paths, config=Config(keep_aotr_download=True)), remote)
+
+
+def test_what_is_already_downloaded_unpacked_or_installed_counts(paths, monkeypatch):
+    # 1000 zip + 1500 installed = 2500 needed, of which 400 downloaded + 600 unpacked + 500 installed is already there.
+    monkeypatch.setattr(aotr_module.shutil, "disk_usage", lambda path: Usage(0, 0, 1000))
+    paths.downloads.mkdir(parents=True)
+    (paths.downloads / (ZIP + ".part")).write_bytes(b"x" * 400)
+    AOTR.unpack_dir(paths).mkdir(parents=True)
+    (AOTR.unpack_dir(paths) / "part.bin").write_bytes(b"x" * 600)
     AOTR.exe(paths).parent.mkdir(parents=True)
-    (AOTR.exe(paths).parent / "game.big").write_bytes(b"x" * 1000)
+    (AOTR.exe(paths).parent / "game.big").write_bytes(b"x" * 500)
 
-    AOTR.check_space(paths, AotrZip(Path(ZIP), EXE, unpacked_bytes=1400))
+    AOTR.check_space(context(paths), remote_for(b"", size=1000))
+
+    with pytest.raises(SetupError, match="Not enough free space"):
+        AOTR.check_space(context(paths), remote_for(b"", size=1100))
 
 
 # Unpacking
 
 
 @needs_7zip
-def test_unpacking_reports_progress_and_is_not_repeated(tmp_path, paths):
-    aotr_zip = AOTR.check_zip(make_zip(tmp_path, GOOD))
+def test_unpacking_checks_the_zip_and_reports_progress(tmp_path, paths):
     events = []
 
-    AOTR.unpack(context(paths, events.append), aotr_zip)
+    contents = AOTR.unpack(context(paths, events.append), make_zip(tmp_path, GOOD))
 
+    assert contents.exe_name == EXE
     assert progress(events)[-1] == 100
     assert (AOTR.unpack_dir(paths) / EXE).read_bytes() == b"installer"
     assert (AOTR.unpack_dir(paths) / ".complete").read_text() == ZIP + "\n"
 
-    events.clear()
-    AOTR.unpack(context(paths, events.append), aotr_zip)
 
-    assert events == []
+@needs_7zip
+def test_a_bad_zip_is_not_unpacked(tmp_path, paths):
+    with pytest.raises(SetupError, match="installer program is missing"):
+        AOTR.unpack(context(paths), make_zip(tmp_path, {"readme.txt": b"x"}))
+
+    assert not AOTR.unpack_dir(paths).exists()
 
 
 @needs_7zip
-def test_a_different_zip_is_unpacked_again(tmp_path, paths):
-    aotr_zip = AOTR.check_zip(make_zip(tmp_path, GOOD))
+def test_what_an_earlier_unpack_left_is_cleared_first(tmp_path, paths):
     AOTR.unpack_dir(paths).mkdir(parents=True)
     (AOTR.unpack_dir(paths) / "stale.bin").write_bytes(b"old")
     (AOTR.unpack_dir(paths) / ".complete").write_text("AotR_Standalone_9.2.0_Installer.zip\n")
 
-    AOTR.unpack(context(paths, [].append), aotr_zip)
+    AOTR.unpack(context(paths), make_zip(tmp_path, GOOD))
 
     assert not (AOTR.unpack_dir(paths) / "stale.bin").exists()
     assert (AOTR.unpack_dir(paths) / EXE).exists()
 
 
+# A 7-Zip whose listing shows a good zip, and that does `unpack` (its "x" command) as told.
+FAKE_7ZIP = f"""#!/bin/sh
+if [ "$1" = l ]; then
+  printf 'Path = {EXE}\\nSize = 50\\n\\nPath = AotR_Standalone_9.3.0_Installer-1a.bin\\nSize = 50\\n'
+  exit 0
+fi
+"""
+
+
 def test_a_failed_unpack_says_where_to_look(tmp_path, paths, monkeypatch):
-    executable(tmp_path / "bin" / "7zz", "#!/bin/sh\necho 'CRC Failed' >&2\nexit 2\n")
+    executable(tmp_path / "bin" / "7zz", FAKE_7ZIP + "echo 'CRC Failed' >&2\nexit 2\n")
+    (tmp_path / ZIP).write_bytes(b"zip")
     monkeypatch.setenv("PATH", str(tmp_path / "bin"))
 
-    with pytest.raises(SetupError, match="The file could not be unpacked. It may be damaged: .* See .*aotr-unpack.log"):
-        AOTR.unpack(context(paths, [].append), AotrZip(tmp_path / ZIP, EXE, 100))
+    with pytest.raises(
+        SetupError, match="The file could not be unpacked. It may be damaged. Try again.* See .*aotr-unpack.log"
+    ):
+        AOTR.unpack(context(paths), tmp_path / ZIP)
 
     assert not (AOTR.unpack_dir(paths) / ".complete").exists()
     assert "CRC Failed" in (paths.logs / "aotr-unpack.log").read_text()
 
 
 def test_unpacking_stops_when_cancelled(tmp_path, paths, monkeypatch):
-    executable(tmp_path / "bin" / "7zz", "#!/bin/sh\nexec /bin/sleep 30\n")
+    executable(tmp_path / "bin" / "7zz", FAKE_7ZIP + "exec /bin/sleep 30\n")
+    (tmp_path / ZIP).write_bytes(b"zip")
     monkeypatch.setenv("PATH", str(tmp_path / "bin"))
     cancel = threading.Event()
     threading.Timer(0.2, cancel.set).start()
 
     with pytest.raises(JobCancelled):
-        AOTR.unpack(context(paths, [].append, cancel), AotrZip(tmp_path / ZIP, EXE, 100))
+        AOTR.unpack(context(paths, cancel=cancel), tmp_path / ZIP)
 
     assert not (AOTR.unpack_dir(paths) / ".complete").exists()
 
@@ -306,7 +342,7 @@ def test_data_files_are_read_by_number_then_letter(tmp_path):
 def unpacked(paths):
     AOTR.unpack_dir(paths).mkdir(parents=True, exist_ok=True)
     (AOTR.unpack_dir(paths) / EXE).write_text("installer")
-    return AotrZip(Path(ZIP), EXE, 100)
+    return ZipContents(EXE, 100)
 
 
 def test_the_installer_runs_silently_in_the_unpack_folder(env, paths):
@@ -390,11 +426,9 @@ def test_a_whole_install_leaves_the_game_and_cleans_up(tmp_path, env, paths):
     zip_path = make_zip(tmp_path, GOOD)
     make_prefix(paths)
 
-    aotr_zip = AOTR.check_zip(zip_path)
-    AOTR.check_space(paths, aotr_zip)
     GameEnvironment(paths).prepare(context(paths, [].append, config=Config()))
-    AOTR.unpack(context(paths, [].append), aotr_zip)
-    AOTR.run_installer(context(paths, [].append, proton="fake-proton"), aotr_zip)
+    contents = AOTR.unpack(context(paths, [].append), zip_path)
+    AOTR.run_installer(context(paths, [].append, proton="fake-proton"), contents)
     AOTR.clean_up(paths)
 
     # Each call is logged as "arguments|working folder".
@@ -414,22 +448,12 @@ def test_a_whole_install_leaves_the_game_and_cleans_up(tmp_path, env, paths):
 # Downloading it from ModDB
 
 
-def remote_for(data, md5=None, url="http://127.0.0.1:1/never"):
-    import hashlib
-
-    from bfme_wizard.engine.moddb import RemoteFile
-
-    return RemoteFile(name=ZIP, size=len(data), md5=md5 or hashlib.md5(data).hexdigest(), url=url)
-
-
 def test_the_download_is_checked_against_moddbs_md5(paths, moddb):
-    from bfme_wizard.engine.moddb import ModDB
-
     data = os.urandom(8192)
     moddb.publish(data, name=ZIP)
     events = []
 
-    zip_path = AOTR.download_zip(context(paths, events.append, config=Config()), ModDB().find_aotr())
+    zip_path = AOTR.download_zip(context(paths, events.append, config=Config()), ModDB().find())
 
     assert zip_path == paths.downloads / ZIP
     assert zip_path.read_bytes() == data
@@ -437,12 +461,10 @@ def test_the_download_is_checked_against_moddbs_md5(paths, moddb):
 
 
 def test_a_download_with_the_wrong_md5_is_deleted(paths, moddb):
-    from bfme_wizard.engine.moddb import ModDB
-
     moddb.publish(b"what was uploaded", name=ZIP, md5="0" * 32)
 
     with pytest.raises(SetupError, match="Checksum mismatch"):
-        AOTR.download_zip(context(paths, [].append, config=Config()), ModDB().find_aotr())
+        AOTR.download_zip(context(paths, [].append, config=Config()), ModDB().find())
 
     assert not (paths.downloads / ZIP).exists()
 
@@ -455,38 +477,16 @@ def test_a_finished_download_is_not_repeated(paths):
     assert AOTR.download_zip(context(paths, [].append, config=Config()), remote_for(data)) == paths.downloads / ZIP
 
 
-def test_before_downloading_there_must_be_room_for_the_unpacked_installer_and_the_game(paths, monkeypatch):
-    monkeypatch.setattr(aotr_module.shutil, "disk_usage", lambda path: Usage(0, 0, 2_700_000_000))
-    remote = remote_for(b"")
-    remote = remote.__class__(remote.name, 1_000_000_000, remote.md5, remote.url)
-
-    AOTR.check_download_space(context(paths, config=Config()), remote)  # 1 GB unpacked + 1.6 GB installed
-
-    monkeypatch.setattr(aotr_module.shutil, "disk_usage", lambda path: Usage(0, 0, 2_000_000_000))
-
-    with pytest.raises(SetupError, match="needs 3 GB more, but only 2 GB is free"):
-        AOTR.check_download_space(context(paths, config=Config()), remote)
-
-
-def test_keeping_the_download_needs_room_for_it_too(paths, monkeypatch):
-    monkeypatch.setattr(aotr_module.shutil, "disk_usage", lambda path: Usage(0, 0, 3_000_000_000))
-    remote = remote_for(b"")
-    remote = remote.__class__(remote.name, 1_000_000_000, remote.md5, remote.url)
-
-    AOTR.check_download_space(context(paths, config=Config()), remote)
-
-    with pytest.raises(SetupError, match="needs 4 GB more"):
-        AOTR.check_download_space(context(paths, config=Config(keep_aotr_download=True)), remote)
-
-
 def test_an_unpacked_installer_of_the_same_zip_is_used_again(paths):
-    assert AOTR.from_unpacked(paths, ZIP) is None
+    remote = remote_for(b"")
+    assert AOTR.from_unpacked(paths, remote) is None
     unpacked(paths)
     (AOTR.unpack_dir(paths) / "AotR_Standalone_9.3.0_Installer-1a.bin").write_bytes(b"x" * 10)
 
-    assert AOTR.from_unpacked(paths, ZIP) is None  # its unpack did not finish
+    assert AOTR.from_unpacked(paths, remote) is None  # its unpack did not finish
     (AOTR.unpack_dir(paths) / ".complete").write_text(ZIP + "\n")
-    found = AOTR.from_unpacked(paths, ZIP)
+    found = AOTR.from_unpacked(paths, remote)
 
     assert (found.exe_name, found.unpacked_bytes) == (EXE, len("installer") + 10 + len(ZIP) + 1)
-    assert AOTR.from_unpacked(paths, "AotR_Standalone_10.1.0_Installer.zip") is None
+    newer = RemoteFile("AotR_Standalone_10.1.0_Installer.zip", remote.size, remote.md5, remote.url)
+    assert AOTR.from_unpacked(paths, newer) is None

@@ -4,15 +4,13 @@ The player's choice on the start page becomes a plan: jobs run one after the oth
 
   environment   prepare                doctor, runner, prefix                   left out when it is already ready
   aio-launcher  install aio-launcher   aio-launcher, arena, shortcuts
-  aotr          install aotr           aotr-download, aotr-check, aotr-unpack, aotr-install, aotr-settings. The job
-                                       downloads the file itself, or the player does and chooses it (waiting)
+  aotr          install aotr           aotr-download, aotr-unpack, aotr-install, aotr-settings. The job
+                                       downloads the file from ModDB itself
 
 States:
   checking   asking the setup what is already installed (or re-checking the system)
   idle       nothing running; the setup is not complete: the start page
   running    a job of the plan is running
-  waiting    the plan needs the player: the app cannot download Age of the Ring itself, so the player downloads it
-             from ModDB and chooses the file
   removing   a program is being taken out of the game environment
   cancelled  the plan stopped cleanly between steps
   failed     a step failed; retrying may help
@@ -107,11 +105,10 @@ class SetupModel:
         self.status: events.SetupStatus | None = None  # known after a status check
         self.selection: tuple[str, ...] = ()  # what the player chose to install (see PROGRAMS)
         self.plan: list[str] = []  # the jobs that choice takes
-        self.job: str | None = None  # the job that is running, waiting for the player, or failed
+        self.job: str | None = None  # the job that is running, or failed
         self.started_from_home = False  # the plan began on the home screen: stopping it goes back there
         self.just_finished = False  # this session ran a plan to the end
         self.removing: str | None = None  # the program being removed, while the state is "removing"
-        self.file_note: str | None = None  # why the app could not download the file itself
         self.steps: dict[str, str] = {}
         self._reset_run()
 
@@ -162,23 +159,6 @@ class SetupModel:
         # Only the environment job runs system checks. Troubleshoot keeps showing the last ones.
         self._reset_run(keep_checks=name != PrepareJob.KEY)
         self.state = "running"
-
-    def wait_for_file(self, why: str | None = None) -> None:
-        """The running job waits for the player to download and choose its file (Age of the Ring's). `why`: why the app
-        could not download it itself, if it tried."""
-        self._reset_run(keep_checks=True)
-        self.file_note = why
-        self.steps[self.file_step] = "running"
-        self.current = self.file_step
-        self.state = "waiting"
-
-    @property
-    def file_step(self) -> str:
-        """The current job's step that waits for a file from the player, or "" when it has none."""
-        if self.job is None or self.job == PrepareJob.KEY:
-            return ""
-
-        return engine_programs.program(self.job).file_step
 
     def _reset_run(self, keep_checks: bool = False) -> None:
         """Forget what the last script run reported. Step results stay."""

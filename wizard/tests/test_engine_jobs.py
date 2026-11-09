@@ -11,6 +11,7 @@ import pytest
 from bfme_wizard.engine import doctor
 from bfme_wizard.engine.doctor import SystemCheck
 from bfme_wizard.engine.download import Download
+from bfme_wizard.engine.errors import SetupError
 from bfme_wizard.engine.events import (
     Cancelled,
     Check,
@@ -279,7 +280,7 @@ def test_prepare_stops_at_a_failed_check(world, monkeypatch):
 def test_the_aio_launcher_and_the_arena(world):
     world.make_prefix()
 
-    code, events = world.engine(jobs.install, "aio-launcher", None)
+    code, events = world.engine(jobs.install, "aio-launcher")
 
     assert code == jobs.OK
     assert lines(events) == [
@@ -299,7 +300,7 @@ def test_the_aio_launcher_and_the_arena(world):
 
 
 def test_the_aio_launcher_needs_the_game_environment(world):
-    code, events = world.engine(jobs.install, "aio-launcher", None)
+    code, events = world.engine(jobs.install, "aio-launcher")
 
     assert code == jobs.FAILED
     assert lines(events) == ["@bfme ERROR - Set up the game environment first."]
@@ -309,7 +310,7 @@ def test_the_aio_launcher_needs_the_game_environment(world):
 def test_a_tool(world, tool):
     world.make_prefix()
 
-    code, events = world.engine(jobs.install, tool, None)
+    code, events = world.engine(jobs.install, tool)
 
     assert code == jobs.OK
     assert lines(events) == [
@@ -323,7 +324,7 @@ def test_a_tool(world, tool):
 def test_an_unknown_tool(world):
     world.make_prefix()
 
-    code, events = world.engine(jobs.install, "bogus", None)
+    code, events = world.engine(jobs.install, "bogus")
 
     assert code == jobs.FAILED
     assert lines(events) == ["@bfme ERROR - Unknown program: bogus."]
@@ -341,18 +342,16 @@ def aotr_zip(world, version="10.0.0"):
 
 
 @needs_7zip
-def test_age_of_the_ring_from_the_players_file(world):
-    zip_path = aotr_zip(world)
-
+def test_age_of_the_rings_steps(world, moddb):
+    moddb.publish(aotr_zip(world).read_bytes())
     world.make_prefix()
 
-    code, events = world.engine(jobs.install, "aotr", str(zip_path))
+    code, events = world.engine(jobs.install, "aotr")
 
     assert code == jobs.OK
     assert lines(events) == [
+        "@bfme STEP aotr-download start",
         "@bfme STEP aotr-download done",
-        "@bfme STEP aotr-check start",
-        "@bfme STEP aotr-check done",
         "@bfme STEP aotr-unpack start",
         "@bfme STEP aotr-unpack done",
         "@bfme STEP aotr-install start",
@@ -362,7 +361,6 @@ def test_age_of_the_ring_from_the_players_file(world):
         *status_lines(aotr="installed", complete="yes"),
         "@bfme DONE",
     ]
-    assert zip_path.exists()  # the player's own file is never deleted
 
 
 @needs_7zip
@@ -370,7 +368,7 @@ def test_age_of_the_ring_downloaded_by_the_app(world, moddb):
     name = moddb.publish(aotr_zip(world).read_bytes())
     world.make_prefix()
 
-    code, events = world.engine(jobs.install, "aotr", None)
+    code, events = world.engine(jobs.install, "aotr")
 
     assert code == jobs.OK
     assert lines(events)[:2] == ["@bfme STEP aotr-download start", "@bfme STEP aotr-download done"]
@@ -386,21 +384,48 @@ def test_the_download_can_be_kept(world, moddb):
     world.make_prefix()
     world.paths.config.write_text("BFME_KEEP_AOTR_DOWNLOAD=1\n")
 
-    code, _events = world.engine(jobs.install, "aotr", None)
+    code, _events = world.engine(jobs.install, "aotr")
 
     assert code == jobs.OK
     assert (world.paths.downloads / name).exists()
 
 
-def test_when_moddb_cannot_be_read_the_player_is_asked_for_the_file(world, moddb):
+def test_when_moddb_cannot_be_read_the_download_fails_with_the_reason(world, moddb):
     moddb.publish(b"x")
     moddb.server.files["/downloads/start/290690"] = b"<html>Please verify you are human</html>"
     world.make_prefix()
 
-    code, events = world.engine(jobs.install, "aotr", None)
+    code, events = world.engine(jobs.install, "aotr")
 
-    assert code == jobs.NEEDS_FILE
-    assert events[-1] == Error("aotr-download", "ModDB did not offer a download link. It may want a browser.")
+    assert code == jobs.FAILED
+    assert events[-1] == Error("aotr-download", "ModDB did not offer a download link. Try again later.")
+    assert list(world.paths.downloads.glob("*")) == []
+
+
+@needs_7zip
+def test_a_damaged_download_is_deleted_so_a_retry_downloads_it_again(world, moddb):
+    name = moddb.publish(b"PK\x03\x04 not really a zip")
+    world.make_prefix()
+
+    code, events = world.engine(jobs.install, "aotr")
+
+    assert code == jobs.FAILED
+    assert events[-1].step == "aotr-unpack"
+    assert not (world.paths.downloads / name).exists()
+
+
+def test_without_room_nothing_is_downloaded(world, moddb, monkeypatch):
+    moddb.publish(b"x" * 1000)
+    world.make_prefix()
+
+    def no_room(self, ctx, remote):
+        raise SetupError("Not enough free space.")
+
+    monkeypatch.setattr(AgeOfTheRing, "check_space", no_room)
+    code, events = world.engine(jobs.install, "aotr")
+
+    assert code == jobs.FAILED
+    assert events[-1] == Error("aotr-download", "Not enough free space.")
     assert list(world.paths.downloads.glob("*")) == []
 
 
@@ -417,12 +442,12 @@ def test_a_retry_after_a_failed_install_does_not_download_again(world, moddb, mo
         ),
     )
 
-    code, _events = world.engine(jobs.install, "aotr", None)
+    code, _events = world.engine(jobs.install, "aotr")
     assert code == jobs.FAILED
     downloads_before = len(moddb.server.requests)
 
     monkeypatch.delenv("NO_INSTALL")
-    code, events = world.engine(jobs.install, "aotr", None)
+    code, events = world.engine(jobs.install, "aotr")
 
     assert code == jobs.OK
     assert Step("aotr-unpack", "skip") in events
@@ -507,7 +532,7 @@ def test_another_setup_holding_the_lock_is_an_error(world):
     world.make_prefix()
 
     with SetupLock(world.paths):
-        code, events = world.engine(jobs.install, "workshop", None)
+        code, events = world.engine(jobs.install, "workshop")
 
     assert code == jobs.FAILED
     assert events[-1] == Error(None, "Another setup is already running. Wait for it to finish.")
@@ -517,7 +542,7 @@ def test_missing_32bit_extensions_stop_before_proton_runs(world, monkeypatch):
     monkeypatch.setattr(SystemCheck, "LIB_ROOT", world.tmp / "nothing")
     world.make_prefix()
 
-    code, events = world.engine(jobs.install, "aio-launcher", None)
+    code, events = world.engine(jobs.install, "aio-launcher")
 
     assert code == jobs.FAILED
     assert events[-1] == Error("aio-launcher", "The 32-bit Flatpak extensions are not installed.")

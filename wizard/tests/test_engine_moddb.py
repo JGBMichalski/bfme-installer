@@ -1,14 +1,15 @@
-"""engine.moddb: reading the Age of the Ring download from ModDB's pages."""
+"""engine.programs.aotr.moddb: reading the Age of the Ring download from ModDB's pages."""
 
 import pytest
 
-from bfme_wizard.engine.moddb import ModDB, ModdbUnavailable
+from bfme_wizard.engine.errors import SetupError
+from bfme_wizard.engine.programs.aotr import ModDB
 
 
 def test_the_file_is_found_with_its_size_md5_and_mirror(moddb):
     moddb.publish(b"x" * 5000)
 
-    found = ModDB().find_aotr()
+    found = ModDB().find()
 
     assert found.name == "AotR_Standalone_10.0.0_Installer.zip"
     assert found.size == 5000
@@ -19,7 +20,7 @@ def test_the_file_is_found_with_its_size_md5_and_mirror(moddb):
 def test_every_page_is_asked_for_as_the_app(moddb):
     moddb.publish(b"x")
 
-    ModDB().find_aotr()
+    ModDB().find()
 
     assert moddb.server.agents == ["bfme-installer", "bfme-installer"]
 
@@ -35,7 +36,7 @@ def test_the_real_pages_markup_is_read(moddb):
     moddb.publish(b"x")
     moddb.server.files["/mods/aotr/downloads/age-of-the-ring"] = page.encode()
 
-    found = ModDB().find_aotr()
+    found = ModDB().find()
 
     assert (found.name, found.size, found.md5) == (
         "AotR_Standalone_10.0.0_Installer.zip",
@@ -61,20 +62,20 @@ def test_a_changed_file_page_says_what_changed(moddb, change, reason):
     key = "/mods/aotr/downloads/age-of-the-ring"
     moddb.server.files[key] = change(moddb.server.files[key].decode()).encode()
 
-    with pytest.raises(ModdbUnavailable, match=reason):
-        ModDB().find_aotr()
+    with pytest.raises(SetupError, match=reason):
+        ModDB().find()
 
 
-def test_a_human_check_instead_of_the_download_page_means_a_browser(moddb):
+def test_a_human_check_instead_of_the_download_page_is_a_failure(moddb):
     moddb.publish(b"x")
     moddb.server.files["/downloads/start/290690"] = b"<html>Please verify you are human</html>"
 
-    with pytest.raises(ModdbUnavailable, match="It may want a browser"):
-        ModDB().find_aotr()
+    with pytest.raises(SetupError, match="ModDB did not offer a download link. Try again later."):
+        ModDB().find()
 
 
-def test_no_connection_means_a_browser(monkeypatch):
+def test_no_connection_is_a_failure(monkeypatch):
     monkeypatch.setattr(ModDB, "PAGE_URL", "http://127.0.0.1:1/page")
 
-    with pytest.raises(ModdbUnavailable, match="ModDB could not be reached"):
-        ModDB().find_aotr()
+    with pytest.raises(SetupError, match="ModDB could not be reached"):
+        ModDB().find()

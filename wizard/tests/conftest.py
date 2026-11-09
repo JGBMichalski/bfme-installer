@@ -122,7 +122,7 @@ class Moddb:
     """The Age of the Ring file on a local stand-in for ModDB. `publish` puts a zip there; the pages can be broken after."""
 
     def __init__(self, server, monkeypatch):
-        from bfme_wizard.engine.moddb import ModDB
+        from bfme_wizard.engine.programs.aotr import ModDB
 
         self.server = server
         self.page_url = server.url("/mods/aotr/downloads/age-of-the-ring")

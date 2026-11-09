@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
-- The app downloads Age of the Ring from ModDB itself. If it cannot, it says why and you download the file in your browser as before. Set `BFME_KEEP_AOTR_DOWNLOAD=1` in `config.env` to keep the zip.
+- The app downloads Age of the Ring from ModDB itself. Set `BFME_KEEP_AOTR_DOWNLOAD=1` in `config.env` to keep the zip.
 - Each download writes a "Downloading …" line to the log, and the running page shows its speed next to the percentage.
 - Troubleshoot's **Graphics** section can choose the graphics card on a computer with two, and show an FPS counter.
 - After an update, the app shows once what changed since the version you last used.
@@ -26,6 +26,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Removed
 
+- Downloading Age of the Ring in your browser and choosing the file. The app always downloads it; when ModDB cannot be used, the install fails with the reason and **Retry** tries again.
 - The terminal script (`bfme-linux-setup.sh`) and its commands. Without a display, the app says so and exits; `install-flatpak.sh` asks you to finish the setup from the desktop.
 - The system Wine option. The setup always uses Proton. `config.env` no longer reads `BFME_RUNNER`, `BFME_ARENA_BRANCH`, `BFME_NVIDIA` or `BFME_UMU_RUN`.
 - Desktop notifications. The window shows the same.

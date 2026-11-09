@@ -11,10 +11,8 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, Gdk, Gio, GLib, GObject, Gtk  # noqa: E402
 
 from . import whatsnew
-from .aotr import AotrDownloadPage
 from .controller import Controller
 from .diagnostics import Diagnostics
-from .engine.moddb import ModDB
 from .engine.paths import Paths
 from .engine.programs import program
 from .home import GameFoldersPage, HomePage, TroubleshootPage
@@ -93,8 +91,6 @@ class WizardWindow(Adw.ApplicationWindow):
         self.stack.add_named(self.start.view, "start")
         self._build_run()
         self._build_problem()
-        self.aotr = AotrDownloadPage(self.open_moddb, self.choose_aotr_zip, self.controller.back_home)
-        self.stack.add_named(self.aotr.view, "aotr")
         self.home = HomePage(self.controller, lambda: self.updater.local or "dev")
         self.stack.add_named(self.home.box, "home")
 
@@ -184,42 +180,6 @@ class WizardWindow(Adw.ApplicationWindow):
         """Install from the Programs page. The setup shows on the main page, so leave this one first."""
         self.nav.pop_to_page(self.root_page)
         self.controller.install([program(key).job])
-
-    def open_moddb(self) -> None:
-        def opened(launcher: Gtk.UriLauncher, result: Gio.AsyncResult) -> None:
-            try:
-                launcher.launch_finish(result)
-            except GLib.Error:
-                toast = Adw.Toast.new("Could not open your browser.")
-                toast.set_button_label("Copy link")
-                toast.connect("button-clicked", lambda *_: self.copy(ModDB.PAGE_URL, "Link copied"))
-                self.toasts.add_toast(toast)
-
-        Gtk.UriLauncher.new(ModDB.PAGE_URL).launch(self, None, opened)
-
-    def choose_aotr_zip(self) -> None:
-        zips = Gtk.FileFilter()
-        zips.set_name("Zip files")
-        zips.add_pattern("*.zip")
-        filters = Gio.ListStore.new(Gtk.FileFilter)
-        filters.append(zips)
-        dialog = Gtk.FileDialog(title="Choose the Age of the Ring download", filters=filters, default_filter=zips)
-        downloads = GLib.get_user_special_dir(GLib.UserDirectory.DIRECTORY_DOWNLOAD)
-        if downloads and os.path.isdir(downloads):
-            dialog.set_initial_folder(Gio.File.new_for_path(downloads))
-
-        def chosen(source: Gtk.FileDialog, result: Gio.AsyncResult) -> None:
-            try:
-                picked = source.open_finish(result)
-            except GLib.Error:
-                return  # the player closed the chooser
-            path = picked.get_path() if picked is not None else None
-            if not path:
-                self.toasts.add_toast(Adw.Toast.new("That file cannot be read from here."))
-                return
-            self.controller.choose_file(path)
-
-        dialog.open(self, None, chosen)
 
     def copy_diagnostics(self) -> None:
         report = Diagnostics(Paths.of().logs).report(self.updater.local or "dev", self.model)
@@ -428,9 +388,6 @@ class WizardWindow(Adw.ApplicationWindow):
         elif m.state == "running":
             self._render_run()
             self.stack.set_visible_child_name("run")
-        elif m.state == "waiting":
-            self.aotr.refresh(m.step_number, len(m.step_defs), self._leave_label(), m.file_note)
-            self.stack.set_visible_child_name("aotr")
         elif m.state in ("blocked", "failed"):
             self._render_problem()
             self.stack.set_visible_child_name("problem")
@@ -512,10 +469,6 @@ class WizardWindow(Adw.ApplicationWindow):
             self.problem_box.append(pill("Retry", self.controller.retry))
             # One row: four stacked buttons do not fit.
             others = Gtk.Box(spacing=12, halign=Gtk.Align.CENTER)
-            if m.file_step:
-                # Most Age of the Ring failures come from the file. A failed download can be done in a browser instead.
-                label = "Choose a file instead" if m.failed_step == m.file_step else "Choose another file"
-                others.append(pill(label, self.controller.choose_another_file, suggested=False))
             others.append(pill(self._leave_label(), self.controller.back_home, suggested=False))
             others.append(pill("Copy log", lambda: self.copy(m.log_text(), "Log copied"), suggested=False))
             self.problem_box.append(others)

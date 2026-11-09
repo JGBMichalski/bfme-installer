@@ -211,7 +211,7 @@ def test_nothing_on_any_page_is_under_them_at_any_size_the_window_can_have(win, 
     across, down = gtk.Orientation.HORIZONTAL, gtk.Orientation.VERTICAL
     least_w = page.measure(across, -1)[0]
     least_h = page.measure(down, least_w)[0]  # the smallest the window can be made, as it is now
-    for state in ("checking", "idle", "running", "waiting", "cancelled", "failed", "blocked", "removing", "done"):
+    for state in ("checking", "idle", "running", "cancelled", "failed", "blocked", "removing", "done"):
         win.model.state = state
         win.model.removing = "arena" if state == "removing" else None
         win.render()
@@ -273,9 +273,7 @@ def test_the_old_menu_button_is_gone(win, gtk):
     assert not [w for w in descendants(win.root_page.get_child()) if isinstance(w, gtk.MenuButton)]
 
 
-@pytest.mark.parametrize(
-    "state", ["checking", "idle", "running", "waiting", "cancelled", "failed", "blocked", "removing", "done"]
-)
+@pytest.mark.parametrize("state", ["checking", "idle", "running", "cancelled", "failed", "blocked", "removing", "done"])
 def test_troubleshoot_is_always_there_and_the_other_two_belong_to_the_home_screen(win, gtk, state):
     win.model.begin_plan(["aio-launcher"])  # the run page shows a step of the plan
     win.model.state = state
@@ -344,7 +342,7 @@ def test_installing_from_the_programs_page_goes_back_to_the_main_page_and_instal
     assert asked[-1] == ["aio-launcher"]
 
 
-@pytest.mark.parametrize("state", ["idle", "cancelled", "running", "waiting", "failed", "blocked"])
+@pytest.mark.parametrize("state", ["idle", "cancelled", "running", "failed", "blocked"])
 def test_the_programs_page_does_not_outlive_the_home_screen(win, state):
     # The last program was removed, or the setup is being started over: there is nothing to manage.
     win.model.begin_plan(["aio-launcher"])
@@ -549,21 +547,6 @@ def test_closing_the_window_otherwise_just_closes(win, dialogs):
     win.model.state = "running"
     assert win._on_close_request(win)
     assert dialogs[-1].get_heading() == "Setup is still running"
-
-
-# The Age of the Ring download page, when the app cannot download it itself
-
-
-def test_the_download_page_says_why_the_app_could_not(win, gtk):
-    win.model.begin_plan(["aotr"])
-    win.model.wait_for_file("ModDB did not offer a download link.")
-    win.render()
-    assert win.stack.get_visible_child_name() == "aotr"
-    assert "Why: ModDB did not offer a download link." in labels(win.aotr.view, gtk)
-
-    win.model.wait_for_file()
-    win.render()
-    assert not win.aotr.why.get_visible()
 
 
 # Download speed on the running page

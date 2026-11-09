@@ -7,8 +7,8 @@ What is installed lives in flag files in `dir`; every job that runs is added to 
   flaky                   `prepare` fails once, in the runner step
   aio-launcher-flaky      `install aio-launcher` fails once, in the aio-launcher step
   cancel-once             `install aio-launcher` is stopped once, before the arena step
-  aotr-bad                `install aotr` fails once, in the check
-  moddb-down              `install aotr` without a file cannot download it: the player must choose it
+  aotr-bad                `install aotr` fails once, in the unpack (a bad zip)
+  moddb-down              `install aotr` cannot download it from ModDB
   shortcuts-fails         `sync_shortcuts` fails (the permission is gone, say)
   remove-fails            `remove` fails and deletes nothing
   reset-fails             `reset` fails and deletes nothing
@@ -156,9 +156,9 @@ class FakeJobs:
         emit(Done())
         return 0
 
-    def install(self, key, zip_path, emit, cancel=None):
+    def install(self, key, emit, cancel=None):
         if key == "aotr":
-            return self._aotr_install(zip_path, emit)
+            return self._aotr_install(emit)
 
         if key != "aio-launcher":
             return self._tool_install(key, emit)
@@ -183,28 +183,22 @@ class FakeJobs:
         emit(Done())
         return 0
 
-    NEEDS_FILE = 2
+    def _aotr_install(self, emit):
+        self.calls.append("install aotr")
+        emit(Step("aotr-download", "start"))
 
-    def _aotr_install(self, zip_path, emit):
-        self.calls.append(f"install aotr {zip_path}")
+        if self.has("moddb-down"):
+            return self.fail(emit, "aotr-download", "ModDB did not offer a download link. Try again later.")
 
-        if zip_path is None:
-            emit(Step("aotr-download", "start"))
+        emit(Progress(30))
+        emit(Step("aotr-download", "done"))
 
-            if self.has("moddb-down"):
-                return self.fail(emit, "aotr-download", "ModDB did not offer a download link.", self.NEEDS_FILE)
-
-            emit(Progress(30))
-            emit(Step("aotr-download", "done"))
-        else:
-            emit(Step("aotr-download", "done"))
-
-        emit(Step("aotr-check", "start"))
+        emit(Step("aotr-unpack", "start"))
 
         if self.once("aotr-bad"):
-            return self.fail(emit, "aotr-check", "This file is incomplete.")
+            return self.fail(emit, "aotr-unpack", "This file is incomplete or damaged.")
 
-        emit(Step("aotr-check", "done"))
+        emit(Step("aotr-unpack", "done"))
         emit(Progress(40))
         emit(Step("aotr-install", "start"))
         emit(Step("aotr-install", "done"))

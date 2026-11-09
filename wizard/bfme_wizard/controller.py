@@ -26,14 +26,12 @@ class Controller:
         self.model = SetupModel()
         self._on_change = on_change
         self.apps = AppLauncher(self.jobs.open_program, on_change)
-        self._chosen_file: str | None = None  # the file the player chose for Age of the Ring, kept for Retry and Resume
         self._offer = offer  # what the shortcut that opened the wizard wanted, used once (see start)
 
     def start(self) -> None:
         """Check what is installed. The old plan is dropped, the choice stays."""
         if self.runner.busy:
             return
-        self._chosen_file = None
         self.model.begin_check()
         self.model.status = None  # what the status job reports now replaces what was known before (a reset, say)
         self._on_change()
@@ -48,7 +46,6 @@ class Controller:
             return
         if not self.model.begin_plan(programs):
             return
-        self._chosen_file = None  # a new choice asks for the file again
         self._run_job(self.model.first_unfinished_job())
 
     def resume(self) -> None:
@@ -62,21 +59,6 @@ class Controller:
         if self.runner.busy:
             return
         self._run_job(self.model.job)
-
-    def choose_file(self, path: str) -> None:
-        """Install the file the player chose for the waiting job (Age of the Ring's)."""
-        if self.runner.busy:
-            return
-        self._chosen_file = path
-        self._run_job(self.model.job)
-
-    def choose_another_file(self) -> None:
-        """Ask the player for the job's file, instead of the app downloading it."""
-        if self.runner.busy:
-            return
-        self._chosen_file = None
-        self.model.wait_for_file()
-        self._on_change()
 
     def back_home(self) -> None:
         """Leave the plan: home screen, or start page when nothing is installed."""
@@ -193,8 +175,7 @@ class Controller:
         if name == PrepareJob.KEY:
             job = self.jobs.prepare
         else:
-            # Only a job with a file step (Age of the Ring's) uses the file the player chose.
-            job = partial(self.jobs.install, name, self._chosen_file)
+            job = partial(self.jobs.install, name)
         self.runner.run(job, self._event, self._job_done)
 
     def _event(self, event: Event) -> None:
@@ -235,13 +216,6 @@ class Controller:
 
     def _job_done(self, code: int) -> None:
         """Handle the completion of an installation job."""
-        # The app could not download the file itself (Age of the Ring's): the player downloads it and chooses it.
-        if code == self.jobs.NEEDS_FILE and self.model.file_step:
-            why = self.model.error.message if self.model.error else None
-            self.model.wait_for_file(why)
-            self._on_change()
-            return
-
         # Every job ends with STATUS lines, so no second status question is needed.
         following = self.model.finish_install(code)
         self._on_change()

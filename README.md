@@ -100,7 +100,7 @@ Each program you install gets a shortcut in your application menu, and only whil
 
 1. Tick **Age of the Ring** on the first page, or press **Install** next to it on the Programs page later.
 2. The app downloads it from ModDB (about 19 GB), checks it, unpacks it and installs it. You need about 47 GB of free space, and it can take an hour or more. The download resumes if it is stopped. The app deletes the zip once it is unpacked; set `BFME_KEEP_AOTR_DOWNLOAD=1` in `config.env` to keep it.
-3. If the app cannot download it (ModDB asks for a browser, say), it shows why. Press **Open ModDB**, download the file in your browser, then **Choose file...** and pick the zip. Do not unpack it. You can delete it once the install is done.
+3. If the download fails (ModDB is unreachable or wants a browser, say), the app says why. Press **Retry** later.
 
 The card then says **Open**. The Age of the Ring Launcher updates the mod itself.
 

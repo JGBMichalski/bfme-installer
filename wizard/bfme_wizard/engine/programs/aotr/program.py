@@ -1,7 +1,7 @@
 """Age of the Ring, a large mod with its own launcher and its own copy of the games.
 
-Its zip comes from ModDB: the app downloads it (see moddb.py), or the player does and chooses it. It is a ZIP64 archive
-(~19 GB, Deflate64) that only 7-Zip can open. The zip is unpacked, then its installer runs in the game environment.
+The app downloads its zip from ModDB (see moddb.py). It is a ZIP64 archive (~19 GB, Deflate64) that only 7-Zip can
+open. The zip is unpacked, then its installer runs in the game environment.
 """
 
 from __future__ import annotations
@@ -17,16 +17,16 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ..context import Context
-from ..download import Download
-from ..errors import JobCancelled, SetupError
-from ..events import Emit, Log, Progress, Step, report_speed
-from ..moddb import ModDB, RemoteFile
-from ..paths import Paths
-from .base import Program, Shortcut
+from ...context import Context
+from ...download import Download
+from ...errors import JobCancelled, SetupError
+from ...events import Emit, Log, Progress, report_speed
+from ...paths import Paths
+from ..base import Program, Shortcut
+from .moddb import ModDB, RemoteFile
 
 if TYPE_CHECKING:
-    from ..jobs import InstallJob
+    from ...jobs import InstallJob
 
 # Age of the Ring 10.0.0. Shown to the player, so they know what they are in for before they start.
 DOWNLOAD_GB = 19
@@ -34,8 +34,7 @@ INSTALLED_GB = 28
 
 
 @dataclass(frozen=True)
-class AotrZip:
-    path: Path
+class ZipContents:
     exe_name: str  # the installer program inside the zip
     unpacked_bytes: int
 
@@ -56,8 +55,11 @@ class AgeOfTheRing(Program):
             "Download Age of the Ring",
             "Downloading the file from ModDB. It is large and can take a while.",
         ),
-        ("aotr-check", "Check the download", "Making sure the file is complete and there is room for it."),
-        ("aotr-unpack", "Unpack the download", "Extracting the installer files. This takes a few minutes."),
+        (
+            "aotr-unpack",
+            "Unpack the download",
+            "Checking and extracting the installer files. This takes a few minutes.",
+        ),
         ("aotr-install", "Install Age of the Ring", "Copying the game and the mod. This can take an hour."),
         ("aotr-settings", "Finish up", "Removing the temporary files."),
     )
@@ -72,7 +74,6 @@ class AgeOfTheRing(Program):
         suffix="Aotr",
     )
 
-    file_step = "aotr-download"
     shortcut_reinstalls = True
 
     # Left in the game environment until the installer finishes, so a half-finished install is not taken for the mod.
@@ -86,7 +87,7 @@ class AgeOfTheRing(Program):
         "7-Zip is needed to read the download. Install it (Debian/Ubuntu: p7zip-full, Fedora: 7zip, Arch: 7zip) "
         "and try again."
     )
-    DOWNLOAD_AGAIN = "Download it again from ModDB."
+    DOWNLOAD_AGAIN = "Try again, and the app downloads it again."
     # The installer's data files: AotR_Standalone_9.3.0_Installer-1a.bin, -1b.bin, -2a.bin, ...
     PART = re.compile(r"^(.*)-(\d+)([a-z])\.bin$")
 
@@ -103,61 +104,52 @@ class AgeOfTheRing(Program):
     def leftovers(self, paths: Paths) -> list[Path]:
         return [paths.prefix / self.INSTALLING, self.unpack_dir(paths)]
 
+    def zip_path(self, paths: Paths, remote: RemoteFile) -> Path:
+        """Where the download goes."""
+        return paths.downloads / remote.name
+
     def run_install(self, job: InstallJob) -> list[str]:
-        """Without a zip from the player the app downloads it from ModDB; when it cannot, the job ends with NEEDS_FILE and
-        the player downloads it in a browser."""
-        downloaded = not job.zip_path
-        resumed = None
+        """Download the zip from ModDB, check and unpack it, then run its installer."""
+        job.start("aotr-download")
+        remote = ModDB().find()
+        # A retry after a failed install needs no download when the installer is still unpacked.
+        contents = self.from_unpacked(job.paths, remote)
 
-        if job.zip_path:
-            job.emit(Step("aotr-download", "done"))  # the player did this step
-            zip_path = Path(job.zip_path)
-        else:
-            job.start("aotr-download")
-            remote = ModDB().find_aotr()
-            # A retry after a failed install needs no download when the installer is still unpacked.
-            resumed = self.from_unpacked(job.paths, remote.name)
+        if contents is None:
+            self.check_space(job, remote)
+            self.download_zip(job, remote)
 
-            if resumed is None:
-                zip_path = self.download_zip(job, remote)
-            else:
-                zip_path = resumed.path
+        job.done("aotr-download")
 
-            job.done("aotr-download")
-
-        if resumed is None:
-            job.start("aotr-check")
-            aotr_zip = self.check_zip(zip_path)
-            self.check_space(job.paths, aotr_zip)
-            job.ensure_prefix()
-            job.done("aotr-check")
-
+        if contents is None:
             job.start("aotr-unpack")
-            self.unpack(job, aotr_zip)
+            job.ensure_prefix()
+            zip_path = self.zip_path(job.paths, remote)
 
-            # The zip the app downloaded goes once it is unpacked, unless the player keeps it. The player's own stays.
-            if downloaded and not job.config.keep_aotr_download:
-                aotr_zip.path.unlink(missing_ok=True)
+            try:
+                contents = self.unpack(job, zip_path)
+            except SetupError:
+                zip_path.unlink(missing_ok=True)  # the zip itself is bad: a retry downloads it again
+                raise
+
+            # The zip goes once it is unpacked, unless the player keeps it (BFME_KEEP_AOTR_DOWNLOAD).
+            if not job.config.keep_aotr_download:
+                zip_path.unlink(missing_ok=True)
 
             job.done("aotr-unpack")
         else:
-            aotr_zip = resumed
-            job.skip("aotr-check")
             job.ensure_prefix()
             job.skip("aotr-unpack")
 
         job.start("aotr-install")
-        self.run_installer(job, aotr_zip)
+        self.run_installer(job, contents)
         job.done("aotr-install")
 
         job.start("aotr-settings")
         self.clean_up(job.paths)
         job.done("aotr-settings")
 
-        if downloaded:
-            return ["Age of the Ring is installed."]
-
-        return [f"Age of the Ring is installed. You can delete {zip_path.name} now."]
+        return ["Age of the Ring is installed."]
 
     # The download
 
@@ -171,7 +163,7 @@ class AgeOfTheRing(Program):
         raise SetupError(self.NEED_7ZIP)
 
     def zip_entries(self, zip_path: Path) -> list[tuple[int, str]]:
-        """(size, name) per file in the zip. Fails on an incomplete zip: an unfinished browser download has no
+        """(size, name) per file in the zip. Fails on an incomplete zip, which has no
         directory."""
         done = subprocess.run(
             [self.sevenzip(), "l", "-slt", "-ba", "--", str(zip_path)], capture_output=True, text=True, check=False
@@ -200,21 +192,10 @@ class AgeOfTheRing(Program):
 
         return entries
 
-    def check_zip(self, zip_path: Path) -> AotrZip:
-        """Make sure this is the whole Age of the Ring download, before anything is unpacked."""
+    def check_zip(self, zip_path: Path) -> ZipContents:
+        """Make sure this is the whole Age of the Ring installer, before anything is unpacked."""
         if not zip_path.is_file():
             raise SetupError(f"The file '{zip_path}' was not found.")
-
-        if zip_path.name.endswith((".part", ".crdownload", ".download")):
-            raise SetupError(
-                "This download is not finished yet. Wait until your browser has finished, then choose the file again."
-            )
-
-        if not re.fullmatch(r"AotR_Standalone_.*_Installer\.zip", zip_path.name):
-            raise SetupError(
-                "This is not the Age of the Ring installer. Choose the file named like "
-                "AotR_Standalone_10.0.0_Installer.zip."
-            )
 
         entries = self.zip_entries(zip_path)
         exe_name = ""
@@ -241,20 +222,18 @@ class AgeOfTheRing(Program):
         if not has_parts:
             raise SetupError(f"The installer's data files are missing from this file. {self.DOWNLOAD_AGAIN}")
 
-        return AotrZip(path=zip_path, exe_name=exe_name, unpacked_bytes=unpacked)
+        return ZipContents(exe_name=exe_name, unpacked_bytes=unpacked)
 
     def download_zip(self, ctx: Context, remote: RemoteFile) -> Path:
         """Download the zip into the downloads folder, with progress, and check it against ModDB's MD5. A finished
         download is not repeated."""
-        paths = ctx.paths
         emit = ctx.emit
         cancel = ctx.cancel
-        zip_path = paths.downloads / remote.name
+        zip_path = self.zip_path(ctx.paths, remote)
 
         if zip_path.is_file() and zip_path.stat().st_size == remote.size:
             return zip_path
 
-        self.check_download_space(ctx, remote)
         emit(Log(f"Downloading {remote.name} ({remote.size // 1000000000} GB) from ModDB."))
 
         def progress(percent: int) -> None:
@@ -284,28 +263,24 @@ class AgeOfTheRing(Program):
     def _already_there(self, paths: Paths) -> int:
         return self.dir_bytes(self.unpack_dir(paths)) + self.dir_bytes(self.folder(paths))
 
-    def check_space(self, paths: Paths, aotr_zip: AotrZip) -> None:
-        """The unpacked installer and the installed game must both fit. What is already there counts towards it."""
-        need = aotr_zip.unpacked_bytes + aotr_zip.unpacked_bytes * self.INSTALL_RATIO_PERCENT // 100
-        self._need_free_space(paths, need - self._already_there(paths))
-
-    def check_download_space(self, ctx: Context, remote: RemoteFile) -> None:
+    def check_space(self, ctx: Context, remote: RemoteFile) -> None:
         """Before the download: the zip, then the installer unpacked from it (about as big as the zip), then the installed
-        game. The zip is deleted once it is unpacked, unless the player keeps it."""
+        game must all fit. The zip is deleted once it is unpacked, unless the player keeps it. What is already there (the
+        zip or part of it, the unpacked installer, the installed game) counts towards it."""
         paths = ctx.paths
-        config = ctx.config
-        zip_path = paths.downloads / remote.name
+        zip_path = self.zip_path(paths, remote)
         part = zip_path.with_name(zip_path.name + ".part")
         already = self._already_there(paths)
 
-        if part.is_file():
-            already += part.stat().st_size
+        for downloaded in (zip_path, part):
+            if downloaded.is_file():
+                already += downloaded.stat().st_size
 
         installed = remote.size * self.INSTALL_RATIO_PERCENT // 100
         # Without the zip the most at once is the unpacked installer and the installed game; with it, all three.
         need = remote.size + installed
 
-        if config.keep_aotr_download:
+        if ctx.config.keep_aotr_download:
             need += remote.size
 
         self._need_free_space(paths, need - already)
@@ -322,42 +297,36 @@ class AgeOfTheRing(Program):
 
     # Unpacking
 
-    def from_unpacked(self, paths: Paths, zip_name: str) -> AotrZip | None:
-        """The installer this zip left unpacked, when its unpack finished: a retry does not need the zip again."""
+    def from_unpacked(self, paths: Paths, remote: RemoteFile) -> ZipContents | None:
+        """The installer this download left unpacked, when its unpack finished: a retry does not need the zip again."""
         unpack_dir = self.unpack_dir(paths)
         complete = unpack_dir / ".complete"
 
-        if not complete.is_file() or complete.read_text().strip() != zip_name:
+        if not complete.is_file() or complete.read_text().strip() != remote.name:
             return None
 
         for path in unpack_dir.glob("AotR_Standalone_*_Installer.exe"):
-            return AotrZip(
-                path=paths.downloads / zip_name, exe_name=path.name, unpacked_bytes=self.dir_bytes(unpack_dir)
-            )
+            return ZipContents(exe_name=path.name, unpacked_bytes=self.dir_bytes(unpack_dir))
 
         return None
 
-    def unpack(self, ctx: Context, aotr_zip: AotrZip) -> None:
-        """Unpack the zip into the downloads folder. A finished unpack of the same zip is not repeated. 7-Zip checks every
-        file's CRC, so a damaged download fails here, not in the installer."""
+    def unpack(self, ctx: Context, zip_path: Path) -> ZipContents:
+        """Check the zip, then unpack it into the downloads folder. 7-Zip checks every file's CRC, so a damaged download
+        fails here, not in the installer."""
         paths = ctx.paths
         emit = ctx.emit
         cancel = ctx.cancel
         unpack_dir = self.unpack_dir(paths)
+        contents = self.check_zip(zip_path)
 
         def measure() -> int | None:
             """The unpack's progress: how much of the expected size is there."""
-            if aotr_zip.unpacked_bytes <= 0:
+            if contents.unpacked_bytes <= 0:
                 return None
 
-            return self.dir_bytes(unpack_dir) * 100 // aotr_zip.unpacked_bytes
+            return self.dir_bytes(unpack_dir) * 100 // contents.unpacked_bytes
 
-        complete = unpack_dir / ".complete"
-
-        if complete.is_file() and complete.read_text().strip() == aotr_zip.path.name:
-            return
-
-        command = [self.sevenzip(), "x", "-y", "-bd", "-bso0", "-bsp0", f"-o{unpack_dir}", str(aotr_zip.path)]
+        command = [self.sevenzip(), "x", "-y", "-bd", "-bso0", "-bsp0", f"-o{unpack_dir}", str(zip_path)]
         shutil.rmtree(unpack_dir, ignore_errors=True)
         unpack_dir.mkdir(parents=True)
         paths.logs.mkdir(parents=True, exist_ok=True)
@@ -368,16 +337,17 @@ class AgeOfTheRing(Program):
             code = self._watch(process, measure, emit, cancel)
 
         if code != 0:
-            raise SetupError(
-                f"The file could not be unpacked. It may be damaged: download it again from ModDB. See {log}"
-            )
+            raise SetupError(f"The file could not be unpacked. It may be damaged. {self.DOWNLOAD_AGAIN} See {log}")
 
-        complete.write_text(aotr_zip.path.name + "\n")
+        # from_unpacked finds it by this, so a retry after a failed install does not unpack again.
+        (unpack_dir / ".complete").write_text(zip_path.name + "\n")
         emit(Progress(100))
+
+        return contents
 
     # Installing
 
-    def run_installer(self, ctx: Context, aotr_zip: AotrZip) -> None:
+    def run_installer(self, ctx: Context, contents: ZipContents) -> None:
         """Run the installer without its window. It leaves a marker until it is done, so a half-finished install is not
         taken for Age of the Ring."""
         paths = ctx.paths
@@ -394,7 +364,7 @@ class AgeOfTheRing(Program):
 
         (paths.prefix / self.INSTALLING).touch()
         paths.logs.mkdir(parents=True, exist_ok=True)
-        args = [f"./{aotr_zip.exe_name}", "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", r"/LOG=C:\aotr-install.log"]
+        args = [f"./{contents.exe_name}", "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", r"/LOG=C:\aotr-install.log"]
 
         with open(paths.logs / "aotr-install.log", "w", encoding="utf-8") as out:
             process = proton.start(args, inprefix=True, output=out, cwd=unpack_dir)
