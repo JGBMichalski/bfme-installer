@@ -10,7 +10,7 @@ Open an issue and paste the report from Troubleshoot's **Copy diagnostics**.
 
 - `dev/install-local.sh --run` builds your checkout as a Flatpak beside the release app, with its own app ID and data, and starts it. `dev/uninstall-local.sh` removes it.
 - `dev/screenshots.py` regenerates the README screenshots. It needs a desktop session.
-- In `wizard/`, run the tests (`python3 -m pytest`), the linter (`ruff check .`) and the formatter (`ruff format .`). CI fails on lint or format errors. Without ruff installed, use `uvx ruff` or `pipx run ruff`.
+- In the repository root, run the tests (`python3 -m pytest`), the linter (`ruff check .`) and the formatter (`ruff format .`). CI fails on lint or format errors. Without ruff installed, use `uvx ruff` or `pipx run ruff`.
 
 ## Before you open a pull request
 

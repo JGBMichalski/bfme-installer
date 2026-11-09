@@ -7,13 +7,19 @@ on:
     paths:
       - 'dev/**'
       - 'flatpak/**'
-      - 'wizard/**'
+      - 'bfme_wizard/**'
+      - 'tests/**'
+      - 'pytest.ini'
+      - 'ruff.toml'
       - '.github/workflows/build-linux.yml'
   pull_request:
     paths:
       - 'dev/**'
       - 'flatpak/**'
-      - 'wizard/**'
+      - 'bfme_wizard/**'
+      - 'tests/**'
+      - 'pytest.ini'
+      - 'ruff.toml'
       - '.github/workflows/build-linux.yml'
   workflow_dispatch:
 
@@ -40,11 +46,9 @@ jobs:
 
       - name: Lint
         run: pipx run ruff==0.17.3 check --output-format=github .
-        working-directory: wizard
 
       - name: Format
         run: pipx run ruff==0.17.3 format --check --diff .
-        working-directory: wizard
 
   # The wizard's logic (protocol, state model, script runner, controller) runs without a display.
   wizard-tests:
@@ -57,7 +61,6 @@ jobs:
 
       - name: Unit tests
         run: python3 -m pytest
-        working-directory: wizard
 
   flatpak:
     needs: [shellcheck, ruff, wizard-tests]

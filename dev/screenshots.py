@@ -112,7 +112,7 @@ def capture(window, path: str) -> None:
 
 def run_scene(scene: str, out: str) -> None:
     """Run the specified scene and save a screenshot to the given output path."""
-    sys.path.insert(0, str(ROOT / "wizard"))
+    sys.path.insert(0, str(ROOT))
     import gi
     gi.require_version("Gtk", "4.0")
     gi.require_version("Adw", "1")

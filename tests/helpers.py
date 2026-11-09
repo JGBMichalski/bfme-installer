@@ -7,7 +7,7 @@ from pathlib import Path
 
 from gi.repository import GLib
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "flatpak" / "com.jgbmichalski.BfmeInstaller.yml"
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 # What the shortcuts call each program's shortcut and icon in the Flatpak (`<app id>.<this>`). The manifest must export

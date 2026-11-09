@@ -1,6 +1,6 @@
 # Flatpak manifest for the BFME Installer.
 # Runs the Windows All-in-One Launcher and Online Arena under Proton (umu-launcher) in a sandbox,
-# with a GTK4/libadwaita setup wizard (wizard/) in front. The GNOME runtime provides GTK4, libadwaita and
+# with a GTK4/libadwaita setup wizard (bfme_wizard/) in front. The GNOME runtime provides GTK4, libadwaita and
 # PyGObject. It is based on freedesktop 25.08, so the 32-bit extensions below are the same.
 # Self-hosted only (not for Flathub). Build from this folder:
 #   flatpak-builder --user --install --force-clean build-dir com.jgbmichalski.BfmeInstaller.yml
@@ -104,7 +104,7 @@ modules:
       - install -Dm644 bfme_wizard/icons/aotr.png /app/share/icons/hicolor/128x128/apps/com.jgbmichalski.BfmeInstaller.Aotr.png
     sources:
       - type: dir
-        path: ../wizard/bfme_wizard
+        path: ../bfme_wizard
         dest: bfme_wizard
         skip:
           - __pycache__

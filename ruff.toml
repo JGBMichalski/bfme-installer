@@ -1,6 +1,7 @@
 line-length = 120
 # The tests run on Ubuntu 24.04's Python; the Flatpak's is newer.
 target-version = "py312"
+extend-exclude = ["dev"]
 
 [lint]
 select = ["E", "F", "W", "I", "B", "UP", "SIM"]

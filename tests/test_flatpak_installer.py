@@ -15,7 +15,7 @@ from types import SimpleNamespace
 
 import pytest
 
-INSTALLER = Path(__file__).resolve().parents[2] / "flatpak" / "install-flatpak.sh"
+INSTALLER = Path(__file__).resolve().parents[1] / "flatpak" / "install-flatpak.sh"
 APP_ID = "com.jgbmichalski.BfmeInstaller"
 SHORTCUTS = [f"{APP_ID}.{program}.desktop" for program in ("AioLauncher", "Launcher", "Arena", "Aotr")]
 # Files in the same folder that belong to somebody else, or to another copy of the app. None may go.
