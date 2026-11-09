@@ -4,6 +4,16 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.1]
+
+### Added
+
+- **Copy diagnostics** says whether the Arena's in-game overlay can start, and why not.
+
+### Fixed
+
+- The Arena fix from 3.0.0 now applies whenever you open any program, so it also works when the Arena is started from the AIO Launcher's Multiplayer tab.
+
 ## [3.0.0]
 
 ### Added

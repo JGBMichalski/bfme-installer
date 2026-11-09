@@ -11,6 +11,7 @@ from .context import Context
 from .errors import SetupError
 from .events import Log, Warn
 from .graphics import Graphics
+from .overlay_pattern import OverlayPattern
 from .paths import Paths
 from .proton import NO_WINE_SERVER, Proton
 
@@ -70,11 +71,13 @@ class GameEnvironment:
         (paths.prefix / self.CREATING_MARKER).unlink()
 
     def prepare(self, ctx: Context) -> None:
-        """Create it if it is missing, then make sure it has the current settings."""
+        """Create it if it is missing, then make sure it has the current settings, and DXVK what the Arena's in-game
+        overlay looks for."""
         if not self.ready():
             self.create(ctx)
 
         self.apply_settings(ctx)
+        OverlayPattern(self.paths).add(ctx)
 
     def reset(self, ctx: Context) -> None:
         """Delete it, with every game and program in it. Ends its Wine session first."""

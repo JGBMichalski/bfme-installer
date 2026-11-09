@@ -14,6 +14,8 @@ from ..control.model import SetupModel
 from ..engine.games import GAMES
 from ..engine.graphics import Graphics, GraphicsCards
 from ..engine.logs import RunLogs
+from ..engine.overlay_pattern import OverlayPattern
+from ..engine.paths import Paths
 
 
 class Diagnostics:
@@ -23,9 +25,10 @@ class Diagnostics:
     # (title, log name) of the logs the report ends with
     LOGS = (("AIO Launcher", "aio-launcher"), ("Arena", "arena"), ("prefix creation", "prefix-create"))
 
-    def __init__(self, log_dir: Path, environ: dict[str, str] | None = None) -> None:
+    def __init__(self, log_dir: Path, environ: dict[str, str] | None = None, paths: Paths | None = None) -> None:
         self.log_dir = log_dir
         self.environ = environ
+        self.paths = paths
 
     def newest_log(self, name: str) -> Path | None:
         """The most recent '<name>-<date>-<time>.log', or else the plain '<name>.log'."""
@@ -178,6 +181,12 @@ class Diagnostics:
                 games.append(f"{game.name} missing")
 
         out.append("Games: " + ", ".join(games))
+        overlay = "unknown"
+
+        if self.paths is not None:
+            overlay = OverlayPattern(self.paths).state(status.graphics if status is not None else None)
+
+        out.append(f"Arena overlay: {overlay}")
         out += ["", "System checks:"]
 
         if model.checks:

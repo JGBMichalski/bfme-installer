@@ -5,7 +5,10 @@ from pathlib import Path
 
 from bfme_wizard.control.model import SetupModel
 from bfme_wizard.engine.events import Check, Fix
+from bfme_wizard.engine.overlay_pattern import OverlayPattern
+from bfme_wizard.engine.paths import Paths
 from bfme_wizard.services.diagnostics import Diagnostics
+from tests.fake_dll import fake_dxvk
 from tests.helpers import status
 
 
@@ -52,6 +55,24 @@ def test_the_report_names_the_graphics_backend(tmp_path):
     m.status = status(graphics="opengl")
     report = Diagnostics(tmp_path).report("dev", m)
     assert "Graphics: OpenGL (WineD3D)" in report
+
+
+def test_the_report_says_whether_the_arenas_overlay_can_start(tmp_path):
+    paths = Paths(tmp_path / "data")
+    dll = OverlayPattern(paths).dll
+    dll.parent.mkdir(parents=True)
+    dll.write_bytes(fake_dxvk())
+    m = SetupModel()
+    m.status = status(prefix_ready=True)
+
+    assert "Arena overlay: not added yet\n" in Diagnostics(paths.logs, paths=paths).report("dev", m)
+
+    dll.write_bytes(OverlayPattern.with_pattern(fake_dxvk()))
+    assert "Arena overlay: ready\n" in Diagnostics(paths.logs, paths=paths).report("dev", m)
+
+    m.status = status(prefix_ready=True, graphics="opengl")
+    assert "Arena overlay: does not work with OpenGL\n" in Diagnostics(paths.logs, paths=paths).report("dev", m)
+    assert "Arena overlay: unknown\n" in Diagnostics(paths.logs).report("dev", m)
 
 
 def test_a_report_before_any_check_or_log_still_works(tmp_path):

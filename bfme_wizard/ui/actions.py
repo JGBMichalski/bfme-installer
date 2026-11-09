@@ -49,7 +49,8 @@ class WindowActions:
     # Files and folders
 
     def copy_diagnostics(self) -> None:
-        report = Diagnostics(Paths.of().logs).report(self.window.updater.local or "dev", self.controller.model)
+        paths = Paths.of()
+        report = Diagnostics(paths.logs, paths=paths).report(self.window.updater.local or "dev", self.controller.model)
         self.copy(report, "Diagnostics copied. Check it before you share it.")
 
     def open_logs(self) -> None:

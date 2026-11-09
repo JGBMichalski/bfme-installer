@@ -19,6 +19,7 @@ from pathlib import Path
 
 from .context import Context
 from .events import Log, Warn
+from .games import GAMES
 from .paths import Paths
 
 # The overlay looks this far into d3d9.dll and takes the first match.
@@ -224,8 +225,8 @@ class OverlayPattern:
 
     `add` writes those 14 bytes into unused room at the end of the headers of DXVK's d3d9.dll, with the address of DXVK's
     own device vtable in them, and one base relocation so the address is right wherever the DLL is loaded. No code changes:
-    the overlay then hooks DXVK's Present and Reset as it does Microsoft's. Proton copies DXVK into the game environment
-    again when its own settings change, so this is checked each time the Arena opens.
+    the overlay then hooks DXVK's Present and Reset as it does Microsoft's. It runs whenever the game environment is got
+    ready, so the pattern is there however the Arena is started, and is put back if Proton copies DXVK in again.
     """
 
     # DXVK's device class, as its run-time type information names it.
@@ -241,12 +242,13 @@ class OverlayPattern:
         return self.paths.drive_c / "windows/syswow64/d3d9.dll"
 
     def add(self, ctx: Context) -> None:
-        """Give DXVK's d3d9.dll the pattern if it does not have it. Says so when it cannot; the Arena opens either way."""
-        if ctx.config.graphics == "opengl":
-            ctx.emit(Warn(OPENGL))
+        """Give DXVK's d3d9.dll the pattern if it does not have it. Says so when it cannot; the programs open either way.
+        With OpenGL, or without a d3d9.dll, there is nothing to add it to."""
+        dll = self.dll
+
+        if ctx.config.graphics == "opengl" or not dll.is_file():
             return
 
-        dll = self.dll
         tmp = dll.with_name(dll.name + ".bfme-new")
 
         try:
@@ -264,6 +266,27 @@ class OverlayPattern:
             return
 
         ctx.emit(Log(f"Added what the Arena's in-game overlay looks for to {dll}."))
+
+    def state(self, graphics: str | None) -> str:
+        """For a bug report: whether the overlay will find the game's device, and if not, why."""
+        if graphics == "opengl":
+            return "does not work with OpenGL"
+
+        try:
+            changed = self.with_pattern(self.dll.read_bytes())
+        except FileNotFoundError:
+            found = ["no d3d9.dll in the game environment"]
+        except (OSError, ValueError, struct.error) as error:
+            found = [f"cannot be added to d3d9.dll: {error}"]
+        else:
+            found = ["ready" if changed is None else "not added yet"]
+
+        # A game loads a d3d9.dll in its own folder before the game environment's.
+        for game in GAMES:
+            if (game.game_dir(self.paths) / "d3d9.dll").is_file():
+                found.append(f"{game.name} has its own d3d9.dll")
+
+        return "; ".join(found)
 
     @classmethod
     def with_pattern(cls, data: bytes) -> bytes | None:

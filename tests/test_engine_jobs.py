@@ -28,7 +28,7 @@ from bfme_wizard.engine.graphics import Graphics
 from bfme_wizard.engine.jobs import Engine
 from bfme_wizard.engine.lock import SetupLock
 from bfme_wizard.engine.menu_shortcuts import MenuShortcuts
-from bfme_wizard.engine.overlay_pattern import OverlayPattern
+from bfme_wizard.engine.overlay_pattern import OPENGL, OverlayPattern
 from bfme_wizard.engine.paths import Paths
 from bfme_wizard.engine.programs import (
     AIO_LAUNCHER,
@@ -616,19 +616,31 @@ def test_opening_the_aio_launcher_installs_it_first(world):
     assert list(world.paths.logs.glob("aio-launcher-2*.log"))
 
 
-def test_opening_the_arena_gives_dxvk_what_its_overlay_looks_for(world):
+@pytest.mark.parametrize("key", ["arena", "aio-launcher"])
+def test_opening_any_program_gives_dxvk_what_the_arenas_overlay_looks_for(world, key):
+    # Also the AIO Launcher: its Multiplayer tab starts the Arena without BFME Installer.
     world.make_prefix()
     dll = OverlayPattern(world.paths).dll
     dll.parent.mkdir(parents=True)
     dll.write_bytes(fake_dxvk())
 
+    code, events = world.engine(jobs.open_program, key)
+
+    assert code == jobs.OK
+    assert program(key).installed(world.paths)
+    assert overlay_hooks(load(dll.read_bytes(), IMAGE_BASE), IMAGE_BASE) is not None
+    assert Log(f"Added what the Arena's in-game overlay looks for to {dll}.") in events
+    assert [event for event in events if isinstance(event, Warn) and "overlay" in event.message] == []
+
+
+def test_opening_the_arena_with_opengl_says_its_overlay_cannot_start(world):
+    world.make_prefix()
+    world.paths.config.write_text("BFME_GRAPHICS=opengl\n")
+
     code, events = world.engine(jobs.open_program, "arena")
 
     assert code == jobs.OK
-    assert ARENA.installed(world.paths)
-    assert overlay_hooks(load(dll.read_bytes(), IMAGE_BASE), IMAGE_BASE) is not None
-    assert Log(f"Added what the Arena's in-game overlay looks for to {dll}.") in events
-    assert events[-1].text.startswith("Starting the Arena. Log: ")
+    assert Warn(OPENGL) in events
 
 
 def test_the_lock_is_free_while_the_program_runs(world, monkeypatch):

@@ -6,7 +6,8 @@ import pytest
 
 from bfme_wizard.engine.config import Config
 from bfme_wizard.engine.events import Log, Warn
-from bfme_wizard.engine.overlay_pattern import CONSEQUENCE, OPENGL, OverlayPattern
+from bfme_wizard.engine.games import GAMES
+from bfme_wizard.engine.overlay_pattern import CONSEQUENCE, OverlayPattern
 from bfme_wizard.engine.paths import Paths
 from tests.fake_dll import (
     HEADERS,
@@ -110,43 +111,32 @@ def test_dxvks_d3d9_gets_the_pattern_once(paths):
     assert dll.read_bytes() == patched
 
 
-def test_with_opengl_the_dll_is_left_alone_and_the_player_is_told(paths):
+def test_with_opengl_or_without_a_d3d9_dll_there_is_nothing_to_do(paths):
     dll = put_dll(paths, fake_dxvk())
     events = []
 
     OverlayPattern(paths).add(context(paths, events.append, config=Config(graphics="opengl")))
 
-    assert events == [Warn(OPENGL)]
+    assert events == []
     assert dll.read_bytes() == fake_dxvk()
 
+    dll.unlink()
+    OverlayPattern(paths).add(context(paths, events.append))
 
-@pytest.mark.parametrize(
-    "data, reason",
-    [
-        (fake_dxvk(name=b"N4dxvk10D3D9VolumeE\0"), "it is not DXVK's"),
-        (None, "No such file"),
-    ],
-)
-def test_a_dll_that_cannot_be_prepared_is_a_warning_and_is_left_as_it_is(paths, data, reason):
-    dll = OverlayPattern(paths).dll
+    assert events == []
+    assert sorted(dll.parent.iterdir()) == []
 
-    if data is not None:
-        put_dll(paths, data)
 
+def test_a_dll_that_cannot_be_prepared_is_a_warning_and_is_left_as_it_is(paths):
+    data = fake_dxvk(name=b"N4dxvk10D3D9VolumeE\0")
+    dll = put_dll(paths, data)
     events = []
 
     OverlayPattern(paths).add(context(paths, events.append))
 
-    assert len(events) == 1 and isinstance(events[0], Warn)
-    assert events[0].message.startswith(f"Could not prepare {dll} for the Arena's in-game overlay: ")
-    assert reason in events[0].message
-    assert events[0].message.endswith(CONSEQUENCE)
-
-    if data is None:
-        assert not dll.exists()
-    else:
-        assert dll.read_bytes() == data
-        assert sorted(p.name for p in dll.parent.iterdir()) == ["d3d9.dll"]
+    assert events == [Warn(f"Could not prepare {dll} for the Arena's in-game overlay: it is not DXVK's. {CONSEQUENCE}")]
+    assert dll.read_bytes() == data
+    assert sorted(p.name for p in dll.parent.iterdir()) == ["d3d9.dll"]
 
 
 def damaged_relocations(block_size):
@@ -171,3 +161,33 @@ def test_a_damaged_dll_is_a_warning_and_never_stops_the_arena(paths, data):
 
     assert [type(event) for event in events] == [Warn]
     assert dll.read_bytes() == data
+
+
+# For a bug report
+
+
+@pytest.mark.parametrize(
+    "data, graphics, expected",
+    [
+        (OverlayPattern.with_pattern(fake_dxvk()), "vulkan", "ready"),
+        (fake_dxvk(), "vulkan", "not added yet"),
+        (fake_dxvk(), None, "not added yet"),
+        (fake_dxvk(name=b"N4dxvk10D3D9VolumeE\0"), "vulkan", "cannot be added to d3d9.dll: it is not DXVK's"),
+        (None, "vulkan", "no d3d9.dll in the game environment"),
+        (fake_dxvk(), "opengl", "does not work with OpenGL"),
+    ],
+)
+def test_the_state_says_whether_the_overlay_will_find_the_device(paths, data, graphics, expected):
+    if data is not None:
+        put_dll(paths, data)
+
+    assert OverlayPattern(paths).state(graphics) == expected
+
+
+def test_the_state_names_a_game_that_loads_its_own_d3d9(paths):
+    put_dll(paths, OverlayPattern.with_pattern(fake_dxvk()))
+    rotwk = next(game for game in GAMES if game.key == "rotwk")
+    rotwk.game_dir(paths).mkdir(parents=True)
+    (rotwk.game_dir(paths) / "d3d9.dll").write_bytes(b"MZ")
+
+    assert OverlayPattern(paths).state("vulkan") == "ready; Rise of the Witch-king has its own d3d9.dll"

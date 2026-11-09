@@ -9,7 +9,9 @@ from bfme_wizard.engine.errors import SetupError
 from bfme_wizard.engine.events import Log, Warn
 from bfme_wizard.engine.game_environment import GameEnvironment
 from bfme_wizard.engine.graphics import Graphics
+from bfme_wizard.engine.overlay_pattern import OverlayPattern
 from bfme_wizard.engine.paths import Paths
+from tests.fake_dll import IMAGE_BASE, fake_dxvk, load, overlay_hooks
 from tests.helpers import context
 
 # Logs each call's arguments. Called with "" (the first start) it makes the prefix as umu would. `reg import` keeps a copy of
@@ -235,6 +237,17 @@ def test_prepare_creates_a_missing_prefix_then_applies_the_settings(env, paths):
 
     GameEnvironment(paths).prepare(context(paths, [].append, config=Config()))
     assert umu_calls(env) == []
+
+
+def test_prepare_gives_dxvk_what_the_arenas_overlay_looks_for(env, paths):
+    make_prefix(paths)
+    dll = OverlayPattern(paths).dll
+    dll.parent.mkdir(parents=True)
+    dll.write_bytes(fake_dxvk())
+
+    GameEnvironment(paths).prepare(context(paths, [].append, config=Config()))
+
+    assert overlay_hooks(load(dll.read_bytes(), IMAGE_BASE), IMAGE_BASE) is not None
 
 
 # The first setup's graphics backend
