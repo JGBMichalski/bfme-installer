@@ -28,7 +28,7 @@ from bfme_wizard.engine.graphics import Graphics
 from bfme_wizard.engine.jobs import Engine
 from bfme_wizard.engine.lock import SetupLock
 from bfme_wizard.engine.menu_shortcuts import MenuShortcuts
-from bfme_wizard.engine.overlay_pattern import OPENGL, OverlayPattern
+from bfme_wizard.engine.overlay_pattern import OverlayPattern
 from bfme_wizard.engine.paths import Paths
 from bfme_wizard.engine.programs import (
     AIO_LAUNCHER,
@@ -43,7 +43,7 @@ from bfme_wizard.engine.programs import (
 )
 from bfme_wizard.engine.proton import Proton
 from bfme_wizard.engine.system_check import SystemCheck
-from tests.fake_dll import IMAGE_BASE, fake_dxvk, load, overlay_hooks
+from tests.fake_dll import IMAGE_BASE, fake_dxvk, fake_wine_d3d9, load, overlay_hooks
 from tests.helpers import status
 
 SEVENZIP = shutil.which("7zz") or shutil.which("7z") or shutil.which("7za")
@@ -633,14 +633,23 @@ def test_opening_any_program_gives_dxvk_what_the_arenas_overlay_looks_for(world,
     assert [event for event in events if isinstance(event, Warn) and "overlay" in event.message] == []
 
 
-def test_opening_the_arena_with_opengl_says_its_overlay_cannot_start(world):
+def test_opening_the_arena_with_opengl_gives_wines_d3d9_what_its_overlay_looks_for(world):
+    proton = world.tmp / "proton/files/lib/wine"
+
+    for name, data in (("i386-windows/d3d9.dll", fake_wine_d3d9()), ("x86_64-windows/d3d9.dll", b"Wine, 64-bit")):
+        (proton / name).parent.mkdir(parents=True, exist_ok=True)
+        (proton / name).write_bytes(data)
+
     world.make_prefix()
-    world.paths.config.write_text("BFME_GRAPHICS=opengl\n")
+    world.paths.config.write_text(f"BFME_GRAPHICS=opengl\nBFME_PROTONPATH={world.tmp / 'proton'}\n")
 
     code, events = world.engine(jobs.open_program, "arena")
 
+    dll = OverlayPattern(world.paths).dll
     assert code == jobs.OK
-    assert Warn(OPENGL) in events
+    assert dll.read_bytes() == OverlayPattern.with_pattern(fake_wine_d3d9())
+    assert overlay_hooks(load(dll.read_bytes(), IMAGE_BASE), IMAGE_BASE) is not None
+    assert [event for event in events if isinstance(event, Warn) and "overlay" in event.message] == []
 
 
 def test_the_lock_is_free_while_the_program_runs(world, monkeypatch):

@@ -1,4 +1,4 @@
-"""The Troubleshoot report text and log locations. No GTK.
+"""The diagnostics report that Settings copies, and log locations. No GTK.
 
 The report can contain the home folder and user name, so the window tells players to check it before sharing.
 """
@@ -184,7 +184,7 @@ class Diagnostics:
         overlay = "unknown"
 
         if self.paths is not None:
-            overlay = OverlayPattern(self.paths).state(status.graphics if status is not None else None)
+            overlay = OverlayPattern(self.paths).state()
 
         out.append(f"Arena overlay: {overlay}")
         out += ["", "System checks:"]

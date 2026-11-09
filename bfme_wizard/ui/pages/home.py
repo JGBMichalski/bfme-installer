@@ -19,7 +19,7 @@ NOTHING_INSTALLED = "Nothing is installed. Use the download button at the top to
 CARD_ICON_SIZE = 64
 # The window floats its icon buttons in the top right corner of the page: 6 pixels from the top, and 34 high.
 CORNER_CLEARANCE = 46
-QUICK_EXIT_NOTE = "Closed after a few seconds. If it didn't open, see Troubleshoot."
+QUICK_EXIT_NOTE = "Closed after a few seconds. If it didn't open, see Settings."
 
 
 class HomePage:

@@ -57,7 +57,7 @@ def test_every_card_has_one_open_button_and_it_starts_its_own_program(gtk):
 
 
 def test_nothing_to_install_or_to_navigate_is_left_on_the_page(gtk):
-    # Install belongs to the Programs page; Game folders and Troubleshoot are buttons in the corner of the window's page.
+    # Install belongs to the Programs page; Game folders and Settings are buttons in the corner of the window's page.
     _c, page = home_page(ALL)
     assert {b.get_label() for b in buttons(page.box, gtk)} == {"Open"}
 

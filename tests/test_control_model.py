@@ -407,7 +407,7 @@ def test_the_system_checks_survive_the_jobs_after_the_environment():
     feed(m, Step("doctor", "start"), Check("cpu", "ok", "x86_64 processor"), *ENVIRONMENT_DONE)
     m.finish_install(0)
     m.begin_job("aio-launcher")
-    assert [r[0] for r in m.check_rows] == ["cpu"]  # Troubleshoot still has them
+    assert [r[0] for r in m.check_rows] == ["cpu"]  # Settings still has them
 
 
 def done_setup():

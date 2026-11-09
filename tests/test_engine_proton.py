@@ -179,14 +179,14 @@ def changed(env, base):
             "opengl",
             LSPCI_TWO_CARDS,
             WINE_OVERRIDES,
-            {**OPENGL, "WINEDLLOVERRIDES": "d3d8,d3d9,d3d10core,d3d11,dxgi=b,winemenubuilder.exe=d", **NVIDIA_OFFLOAD},
+            {**OPENGL, "WINEDLLOVERRIDES": "d3d8,d3d9,d3d10core,d3d11,dxgi=b;winemenubuilder.exe=d", **NVIDIA_OFFLOAD},
         ),
         ("opengl", LSPCI_ONE_CARD, {}, {**OPENGL, "WINE_D3D_CONFIG": "renderer=gl"}),
         (
             "opengl",
             LSPCI_ONE_CARD,
             WINE_OVERRIDES,
-            {**OPENGL, "WINEDLLOVERRIDES": "d3d8,d3d9,d3d10core,d3d11,dxgi=b,winemenubuilder.exe=d"},
+            {**OPENGL, "WINEDLLOVERRIDES": "d3d8,d3d9,d3d10core,d3d11,dxgi=b;winemenubuilder.exe=d"},
         ),
     ],
 )
@@ -218,6 +218,38 @@ def test_the_environment(tmp_path, monkeypatch, graphics, lspci, extra_environ, 
         "WINEPREFIX": str(paths.prefix),
     }
     assert changed(env, environ) == {**every_run, **expected}
+
+
+def put_file(path):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"MZ")
+    return path
+
+
+def test_protons_own_d3d9_is_dxvks_for_vulkan_and_wines_for_opengl(tmp_path, paths):
+    dxvk = put_file(tmp_path / "proton/files/lib/wine/dxvk/i386-windows/d3d9.dll")
+    wine = put_file(tmp_path / "proton/files/lib/wine/i386-windows/d3d9.dll")
+
+    assert Proton(paths, Config(graphics="vulkan"), str(tmp_path / "proton"), {}).d3d9("i386") == dxvk
+    assert Proton(paths, Config(graphics="opengl"), str(tmp_path / "proton"), {}).d3d9("i386") == wine
+    assert Proton(paths, Config(graphics="vulkan"), str(tmp_path / "proton"), {}).d3d9("x86_64") is None
+    assert Proton(paths, Config(graphics="vulkan"), str(tmp_path / "nothing"), {}).d3d9("i386") is None
+
+
+def test_umus_own_protons_d3d9_is_found_too(tmp_path, paths):
+    wine = put_file(tmp_path / "xdg/umu/compatibilitytools/GE-Proton10-1/files/lib/wine/i386-windows/d3d9.dll")
+    environ = {"XDG_DATA_HOME": str(tmp_path / "xdg")}
+
+    assert Proton(paths, Config(graphics="opengl"), "GE-Proton10-1", environ).d3d9("i386") == wine
+
+
+def test_with_wines_own_d3d9_opengl_loads_the_game_environments_copy_first(tmp_path, paths):
+    put_file(tmp_path / "proton/files/lib/wine/i386-windows/d3d9.dll")
+    environ = {"WINEDLLOVERRIDES": "winemenubuilder.exe=d"}
+
+    env = Proton(paths, Config(graphics="opengl"), str(tmp_path / "proton"), environ).env(True)
+
+    assert env["WINEDLLOVERRIDES"] == "d3d8,d3d10core,d3d11,dxgi=b;d3d9=n,b;winemenubuilder.exe=d"
 
 
 def test_the_first_start_is_not_runinprefix(paths):

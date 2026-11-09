@@ -19,8 +19,8 @@ from .pages.home import HomePage
 from .pages.problem import ProblemPage
 from .pages.programs import ProgramsPage
 from .pages.running import RunningPage
+from .pages.settings import SettingsPage
 from .pages.start import StartPage
-from .pages.troubleshoot import TroubleshootPage
 from .update_banner import UpdateBanner
 from .widgets import icon_button
 
@@ -30,13 +30,8 @@ PROGRAMS_ICONS = ("folder-download-symbolic", "system-software-install-symbolic"
 
 FOLDERS_ICONS = ("folder-symbolic", "folder-open-symbolic", "system-file-manager-symbolic")
 
-# A lifebuoy: help when something goes wrong. Not a gear (that says Settings), not a warning sign (that says alarm).
-TROUBLESHOOT_ICONS = (
-    "help-browser-symbolic",
-    "applications-engineering-symbolic",
-    "dialog-question-symbolic",
-    "help-about-symbolic",
-)
+# A gear, for Settings. Not preferences-system-symbolic: in the GNOME runtime that is a wrench and a screwdriver.
+SETTINGS_ICONS = ("applications-system-symbolic", "emblem-system-symbolic")
 
 
 class WizardWindow(Adw.ApplicationWindow):
@@ -51,22 +46,22 @@ class WizardWindow(Adw.ApplicationWindow):
         toolbar = Adw.ToolbarView()
         self.header = Adw.HeaderBar()
         toolbar.add_top_bar(self.header)
-        self.check_banner = Adw.Banner(title="Your system needs a change.", button_label="Troubleshoot")
-        self.check_banner.connect("button-clicked", lambda *_: self.show_troubleshoot())
+        self.check_banner = Adw.Banner(title="Your system needs a change.", button_label="Open Settings")
+        self.check_banner.connect("button-clicked", lambda *_: self.show_settings())
         toolbar.add_top_bar(self.check_banner)
         self.update_banner = UpdateBanner(self)
         toolbar.add_top_bar(self.update_banner.view)
         self.stack = Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE)
         # The buttons that lead to the other pages float in the top right corner of the page, under the header bar. They are
-        # laid over the page, not above it, so the page keeps all its room. Troubleshoot is there on every page, as the menu it
+        # laid over the page, not above it, so the page keeps all its room. Settings is there on every page, as the menu it
         # replaced was, and is the one in the corner. The other two belong to the home screen, so they only show while there is
-        # one. (6 pixels from the corner puts the lifebuoy right under the window's close button.)
+        # one. (6 pixels from the corner puts the gear right under the window's close button.)
         self.corner = Gtk.Box(spacing=6, halign=Gtk.Align.END, valign=Gtk.Align.START, margin_top=6, margin_end=6)
         self.programs_button = icon_button(PROGRAMS_ICONS, "Install or remove programs", self.show_programs)
         self.folders_button = icon_button(FOLDERS_ICONS, "Game folders", self.show_game_folders)
-        self.troubleshoot_button = icon_button(TROUBLESHOOT_ICONS, "Troubleshoot", self.show_troubleshoot)
+        self.settings_button = icon_button(SETTINGS_ICONS, "Settings", self.show_settings)
 
-        for button in (self.programs_button, self.folders_button, self.troubleshoot_button):
+        for button in (self.programs_button, self.folders_button, self.settings_button):
             self.corner.append(button)
 
         self.folders_button.set_visible(False)
@@ -78,8 +73,8 @@ class WizardWindow(Adw.ApplicationWindow):
         self.root_page = Adw.NavigationPage.new(toolbar, "BFME Installer")
         self.nav.add(self.root_page)
         self.nav.connect("popped", self._on_popped)
-        self.troubleshoot: TroubleshootPage | None = None
-        self._troubleshoot_page: Adw.NavigationPage | None = None
+        self.settings: SettingsPage | None = None
+        self._settings_page: Adw.NavigationPage | None = None
         self.programs: ProgramsPage | None = None
         self._programs_page: Adw.NavigationPage | None = None
         self.toasts.set_child(self.nav)
@@ -113,13 +108,13 @@ class WizardWindow(Adw.ApplicationWindow):
 
     # The pages opened on top
 
-    def show_troubleshoot(self) -> None:
-        if self.troubleshoot is not None:
+    def show_settings(self) -> None:
+        if self.settings is not None:
             return
 
-        self.troubleshoot = TroubleshootPage(self.controller, self.actions)
-        self._troubleshoot_page = Adw.NavigationPage.new(self.troubleshoot.view, "Troubleshoot")
-        self.nav.push(self._troubleshoot_page)
+        self.settings = SettingsPage(self.controller, self.actions)
+        self._settings_page = Adw.NavigationPage.new(self.settings.view, "Settings")
+        self.nav.push(self._settings_page)
 
     def show_game_folders(self) -> None:
         if self.nav.get_visible_page().get_title() == "Game folders":
@@ -141,8 +136,8 @@ class WizardWindow(Adw.ApplicationWindow):
         self.nav.push(self._programs_page)
 
     def _on_popped(self, _nav, page) -> None:
-        if page is self._troubleshoot_page:
-            self.troubleshoot = None
+        if page is self._settings_page:
+            self.settings = None
         elif page is self._programs_page:
             self.programs = None
 
@@ -153,8 +148,8 @@ class WizardWindow(Adw.ApplicationWindow):
         self.check_banner.set_revealed(self.model.state == "done" and bool(self.model.problems))
         self._render_corner()
 
-        if self.troubleshoot is not None:
-            self.troubleshoot.refresh()
+        if self.settings is not None:
+            self.settings.refresh()
 
         self._render_programs_page()
         m = self.model

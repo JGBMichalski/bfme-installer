@@ -7,9 +7,14 @@ import pytest
 from bfme_wizard.engine import system_check as doctor
 from bfme_wizard.engine.config import Config, ConfigFile
 from bfme_wizard.engine.events import Check, Fix, Log
+from bfme_wizard.engine.game_environment import GameEnvironment
+from bfme_wizard.engine.games import GAMES
 from bfme_wizard.engine.graphics import Graphics
+from bfme_wizard.engine.overlay_pattern import OverlayPattern
 from bfme_wizard.engine.paths import Paths
+from bfme_wizard.engine.programs import ARENA
 from bfme_wizard.engine.system_check import SystemCheck
+from tests.fake_dll import fake_dxvk, fake_wine_d3d9
 
 Usage = namedtuple("Usage", "total used free")
 KEPT = ("cpu", "flatpak-32bit", "graphics", "disk", "firewall")
@@ -185,7 +190,7 @@ GRAPHICS_CHECKS = [
     (VULKAN, "vulkan", "ok", "Graphics: Vulkan 1.4 on Test GPU. Using Vulkan (DXVK)."),
     (VULKAN, "opengl", "ok", "Graphics: Vulkan 1.4 on Test GPU. Using OpenGL (WineD3D), as you chose."),
     (OPENGL, None, "ok", f"{NO_VULKAN} The setup will use OpenGL (WineD3D)."),
-    (OPENGL, "vulkan", "warn", f"{NO_VULKAN} OpenGL is recommended: switch it under Troubleshoot, Graphics."),
+    (OPENGL, "vulkan", "warn", f"{NO_VULKAN} OpenGL is recommended: switch it under Settings, Graphics."),
     (OPENGL, "opengl", "ok", f"{NO_VULKAN} Using OpenGL (WineD3D)."),
     (UNKNOWN, None, "warn", f"{NOT_CHECKED} Using Vulkan (DXVK)."),
     (UNKNOWN, "vulkan", "warn", f"{NOT_CHECKED} Using Vulkan (DXVK)."),
@@ -224,3 +229,127 @@ def test_the_checks_for_each_graphics_answer(tmp_path, paths, probe, monkeypatch
             "If you cannot host or join games, check ufw or firewalld on your system.",
         ),
     ]
+
+
+# The d3d9.dll check, in a game environment with the Arena
+
+OVERLAY = "the Arena's in-game overlay"
+READY_DXVK = OverlayPattern.with_pattern(fake_dxvk())
+READY_WINE = OverlayPattern.with_pattern(fake_wine_d3d9())
+NOT_READY = f"not ready for {OVERLAY} yet. Opening any program here makes it ready."
+
+
+def with_the_arena(paths, dll):
+    """A ready game environment with the Arena, and this d3d9.dll where the games load it (none for None)."""
+    for folder in ("windows/syswow64", "users/steamuser"):
+        (paths.drive_c / folder).mkdir(parents=True, exist_ok=True)
+
+    ARENA.exe(paths).parent.mkdir(parents=True, exist_ok=True)
+    ARENA.exe(paths).write_bytes(b"MZ")
+
+    if dll is not None:
+        OverlayPattern(paths).dll.write_bytes(dll)
+
+
+def d3d9_checks(tmp_path, paths, graphics="vulkan"):
+    """Whether the system check lets the setup go on, and its d3d9.dll checks."""
+    ok, events = run(paths, Config(graphics=graphics), lib_root(tmp_path, LD, GL32))
+    return ok, [event for event in events if isinstance(event, Check) and event.id == "d3d9"]
+
+
+def give_own_d3d9(paths, *keys):
+    for game in GAMES:
+        if game.key in keys:
+            game.game_dir(paths).mkdir(parents=True, exist_ok=True)
+            (game.game_dir(paths) / "d3d9.dll").write_bytes(b"MZ")
+
+
+# (d3d9.dll, graphics): the check's level and message. It warns at most, so the setup always goes on.
+@pytest.mark.parametrize(
+    "dll, graphics, level, message",
+    [
+        pytest.param(READY_DXVK, "vulkan", "ok", f"d3d9.dll: DXVK's, ready for {OVERLAY}.", id="DXVK's"),
+        pytest.param(READY_WINE, "opengl", "ok", f"d3d9.dll: Wine's, ready for {OVERLAY}.", id="Wine's"),
+        pytest.param(fake_dxvk(), "vulkan", "warn", f"d3d9.dll: DXVK's, {NOT_READY}", id="DXVK's as it comes"),
+        pytest.param(fake_wine_d3d9(), "opengl", "warn", f"d3d9.dll: Wine's, {NOT_READY}", id="Wine's as it comes"),
+        pytest.param(
+            READY_WINE,
+            "vulkan",
+            "warn",
+            f"d3d9.dll: Wine's, ready for {OVERLAY}. The graphics are Vulkan (DXVK), though.",
+            id="Wine's with Vulkan",
+        ),
+        pytest.param(
+            fake_dxvk(),
+            "opengl",
+            "warn",
+            f"d3d9.dll: DXVK's, {NOT_READY} The graphics are OpenGL (WineD3D), though.",
+            id="DXVK's with OpenGL",
+        ),
+        pytest.param(
+            None, "vulkan", "warn", f"d3d9.dll: not in the game environment, so {OVERLAY} cannot start.", id="none"
+        ),
+        pytest.param(
+            fake_dxvk(name=b"N4dxvk10D3D9VolumeE\0"),
+            "vulkan",
+            "warn",
+            f"d3d9.dll: cannot be made ready for {OVERLAY}, because it is neither DXVK's nor Wine's.",
+            id="another",
+        ),
+    ],
+)
+def test_the_d3d9_check(tmp_path, paths, probe, dll, graphics, level, message):
+    with_the_arena(paths, dll)
+
+    assert d3d9_checks(tmp_path, paths, graphics) == (True, [Check("d3d9", level, message)])
+
+
+def test_a_game_with_its_own_d3d9_is_a_warning(tmp_path, paths, probe):
+    with_the_arena(paths, READY_DXVK)
+    ready = f"d3d9.dll: DXVK's, ready for {OVERLAY}."
+    give_own_d3d9(paths, "rotwk")
+
+    assert d3d9_checks(tmp_path, paths)[1] == [
+        Check(
+            "d3d9", "warn", f"{ready} Rise of the Witch-king has its own d3d9.dll, which the overlay may not work with."
+        )
+    ]
+
+    give_own_d3d9(paths, "bfme1", "bfme2")
+
+    assert d3d9_checks(tmp_path, paths)[1] == [
+        Check(
+            "d3d9",
+            "warn",
+            f"{ready} BFME, BFME 2 and Rise of the Witch-king have their own d3d9.dll, which the overlay may not work with.",
+        )
+    ]
+
+
+def test_the_d3d9_check_comes_after_the_graphics_check(tmp_path, paths, probe):
+    with_the_arena(paths, READY_DXVK)
+
+    _, events = run(paths, Config(), lib_root(tmp_path, LD, GL32))
+
+    assert [event.id for event in events if isinstance(event, Check)] == [
+        "cpu",
+        "flatpak-32bit",
+        "graphics",
+        "d3d9",
+        "disk",
+        "firewall",
+    ]
+
+
+def test_without_the_arena_there_is_no_d3d9_check(tmp_path, paths, probe):
+    with_the_arena(paths, None)
+    ARENA.exe(paths).unlink()
+
+    assert d3d9_checks(tmp_path, paths) == (True, [])
+
+
+def test_before_the_game_environment_is_ready_there_is_no_d3d9_check(tmp_path, paths, probe):
+    with_the_arena(paths, None)
+    (paths.prefix / GameEnvironment.CREATING_MARKER).touch()
+
+    assert d3d9_checks(tmp_path, paths) == (True, [])

@@ -2,4 +2,4 @@ blank_issues_enabled: false
 contact_links:
   - name: Documentation
     url: https://github.com/JGBMichalski/bfme-installer#readme
-    about: Install steps, Troubleshoot, and how the setup works.
+    about: Install steps, Settings, and how the setup works.

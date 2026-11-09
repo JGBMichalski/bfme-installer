@@ -16,7 +16,7 @@ from tests.helpers import buttons, descendants, labels, status, wait_for
 
 ALL = status("aio-launcher", "arena", "aotr")
 # The icon buttons that lead to the other pages, by tooltip, left to right.
-ICON_BUTTONS = ("Install or remove programs", "Game folders", "Troubleshoot")
+ICON_BUTTONS = ("Install or remove programs", "Game folders", "Settings")
 NEAR = 12  # how far from the corner of the page the icon buttons may sit, in pixels
 
 
@@ -124,7 +124,7 @@ def layout(win, width=640, height=560):
 # and are not in the header bar.
 
 
-def test_there_are_three_in_one_row_with_troubleshoot_in_the_corner(win, gtk):
+def test_there_are_three_in_one_row_with_settings_in_the_corner(win, gtk):
     found = corner_buttons(win, gtk)
     rect = layout(win)
     assert sorted(found, key=lambda tip: rect(found[tip])[0]) == list(ICON_BUTTONS)  # left to right
@@ -147,25 +147,25 @@ def test_they_float_in_the_top_right_corner_of_the_page_under_the_header_bar(win
         assert x + w <= page_x + page_w, tip
         assert y >= page_y, tip  # under the header bar, on the page
         assert y + h <= page_y + page_h, tip
-    x, y, w, _h = rect(found["Troubleshoot"])
+    x, y, w, _h = rect(found["Settings"])
     assert page_x + page_w - (x + w) <= NEAR  # at the right edge of the page...
     assert y - page_y <= NEAR  # ...and at its top
 
 
-def test_troubleshoot_stays_where_it_is_when_the_other_two_come_and_go(win, gtk):
+def test_settings_stays_where_it_is_when_the_other_two_come_and_go(win, gtk):
     win.model.begin_plan(["aio-launcher"])
     places = set()
     for state in ("done", "running", "idle", "done", "failed"):
         win.model.state = state
         win.render()
-        places.add(layout(win)(corner_buttons(win, gtk)["Troubleshoot"]))
+        places.add(layout(win)(corner_buttons(win, gtk)["Settings"]))
     assert len(places) == 1
 
 
 def test_they_are_on_the_main_page_only_not_on_the_pages_they_open(win, gtk):
     for show, page in (
         (win.show_programs, lambda: win.programs.view),
-        (win.show_troubleshoot, lambda: win.troubleshoot.view),
+        (win.show_settings, lambda: win.settings.view),
     ):
         show()
         assert {b.get_tooltip_text() for b in buttons(page(), gtk)} & set(ICON_BUTTONS) == set()
@@ -242,7 +242,7 @@ def test_the_home_content_stays_centred_above_the_version_line_while_it_keeps_cl
     [
         ("Install or remove programs", "PROGRAMS_ICONS"),
         ("Game folders", "FOLDERS_ICONS"),
-        ("Troubleshoot", "TROUBLESHOOT_ICONS"),
+        ("Settings", "SETTINGS_ICONS"),
     ],
 )
 def test_each_has_an_icon_and_no_text(win, gtk, tip, icons_name):
@@ -265,7 +265,7 @@ def test_the_icons_are_the_ones_the_flatpaks_runtime_has(gtk):
     from bfme_wizard.ui import window as ui
 
     available = {os.path.basename(p)[:-4] for p in glob.glob(runtime[0] + "/**/*.svg", recursive=True)}
-    for icons in (ui.PROGRAMS_ICONS, ui.FOLDERS_ICONS, ui.TROUBLESHOOT_ICONS):
+    for icons in (ui.PROGRAMS_ICONS, ui.FOLDERS_ICONS, ui.SETTINGS_ICONS):
         assert icons[0] in available, f"{icons[0]} is first in its list, so it is the one most players see"
 
 
@@ -274,14 +274,14 @@ def test_the_old_menu_button_is_gone(win, gtk):
 
 
 @pytest.mark.parametrize("state", ["checking", "idle", "running", "cancelled", "failed", "blocked", "removing", "done"])
-def test_troubleshoot_is_always_there_and_the_other_two_belong_to_the_home_screen(win, gtk, state):
+def test_settings_is_always_there_and_the_other_two_belong_to_the_home_screen(win, gtk, state):
     win.model.begin_plan(["aio-launcher"])  # the run page shows a step of the plan
     win.model.state = state
     win.model.removing = "arena" if state == "removing" else None
     win.render()
     shown = {tip: b.get_visible() for tip, b in corner_buttons(win, gtk).items()}
     home = state == "done"
-    assert shown == {"Install or remove programs": home, "Game folders": home, "Troubleshoot": True}
+    assert shown == {"Install or remove programs": home, "Game folders": home, "Settings": True}
 
 
 def test_the_old_buttons_are_gone_from_the_home_screen(win, gtk):
@@ -295,7 +295,7 @@ def test_the_old_buttons_are_gone_from_the_home_screen(win, gtk):
     "tip, title, attribute",
     [
         ("Install or remove programs", "Programs", "programs"),
-        ("Troubleshoot", "Troubleshoot", "troubleshoot"),
+        ("Settings", "Settings", "settings"),
         ("Game folders", "Game folders", None),
     ],
 )
@@ -316,18 +316,30 @@ def test_a_second_press_does_not_stack_another_copy(win):
     assert win.nav.get_navigation_stack().get_n_items() == 2
 
 
+def test_the_banner_for_a_failed_check_opens_settings(win):
+    from bfme_wizard.engine.events import Check
+
+    assert not win.check_banner.get_revealed()
+    win.model.feed_event(Check("cpu", "fail", "processor is aarch64; only x86_64 is supported"))
+    win.render()
+    assert win.check_banner.get_revealed()
+    assert win.check_banner.get_button_label() == "Open Settings"
+    win.check_banner.emit("button-clicked")
+    assert win.nav.get_visible_page().get_title() == "Settings"
+
+
 def test_popping_a_page_does_not_forget_the_one_underneath_it(win):
     # No button leads from one pushed page to another today, but the bookkeeping must be exact: a page that is still
     # in the stack and forgotten would be pushed a second time, and never refreshed.
-    win.show_troubleshoot()
+    win.show_settings()
     win.show_programs()
     win.nav.pop()
     assert win.programs is None
-    assert win.troubleshoot is not None
-    win.show_troubleshoot()  # still open: nothing new is pushed
+    assert win.settings is not None
+    win.show_settings()  # still open: nothing new is pushed
     assert win.nav.get_navigation_stack().get_n_items() == 2
     win.nav.pop()
-    assert win.troubleshoot is None
+    assert win.settings is None
 
 
 def test_installing_from_the_programs_page_goes_back_to_the_main_page_and_installs_that_program(make_window):

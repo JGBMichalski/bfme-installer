@@ -4,7 +4,7 @@ Bug reports and pull requests are welcome.
 
 ## Reporting a problem
 
-Open an issue and paste the report from Troubleshoot's **Copy diagnostics**.
+Open an issue and paste the report from **Copy diagnostics** in Settings.
 
 ## Working on the code
 

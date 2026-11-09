@@ -21,9 +21,9 @@ Installs and runs the All-in-One Launcher, the Online Arena and Age of the Ring 
 <details>
 <summary>More screenshots</summary>
 
-| Start | Game folders | Troubleshoot |
+| Start | Game folders | Settings |
 | :---: | :---: | :---: |
-| <img src="docs/images/start.png" alt="The start page, where you choose what to install" width="230"> | <img src="docs/images/folders.png" alt="The Game folders page" width="230"> | <img src="docs/images/troubleshoot.png" alt="The Troubleshoot page" width="230"> |
+| <img src="docs/images/start.png" alt="The start page, where you choose what to install" width="230"> | <img src="docs/images/folders.png" alt="The Game folders page" width="230"> | <img src="docs/images/settings.png" alt="The Settings page" width="230"> |
 
 </details>
 
@@ -38,7 +38,7 @@ curl -fsSL https://github.com/JGBMichalski/bfme-installer/releases/latest/downlo
 You need:
 
 - A 64-bit (x86_64) Linux distribution with [Flatpak](https://flatpak.org/setup/).
-- Working 64-bit and 32-bit Vulkan drivers. Older graphics cards can use OpenGL instead (see [Troubleshooting](#troubleshooting)).
+- Working 64-bit and 32-bit Vulkan drivers. Older graphics cards can use OpenGL instead (see [Settings](#settings)).
 - About 30 GB of free disk space, and about 47 GB more for Age of the Ring.
 
 To update, press **Update** in the app, or run the install command again. To uninstall, run it with `--uninstall`, which keeps your games, or `--purge`, which deletes them too:
@@ -61,15 +61,15 @@ The buttons in the top right corner of the home screen open:
 | :---: | --- |
 | download arrow | **Programs**: install something you skipped, or remove a program. Your games stay. |
 | folder | **Game folders**: each game's files, and its maps and settings. |
-| lifebuoy | **Troubleshoot**: see [Troubleshooting](#troubleshooting). |
+| gear | **Settings**: see [Settings](#settings). |
 
 ### Age of the Ring
 
 [Age of the Ring](https://www.moddb.com/mods/the-horse-lords-a-total-modification-for-bfme) has its own launcher and its own copies of BFME 2 and Rise of the Witch-king, so it leaves your other games alone and doesn't need the AIO Launcher. Tick it on the first page, or press **Install** next to it on the Programs page. The app downloads it from ModDB (about 19 GB) and installs it, which can take an hour or more. If the download fails, press **Retry** later.
 
-## Troubleshooting
+## Settings
 
-**Troubleshoot** (the lifebuoy button, on every page) can:
+**Settings** (the gear button, on every page) can:
 
 - run the system checks again and give you the fix for anything that fails;
 - switch the graphics between Vulkan (the default) and OpenGL, choose the graphics card on a computer with two, and show an FPS counter;
@@ -77,7 +77,7 @@ The buttons in the top right corner of the home screen open:
 - open the logs folder and the settings file;
 - **reset** the game environment, which deletes *every installed game* and starts the setup again.
 
-If the games are slow or won't start on an older graphics card, try OpenGL. The Arena needs Vulkan, though: its in-game overlay doesn't work with OpenGL, so the Arena can't start games or replays.
+If the games are slow or won't start on an older graphics card, try OpenGL.
 
 ### Settings file
 
@@ -93,4 +93,4 @@ If the games are slow or won't start on an older graphics card, try OpenGL. The 
 
 ## Contributing
 
-Bug reports and pull requests are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md). When you report a problem, include the report from Troubleshoot's **Copy diagnostics**.
+Bug reports and pull requests are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md). When you report a problem, include the report from **Copy diagnostics** in Settings.

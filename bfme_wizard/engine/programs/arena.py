@@ -11,7 +11,6 @@ from ..context import Context
 from ..download import Download
 from ..errors import SetupError
 from ..events import Log, Warn, report_speed
-from ..overlay_pattern import OPENGL
 from ..paths import Paths
 from .base import Program, Shortcut
 
@@ -47,12 +46,7 @@ class Arena(Program):
         return [tmp, tmp.with_name(tmp.name + ".part")]
 
     def prepare_to_open(self, ctx: Context) -> None:
-        """The newest Arena. Getting the game environment ready gave DXVK what its in-game overlay looks for; with OpenGL
-        the overlay cannot start, which the player is told."""
         self.update(ctx)
-
-        if ctx.config.graphics == "opengl":
-            ctx.emit(Warn(OPENGL))
 
     def remote_hash(self, server_host: str | None = None) -> str:
         """The MD5 of the newest Arena, or "" when the server cannot be asked."""

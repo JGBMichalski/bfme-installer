@@ -15,7 +15,7 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SCENES = ("start", "running", "home", "programs", "folders", "troubleshoot", "aotr-running", "aotr-home")
+SCENES = ("start", "running", "home", "programs", "folders", "settings", "aotr-running", "aotr-home")
 
 class StubJobs:
     """A stand-in for engine/jobs.py's Engine. The scene says what is installed:
@@ -65,6 +65,7 @@ class StubJobs:
         emit(Check("cpu", "ok", "x86_64 processor"))
         emit(Check("flatpak-32bit", "ok", "32-bit Flatpak extensions installed"))
         emit(Check("graphics", "ok", "Graphics: Vulkan 1.4 on a graphics card. Using Vulkan (DXVK)."))
+        emit(Check("d3d9", "ok", "d3d9.dll: DXVK's, ready for the Arena's in-game overlay."))
         emit(Check("disk", "ok", "free disk space: 120 GB (need about 30 GB)"))
         return 0
 
@@ -125,7 +126,7 @@ def run_scene(scene: str, out: str) -> None:
     # one paints about once a second) would leave a photograph in the middle of one. GTK jumps to the end state without them.
     Gtk.Settings.get_default().set_property("gtk-enable-animations", False)
 
-    if scene in ("folders", "troubleshoot"):                 # tall window
+    if scene in ("folders", "settings"):                     # tall window
         init = ui.WizardWindow.__init__
         def tall(self, *args, **kwargs):
             init(self, *args, **kwargs)
@@ -147,8 +148,8 @@ def run_scene(scene: str, out: str) -> None:
             window.show_programs()
         elif scene == "folders":
             window.show_game_folders()
-        elif scene == "troubleshoot":
-            window.show_troubleshoot()
+        elif scene == "settings":
+            window.show_settings()
         elif scene == "aotr-running":                     # the app downloading it
             window.controller.install(["aotr"])
 

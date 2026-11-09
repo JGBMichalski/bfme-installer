@@ -30,7 +30,7 @@ from ..engine.games import GAMES
 from ..engine.jobs import PrepareJob
 from .plan import Plan
 
-# The sandbox cannot see the firewall. Troubleshoot has a section for it.
+# The sandbox cannot see the firewall. Settings has a section for it.
 HIDDEN_CHECKS = {"firewall"}
 MAX_LOG_LINES = 2000
 
@@ -70,7 +70,7 @@ class SetupModel:
         """A job of the plan starts."""
         self.job = name
         self.plan.begin_job(name)
-        # Only the environment job runs system checks. Troubleshoot keeps showing the last ones.
+        # Only the environment job runs system checks. Settings keeps showing the last ones.
         self._reset_run(keep_checks=name != PrepareJob.KEY)
         self.state = "running"
 

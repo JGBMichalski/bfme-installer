@@ -1,4 +1,5 @@
-"""The byte pattern the Arena's in-game overlay finds the game's graphics device by, and giving it to DXVK's d3d9.dll.
+"""The byte pattern the Arena's in-game overlay finds the game's graphics device by, and giving it to the d3d9.dll of DXVK or
+Wine.
 
 The Arena puts an add-on in the game's folder (its dinput8.dll). Before the Arena creates or joins the in-game room, or
 starts a replay, it waits for the add-on's overlay to draw over a frame of the game. The overlay finds the game's Direct3D 9
@@ -10,15 +11,12 @@ Wine's, so the overlay never starts and the Arena gives up with "A task was canc
 from __future__ import annotations
 
 import re
-import shutil
 import struct
 import sys
 from array import array
 from dataclasses import dataclass
 from pathlib import Path
 
-from .context import Context
-from .events import Log, Warn
 from .games import GAMES
 from .paths import Paths
 
@@ -27,10 +25,6 @@ SCAN_SIZE = 0x128000
 # mov dword ptr [esi], <vtable>; mov [esi + <offset>], eax; mov [esi + <offset>], eax
 OVERLAY_PATTERN = re.compile(rb"\xc7\x06.{4}\x89\x86.{4}\x89\x86", re.DOTALL)
 CONSEQUENCE = "The Arena may not be able to start games or replays."
-OPENGL = (
-    f"The Arena's in-game overlay does not work with OpenGL graphics. {CONSEQUENCE} Switch to Vulkan in Troubleshoot if "
-    "your graphics card supports it."
-)
 
 
 def align_up(value: int, alignment: int) -> int:
@@ -65,6 +59,9 @@ class Pe32:
     BASE_RELOCATIONS = 5  # the base relocation table's place among the data directories
     HIGHLOW = 3  # a base relocation of a 32-bit address
     EXECUTABLE = 0x20000000
+    # Wine marks its own DLLs here, after the DOS header. Wine loads its builtin copy instead of a file that has the mark.
+    WINE_BUILTIN_AT = 0x40
+    WINE_BUILTIN = b"Wine builtin DLL"
 
     def __init__(self, data: bytes) -> None:
         self.data = bytearray(data)
@@ -86,6 +83,7 @@ class Pe32:
             raise ValueError("it is not a Windows DLL")
 
         machine, count = struct.unpack_from("<HH", data, pe + 4)
+        self.symbols_at, self.symbol_count = struct.unpack_from("<II", data, pe + 12)
         optional_size = struct.unpack_from("<H", data, pe + 20)[0]
         optional = pe + 24
 
@@ -138,6 +136,41 @@ class Pe32:
                 return True
 
         return False
+
+    @property
+    def wine_builtin(self) -> bool:
+        return self.data[self.WINE_BUILTIN_AT : self.WINE_BUILTIN_AT + len(self.WINE_BUILTIN)] == self.WINE_BUILTIN
+
+    def unmark(self) -> None:
+        """Take Wine's builtin mark off, so that Wine loads this file and not its own copy."""
+        self.data[self.WINE_BUILTIN_AT : self.WINE_BUILTIN_AT + len(self.WINE_BUILTIN)] = bytes(len(self.WINE_BUILTIN))
+
+    def symbol(self, name: bytes) -> int | None:
+        """The RVA of a symbol in the COFF symbol table, which the DLLs Proton builds keep. None when it is not there."""
+        strings = self.symbols_at + 18 * self.symbol_count
+        index = 0
+
+        if strings > len(self.data):
+            return None
+
+        while self.symbols_at and index < self.symbol_count:
+            raw, value, section, _type, _storage, aux = struct.unpack_from(
+                "<8sIhHBB", self.data, self.symbols_at + 18 * index
+            )
+
+            # A name longer than 8 bytes is in the string table after the symbols, at the offset after 4 zero bytes.
+            if raw[:4] == bytes(4):
+                start = strings + struct.unpack_from("<I", raw, 4)[0]
+                found = bytes(self.data[start : self.data.find(b"\0", start)])
+            else:
+                found = raw.rstrip(b"\0")
+
+            if found == name and 0 < section <= len(self.sections):
+                return self.sections[section - 1].address + value
+
+            index += 1 + aux
+
+        return None
 
     def _relocations(self) -> tuple[int, int, Section]:
         """The base relocation table: (RVA, size, the section it is in)."""
@@ -220,17 +253,30 @@ class Pe32:
         struct.pack_into("<I", self.data, self.checksum_at, total + len(self.data))
 
 
+@dataclass(frozen=True)
+class OverlayState:
+    """What the Arena's overlay finds in the game environment."""
+
+    missing: bool = False  # there is no d3d9.dll
+    whose: str | None = None  # "DXVK" or "Wine", when the pattern can be added to it
+    ready: bool = False  # the overlay finds the device in it as it is
+    problem: str | None = None  # why the pattern cannot be added to it
+    own: tuple[str, ...] = ()  # the games that load a d3d9.dll of their own
+
+
 class OverlayPattern:
     """The pattern the Arena's overlay looks for, in the 32-bit d3d9.dll of the game environment.
 
-    `add` writes those 14 bytes into unused room at the end of the headers of DXVK's d3d9.dll, with the address of DXVK's
-    own device vtable in them, and one base relocation so the address is right wherever the DLL is loaded. No code changes:
-    the overlay then hooks DXVK's Present and Reset as it does Microsoft's. It runs whenever the game environment is got
-    ready, so the pattern is there however the Arena is started, and is put back if Proton copies DXVK in again.
+    `with_pattern` writes those 14 bytes into unused room at the end of the headers of DXVK's d3d9.dll or a copy of Wine's,
+    with the address of that DLL's own device vtable in them, and one base relocation so the address is right wherever the
+    DLL is loaded. No code changes: the overlay then hooks its Present and Reset as it does Microsoft's.
+    GameEnvironment.put_d3d9 puts the DLL in the game environment.
     """
 
     # DXVK's device class, as its run-time type information names it.
     DEVICE_TYPE = b"N4dxvk12D3D9DeviceExE\0"
+    # Wine's device vtable, as the symbol table names it.
+    WINE_DEVICE_VTABLE = b"_d3d9_device_vtbl"
     DEVICE_METHODS = 134  # IDirect3DDevice9Ex: IUnknown's 3, IDirect3DDevice9's 116 and its own 15
 
     def __init__(self, paths: Paths) -> None:
@@ -241,66 +287,61 @@ class OverlayPattern:
         """The d3d9.dll the games load. They are 32-bit, so it is the one in syswow64."""
         return self.paths.drive_c / "windows/syswow64/d3d9.dll"
 
-    def add(self, ctx: Context) -> None:
-        """Give DXVK's d3d9.dll the pattern if it does not have it. Says so when it cannot; the programs open either way.
-        With OpenGL, or without a d3d9.dll, there is nothing to add it to."""
-        dll = self.dll
-
-        if ctx.config.graphics == "opengl" or not dll.is_file():
-            return
-
-        tmp = dll.with_name(dll.name + ".bfme-new")
-
-        try:
-            changed = self.with_pattern(dll.read_bytes())
-
-            if changed is None:
-                return
-
-            tmp.write_bytes(changed)
-            shutil.copymode(dll, tmp)
-            tmp.replace(dll)
-        except (OSError, ValueError, struct.error) as error:
-            tmp.unlink(missing_ok=True)
-            ctx.emit(Warn(f"Could not prepare {dll} for the Arena's in-game overlay: {error}. {CONSEQUENCE}"))
-            return
-
-        ctx.emit(Log(f"Added what the Arena's in-game overlay looks for to {dll}."))
-
-    def state(self, graphics: str | None) -> str:
-        """For a bug report: whether the overlay will find the game's device, and if not, why."""
-        if graphics == "opengl":
-            return "does not work with OpenGL"
-
-        try:
-            changed = self.with_pattern(self.dll.read_bytes())
-        except FileNotFoundError:
-            found = ["no d3d9.dll in the game environment"]
-        except (OSError, ValueError, struct.error) as error:
-            found = [f"cannot be added to d3d9.dll: {error}"]
-        else:
-            found = ["ready" if changed is None else "not added yet"]
-
+    def inspect(self) -> OverlayState:
+        """Whether the overlay will find the game's device, whose d3d9.dll the games load, and if a game loads another
+        one."""
         # A game loads a d3d9.dll in its own folder before the game environment's.
-        for game in GAMES:
-            if (game.game_dir(self.paths) / "d3d9.dll").is_file():
-                found.append(f"{game.name} has its own d3d9.dll")
+        own = tuple(game.name for game in GAMES if (game.game_dir(self.paths) / "d3d9.dll").is_file())
 
-        return "; ".join(found)
+        try:
+            data = self.dll.read_bytes()
+            changed = self.with_pattern(data)
+        except FileNotFoundError:
+            return OverlayState(missing=True, own=own)
+        except (OSError, ValueError, struct.error) as error:
+            return OverlayState(problem=str(error), own=own)
+
+        whose = "DXVK" if self.DEVICE_TYPE in data else "Wine"
+        return OverlayState(whose=whose, ready=changed is None, own=own)
+
+    def state(self) -> str:
+        """For a bug report: what `inspect` finds, in one line."""
+        found = self.inspect()
+
+        if found.missing:
+            parts = ["no d3d9.dll in the game environment"]
+        elif found.problem is not None:
+            parts = [f"cannot be added to d3d9.dll: {found.problem}"]
+        else:
+            parts = [f"{'ready' if found.ready else 'not added yet'} ({found.whose}'s d3d9.dll)"]
+
+        for name in found.own:
+            parts.append(f"{name} has its own d3d9.dll")
+
+        return "; ".join(parts)
 
     @classmethod
     def with_pattern(cls, data: bytes) -> bytes | None:
-        """DXVK's d3d9.dll with the pattern added, or None when the overlay already finds DXVK's device in it. Raises
-        ValueError when it is not DXVK's, or has no room."""
+        """The d3d9.dll with the pattern added, or None when the overlay already finds its device in it. A copy of Wine's
+        loses Wine's builtin mark too, or Wine would load its own instead. Raises ValueError when it is neither DXVK's
+        nor Wine's, or has no room."""
         dll = Pe32(data)
         vtable = cls.device_vtable(dll)
+        found = cls.overlay_finds(dll)
 
-        if cls.overlay_finds(dll) == vtable:
+        if found == vtable and not dll.wine_builtin:
             return None
 
-        at = dll.free_header_room(14)
-        dll.data[at : at + 14] = b"\xc7\x06" + struct.pack("<I", dll.image_base + vtable) + b"\x89\x86\0\0\0\0\x89\x86"
-        dll.add_relocation(at + 2)
+        if found != vtable:
+            at = dll.free_header_room(14)
+            dll.data[at : at + 14] = (
+                b"\xc7\x06" + struct.pack("<I", dll.image_base + vtable) + b"\x89\x86\0\0\0\0\x89\x86"
+            )
+            dll.add_relocation(at + 2)
+
+        if dll.wine_builtin:
+            dll.unmark()
+
         dll.update_checksum()
 
         if cls.overlay_finds(Pe32(dll.data)) != vtable:
@@ -310,22 +351,26 @@ class OverlayPattern:
 
     @classmethod
     def device_vtable(cls, dll: Pe32) -> int:
-        """The RVA a DXVK device's first word points to: its class's vtable. Found from the name of the class, to the
-        class's type information, to the one vtable for an object at offset 0 that points to it."""
+        """The RVA a device's first word points to: its class's vtable. DXVK's is found from the name of the class, to the
+        class's type information, to the one vtable for an object at offset 0 that points to it. Wine's has a symbol."""
         image = dll.image()
         name = image.find(cls.DEVICE_TYPE)
-
-        if name < 0:
-            raise ValueError("it is not DXVK's")
-
         found = []
 
-        # The type information is {its own vtable, the name, ...}; a vtable is {offset to the object, the type information,
-        # the methods...}.
-        for name_at in cls._words(image, dll.image_base + name):
-            for type_at in cls._words(image, dll.image_base + name_at - 4):
-                if type_at >= 4 and struct.unpack_from("<i", image, type_at - 4)[0] == 0:
-                    found.append(type_at + 4)
+        if name >= 0:
+            # The type information is {its own vtable, the name, ...}; a vtable is {offset to the object, the type
+            # information, the methods...}.
+            for name_at in cls._words(image, dll.image_base + name):
+                for type_at in cls._words(image, dll.image_base + name_at - 4):
+                    if type_at >= 4 and struct.unpack_from("<i", image, type_at - 4)[0] == 0:
+                        found.append(type_at + 4)
+        else:
+            wine = dll.symbol(cls.WINE_DEVICE_VTABLE)
+
+            if wine is None:
+                raise ValueError("it is neither DXVK's nor Wine's")
+
+            found.append(wine)
 
         if len(found) != 1 or found[0] + 4 * cls.DEVICE_METHODS > len(image):
             raise ValueError("its device vtable was not found")

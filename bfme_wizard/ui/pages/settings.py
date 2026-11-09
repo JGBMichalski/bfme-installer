@@ -1,4 +1,4 @@
-"""The Troubleshoot page: system checks, graphics, tools and reset."""
+"""The Settings page: system checks, graphics, tools and reset."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from ..actions import WindowActions
 
 # The sandbox cannot see these. Advice only, never pass or fail. The drivers named depend on the chosen backend.
-# (value, label) of each choice in Troubleshoot's Graphics section.
+# (value, label) of each choice in the Graphics section.
 GPU_CHOICES: list[tuple[str | int, str]] = [
     ("auto", "Automatic"),
     ("dedicated", "Dedicated card"),
@@ -50,7 +50,7 @@ def cant_check(graphics: str) -> list[tuple[str, str, str]]:
     ]
 
 
-class TroubleshootPage:
+class SettingsPage:
     """Rebuilt only when its content changes, so expanded rows stay open."""
 
     def __init__(self, controller: Controller, actions: WindowActions) -> None:

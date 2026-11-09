@@ -8,7 +8,7 @@ from bfme_wizard.engine.events import Check, Fix
 from bfme_wizard.engine.overlay_pattern import OverlayPattern
 from bfme_wizard.engine.paths import Paths
 from bfme_wizard.services.diagnostics import Diagnostics
-from tests.fake_dll import fake_dxvk
+from tests.fake_dll import fake_dxvk, fake_wine_d3d9
 from tests.helpers import status
 
 
@@ -65,13 +65,10 @@ def test_the_report_says_whether_the_arenas_overlay_can_start(tmp_path):
     m = SetupModel()
     m.status = status(prefix_ready=True)
 
-    assert "Arena overlay: not added yet\n" in Diagnostics(paths.logs, paths=paths).report("dev", m)
+    assert "Arena overlay: not added yet (DXVK's d3d9.dll)\n" in Diagnostics(paths.logs, paths=paths).report("dev", m)
 
-    dll.write_bytes(OverlayPattern.with_pattern(fake_dxvk()))
-    assert "Arena overlay: ready\n" in Diagnostics(paths.logs, paths=paths).report("dev", m)
-
-    m.status = status(prefix_ready=True, graphics="opengl")
-    assert "Arena overlay: does not work with OpenGL\n" in Diagnostics(paths.logs, paths=paths).report("dev", m)
+    dll.write_bytes(OverlayPattern.with_pattern(fake_wine_d3d9()))
+    assert "Arena overlay: ready (Wine's d3d9.dll)\n" in Diagnostics(paths.logs, paths=paths).report("dev", m)
     assert "Arena overlay: unknown\n" in Diagnostics(paths.logs).report("dev", m)
 
 

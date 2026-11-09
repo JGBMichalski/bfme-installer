@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 import shutil
+import struct
 from pathlib import Path
 
 from .config import GPUS, GRAPHICS, Config, ConfigFile
@@ -11,7 +12,7 @@ from .context import Context
 from .errors import SetupError
 from .events import Log, Warn
 from .graphics import Graphics
-from .overlay_pattern import OverlayPattern
+from .overlay_pattern import CONSEQUENCE, OverlayPattern
 from .paths import Paths
 from .proton import NO_WINE_SERVER, Proton
 
@@ -25,6 +26,8 @@ class GameEnvironment:
     CREATING_MARKER = ".bfme-creating"
     SETTINGS_FILE = "bfme-settings.reg"  # in drive_c while it is imported
     D3D_DLLS = ("d3d8", "d3d9", "d3d10core", "d3d11", "dxgi")
+    # Where each architecture's d3d9.dll is. The games are 32-bit; the AIO Launcher and the Arena are 64-bit.
+    D3D9_FOLDERS = (("i386", "syswow64"), ("x86_64", "system32"))
     DLL_OVERRIDES = r"HKCU\Software\Wine\DllOverrides"
     # The player's other graphics settings: (config key, allowed values, what it is called).
     OPTIONS = {
@@ -71,13 +74,62 @@ class GameEnvironment:
         (paths.prefix / self.CREATING_MARKER).unlink()
 
     def prepare(self, ctx: Context) -> None:
-        """Create it if it is missing, then make sure it has the current settings, and DXVK what the Arena's in-game
-        overlay looks for."""
+        """Create it if it is missing, then make sure it has the current settings and the graphics' own d3d9.dll."""
         if not self.ready():
             self.create(ctx)
 
         self.apply_settings(ctx)
-        OverlayPattern(self.paths).add(ctx)
+        self.put_d3d9(ctx)
+
+    def put_d3d9(self, ctx: Context) -> None:
+        """The chosen graphics' own d3d9.dll in the game environment, from the Proton that runs it: DXVK's for Vulkan,
+        Wine's for OpenGL. Proton copies them in only when it creates the game environment, so after a switch of graphics
+        the first ones would stay. The 32-bit one, which the games load, has what the Arena's in-game overlay looks for.
+        Without Proton's own files, DXVK's d3d9.dll gets that where it is."""
+        proton = ctx.proton
+
+        for arch, folder in self.D3D9_FOLDERS:
+            target = self.paths.drive_c / "windows" / folder / "d3d9.dll"
+            source = proton.d3d9(arch)
+
+            if source is None and arch == "i386" and proton.config.graphics == "vulkan" and target.is_file():
+                source = target
+
+            if source is not None:
+                self._put(ctx, source, target, overlay=arch == "i386")
+
+    def _put(self, ctx: Context, source: Path, target: Path, overlay: bool) -> None:
+        tmp = target.with_name(target.name + ".bfme-new")
+        added = False
+
+        try:
+            data = source.read_bytes()
+
+            if overlay:
+                try:
+                    data = OverlayPattern.with_pattern(data) or data
+                    added = True
+                except (ValueError, struct.error) as error:
+                    ctx.emit(
+                        Warn(f"Could not prepare {target} for the Arena's in-game overlay: {error}. {CONSEQUENCE}")
+                    )
+
+            if target.is_file() and target.read_bytes() == data:
+                return
+
+            target.parent.mkdir(parents=True, exist_ok=True)
+            tmp.write_bytes(data)
+            tmp.chmod(0o755)
+            tmp.replace(target)
+        except OSError as error:
+            tmp.unlink(missing_ok=True)
+            ctx.emit(Warn(f"Could not put {source} in {target}: {error}."))
+            return
+
+        if added:
+            ctx.emit(Log(f"Added what the Arena's in-game overlay looks for to {target}."))
+        else:
+            ctx.emit(Log(f"Copied {source} to {target}."))
 
     def reset(self, ctx: Context) -> None:
         """Delete it, with every game and program in it. Ends its Wine session first."""
@@ -217,6 +269,7 @@ class GameEnvironment:
 
         ctx.renew_proton()
         self.apply_settings(ctx, force=True)
+        self.put_d3d9(ctx)
 
         if changed:
             emit(Log("The change applies the next time you open a program."))

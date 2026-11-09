@@ -1,4 +1,4 @@
-"""The Troubleshoot page: system checks, graphics, tools and reset."""
+"""The Settings page: system checks, graphics, tools and reset."""
 
 from tests.fake_jobs import idle_controller
 from tests.helpers import buttons, descendants, status
@@ -9,11 +9,11 @@ def feed(model, *events):
         model.feed_event(event)
 
 
-# Troubleshoot page
+# Settings page
 
 
 def test_the_advice_about_graphics_drivers_names_the_chosen_backend(gtk):
-    from bfme_wizard.ui.pages.troubleshoot import cant_check
+    from bfme_wizard.ui.pages.settings import cant_check
 
     vulkan = {title: text for title, text, _command in cant_check("vulkan")}
     opengl = {title: text for title, text, _command in cant_check("opengl")}
@@ -51,32 +51,32 @@ class RecordedActions:
         self.asked.append(("change_option", option, value))
 
 
-def troubleshoot_button_labels(Gtk, graphics):
-    from bfme_wizard.ui.pages.troubleshoot import TroubleshootPage
+def settings_button_labels(Gtk, graphics):
+    from bfme_wizard.ui.pages.settings import SettingsPage
 
     c = idle_controller()
     c.model.state = "idle"
     c.model.status = status(graphics=graphics)
-    page = TroubleshootPage(c, RecordedActions([]))
+    page = SettingsPage(c, RecordedActions([]))
     return [b.get_label() for b in buttons(page.view, Gtk)]
 
 
 def test_the_row_offers_the_other_backend(gtk):
-    assert "Use OpenGL" in troubleshoot_button_labels(gtk, "vulkan")
-    assert "Use Vulkan" in troubleshoot_button_labels(gtk, "opengl")
+    assert "Use OpenGL" in settings_button_labels(gtk, "vulkan")
+    assert "Use Vulkan" in settings_button_labels(gtk, "opengl")
 
 
-# Troubleshoot: the graphics card and the FPS counter
+# Settings: the graphics card and the FPS counter
 
 
-def troubleshoot(installed, state="done"):
-    from bfme_wizard.ui.pages.troubleshoot import TroubleshootPage
+def settings(installed, state="done"):
+    from bfme_wizard.ui.pages.settings import SettingsPage
 
     c = idle_controller()
     c.model.state = state
     c.model.status = installed
     asked = []
-    page = TroubleshootPage(c, RecordedActions(asked))
+    page = SettingsPage(c, RecordedActions(asked))
     return page, asked
 
 
@@ -93,8 +93,8 @@ def rows_titled(page, kind):
 def test_the_choice_of_card_is_only_there_with_two_cards(gtk):
     from gi.repository import Adw
 
-    one, _ = troubleshoot(status(graphics_cards=1))
-    two, _ = troubleshoot(status(graphics_cards=2))
+    one, _ = settings(status(graphics_cards=1))
+    two, _ = settings(status(graphics_cards=2))
 
     assert "Graphics card" not in rows_titled(one, Adw.ComboRow)
     assert "Graphics card" in rows_titled(two, Adw.ComboRow)
@@ -103,7 +103,7 @@ def test_the_choice_of_card_is_only_there_with_two_cards(gtk):
 def test_the_rows_show_what_is_saved_and_building_them_saves_nothing(gtk):
     from gi.repository import Adw
 
-    page, asked = troubleshoot(status(graphics_cards=2, gpu="integrated", fps_counter=True))
+    page, asked = settings(status(graphics_cards=2, gpu="integrated", fps_counter=True))
     combos = rows_titled(page, Adw.ComboRow)
 
     assert combos["Graphics card"].get_selected_item().get_string() == "Built-in card"
@@ -114,7 +114,7 @@ def test_the_rows_show_what_is_saved_and_building_them_saves_nothing(gtk):
 def test_changing_a_row_saves_that_setting(gtk):
     from gi.repository import Adw
 
-    page, asked = troubleshoot(status(graphics_cards=2))
+    page, asked = settings(status(graphics_cards=2))
     combos = rows_titled(page, Adw.ComboRow)
 
     combos["Graphics card"].set_selected(1)
@@ -126,7 +126,7 @@ def test_changing_a_row_saves_that_setting(gtk):
 def test_the_rows_wait_while_the_setup_runs(gtk):
     from gi.repository import Adw
 
-    page, _ = troubleshoot(status(graphics_cards=2), state="running")
+    page, _ = settings(status(graphics_cards=2), state="running")
 
     for row in [*rows_titled(page, Adw.ComboRow).values(), *rows_titled(page, Adw.SwitchRow).values()]:
         assert not row.get_sensitive(), row.get_title()
@@ -135,7 +135,7 @@ def test_the_rows_wait_while_the_setup_runs(gtk):
 def test_the_settings_file_row_opens_it(gtk):
     from gi.repository import Adw
 
-    page, asked = troubleshoot(status())
+    page, asked = settings(status())
 
     rows_titled(page, Adw.ActionRow)["Open settings file"].emit("activated")
 

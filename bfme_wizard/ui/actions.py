@@ -144,7 +144,7 @@ class WindowActions:
             if ok:
                 self.toast("The game environment was deleted.")
             else:
-                self.toast("The reset failed. Open the logs folder from Troubleshoot.")
+                self.toast("The reset failed. Open the logs folder from Settings.")
 
         if self.controller.reset(done):
             self.window.nav.pop_to_page(self.window.root_page)
@@ -159,7 +159,7 @@ class WindowActions:
             if ok:
                 self.toast(f"Now using {name}. It takes effect the next time you open a program.")
             else:
-                self.toast(f"Could not switch to {name}. Open the logs folder from Troubleshoot.")
+                self.toast(f"Could not switch to {name}. Open the logs folder from Settings.")
 
         if not self.controller.set_graphics(backend, done):
             self.not_now()
@@ -171,11 +171,11 @@ class WindowActions:
             if ok:
                 self.toast("Saved. It takes effect the next time you open a program.")
             else:
-                self.toast("Could not save the setting. Open the logs folder from Troubleshoot.")
+                self.toast("Could not save the setting. Open the logs folder from Settings.")
 
         if not self.controller.set_option(option, value, done):
             self.not_now()
 
             # Put the row back to what is saved.
-            if self.window.troubleshoot is not None:
-                self.window.troubleshoot.refresh(force=True)
+            if self.window.settings is not None:
+                self.window.settings.refresh(force=True)

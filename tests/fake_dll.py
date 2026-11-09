@@ -1,6 +1,6 @@
-"""A small 32-bit Windows DLL laid out like DXVK's d3d9.dll where the Arena overlay's pattern goes: code, the run-time type
-information and vtable of DXVK's device class, and base relocations with room to spare. Made with the standard library,
-so the tests need no DXVK.
+"""A small 32-bit Windows DLL laid out like DXVK's d3d9.dll, or Wine's, where the Arena overlay's pattern goes: code, the
+device vtable (found through DXVK's run-time type information, or Wine's symbol table), and base relocations with room to
+spare. Made with the standard library, so the tests need neither.
 
 Also what the DLL looks like to the game: `load` maps it as Windows does, and `overlay_hooks` searches it as the overlay
 does. Both are written apart from the code they test.
@@ -24,6 +24,31 @@ def method(k):
     return TEXT + 0x10 * k
 
 
+def fake_wine_d3d9(*, symbol=True, **changes):
+    """Wine's own d3d9.dll as far as the overlay pattern goes: no run-time type information, but Wine's builtin mark and a
+    symbol table that names the device vtable. Without `symbol`, the table has only a decoy."""
+    return fake_dxvk(name=b"", wine_symbol=symbol, wine=True, **changes)
+
+
+def _symbol_table(start, symbol):
+    """A COFF symbol table at file offset `start`: a short name with an auxiliary record, a decoy whose long name starts
+    like the vtable's, and the vtable's own (in .rdata, the second section) unless left out. Then the string table."""
+    strings = b"_d3d9_device_vtbl_decoy\0_d3d9_device_vtbl\0"
+    records = [
+        struct.pack("<8sIhHBB", b".text", 0, 1, 0, 3, 1),
+        bytes(18),
+        struct.pack("<IIIhHBB", 0, 4, RDATA + 0x600 - RDATA, 2, 0, 3, 0),
+    ]
+
+    if symbol:
+        records.append(
+            struct.pack("<IIIhHBB", 0, 4 + strings.index(b"_d3d9_device_vtbl\0"), VTABLE - RDATA, 2, 0, 3, 0)
+        )
+
+    table = b"".join(records) + struct.pack("<I", 4 + len(strings)) + strings
+    return start, len(records), table
+
+
 def fake_dxvk(
     *,
     name=b"N4dxvk12D3D9DeviceExE\0",
@@ -31,8 +56,11 @@ def fake_dxvk(
     header_free=True,
     relocation_room=True,
     method_outside_code=False,
+    wine=False,
+    wine_symbol=True,
 ):
-    """DXVK's d3d9.dll as far as the overlay pattern goes. The keywords break one thing each."""
+    """DXVK's d3d9.dll as far as the overlay pattern goes. The keywords break one thing each; `wine` makes it Wine's
+    instead (fake_wine_d3d9)."""
     rdata = bytearray(0x1000)
     pointers = []  # the RVAs in .rdata of the addresses the loader adjusts
 
@@ -101,6 +129,13 @@ def fake_dxvk(
     data[TEXT_AT : TEXT_AT + 0x1000] = b"\xcc" * 0x1000
     data[RDATA_AT : RDATA_AT + 0x1000] = rdata
     data[RELOC_AT : RELOC_AT + len(table)] = table
+
+    if wine:
+        data[0x40:0x50] = b"Wine builtin DLL"
+        start, count, symbols = _symbol_table(len(data), wine_symbol)
+        struct.pack_into("<II", data, 0x8C, start, count)
+        data += symbols
+
     return bytes(data)
 
 

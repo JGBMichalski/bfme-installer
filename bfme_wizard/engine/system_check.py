@@ -1,4 +1,5 @@
-"""The system check: what must be in place before the setup can run. Only checks that can fail inside the Flatpak."""
+"""The system check: what must be in place before the setup can run, and whether the games' d3d9.dll is ready for the
+Arena's in-game overlay. Only checks that can fail inside the Flatpak."""
 
 from __future__ import annotations
 
@@ -8,8 +9,11 @@ from pathlib import Path
 
 from .config import Config
 from .events import Check, Emit, Fix, Log
+from .game_environment import GameEnvironment
 from .graphics import Graphics
+from .overlay_pattern import OverlayPattern
 from .paths import Paths
+from .programs import ARENA
 
 
 class SystemCheck:
@@ -104,10 +108,42 @@ class SystemCheck:
 
         if backend == "opengl":
             return Check(
-                "graphics", "warn", f"Graphics: {why}. OpenGL is recommended: switch it under Troubleshoot, Graphics."
+                "graphics", "warn", f"Graphics: {why}. OpenGL is recommended: switch it under Settings, Graphics."
             )
 
         return Check("graphics", "ok", f"Graphics: {why}. Using {Graphics.label(config.graphics)}, as you chose.")
+
+    def _d3d9_check(self) -> Check:
+        """Whether the d3d9.dll the games load is the chosen graphics' own, and ready for the Arena's in-game overlay. A
+        warning at most: nothing on the computer has to change, and the programs open either way."""
+        found = OverlayPattern(self.paths).inspect()
+        overlay = "the Arena's in-game overlay"
+
+        if found.missing:
+            message = f"d3d9.dll: not in the game environment, so {overlay} cannot start."
+        elif found.problem is not None:
+            message = f"d3d9.dll: cannot be made ready for {overlay}, because {found.problem}."
+        elif found.ready:
+            message = f"d3d9.dll: {found.whose}'s, ready for {overlay}."
+        else:
+            message = (
+                f"d3d9.dll: {found.whose}'s, not ready for {overlay} yet. Opening any program here makes it ready."
+            )
+
+        graphics = self.config.graphics
+        matches = found.whose == ("DXVK" if graphics == "vulkan" else "Wine")
+
+        if found.whose is not None and not matches:
+            message += f" The graphics are {Graphics.label(graphics)}, though."
+
+        if found.own:
+            names = found.own
+            listed = names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
+            have = "has its" if len(names) == 1 else "have their"
+            message += f" {listed} {have} own d3d9.dll, which the overlay may not work with."
+
+        level = "ok" if found.ready and matches and not found.own else "warn"
+        return Check("d3d9", level, message)
 
     def run(self, emit: Emit) -> bool:
         """Run every check and report each one. False when a check failed and the setup cannot go on."""
@@ -129,6 +165,9 @@ class SystemCheck:
             checks.append(Check("flatpak-32bit", "ok", "32-bit Flatpak extensions installed"))
 
         checks.append(self._graphics_check())
+
+        if GameEnvironment(paths).ready() and ARENA.installed(paths):
+            checks.append(self._d3d9_check())
 
         free_gb = shutil.disk_usage(self._existing_parent(paths.base)).free // (1024**3)
 

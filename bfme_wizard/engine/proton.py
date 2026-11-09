@@ -174,10 +174,15 @@ class Proton:
             env.setdefault("WINE_D3D_CONFIG", "renderer=gl")
 
             # The registry says the same, but an override in the environment also covers a prefix made before this choice.
-            overrides = f"{self.D3D_DLLS}=b"
+            # d3d9 is the game environment's copy of Wine's, which has what the Arena's in-game overlay looks for
+            # (GameEnvironment.put_d3d9), with Wine's builtin as the fallback.
+            if self.d3d9("i386") is None:
+                overrides = f"{self.D3D_DLLS}=b"
+            else:
+                overrides = "d3d8,d3d10core,d3d11,dxgi=b;d3d9=n,b"
 
             if env.get("WINEDLLOVERRIDES"):
-                overrides += "," + env["WINEDLLOVERRIDES"]
+                overrides += ";" + env["WINEDLLOVERRIDES"]
 
             env["WINEDLLOVERRIDES"] = overrides
 
@@ -211,17 +216,31 @@ class Proton:
         """Run a program in the game environment and wait for it. Returns its exit status."""
         return self.start(args, inprefix, output, cwd).wait()
 
-    def wineserver(self) -> Path | None:
-        """Proton's Wine server: in the Proton folder, or where umu keeps the Protons it downloads."""
+    def _folders(self) -> list[Path]:
+        """Where this Proton may be: at its path, or where umu keeps the Protons it downloads."""
         env = self._environ()
         data_home = env.get("XDG_DATA_HOME") or os.path.join(env.get("HOME", ""), ".local/share")
-        candidates = [
-            Path(self.path) / "files/bin/wineserver",
-            Path(data_home) / "umu/compatibilitytools" / self.path / "files/bin/wineserver",
-        ]
+        return [Path(self.path), Path(data_home) / "umu/compatibilitytools" / self.path]
 
-        for candidate in candidates:
+    def wineserver(self) -> Path | None:
+        """Proton's Wine server."""
+        for folder in self._folders():
+            candidate = folder / "files/bin/wineserver"
+
             if os.access(candidate, os.X_OK):
+                return candidate
+
+        return None
+
+    def d3d9(self, arch: str) -> Path | None:
+        """Proton's own d3d9.dll for the chosen graphics and an architecture (i386 or x86_64): DXVK's for Vulkan, Wine's
+        for OpenGL. None when it is not where Proton 8 and later keep it."""
+        folder = "wine/dxvk" if self.config.graphics == "vulkan" else "wine"
+
+        for proton in self._folders():
+            candidate = proton / "files/lib" / folder / f"{arch}-windows/d3d9.dll"
+
+            if candidate.is_file():
                 return candidate
 
         return None

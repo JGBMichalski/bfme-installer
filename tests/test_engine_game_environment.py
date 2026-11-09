@@ -1,5 +1,6 @@
 """engine.game_environment: the game environment, its settings and the graphics backend."""
 
+import stat
 from pathlib import Path
 
 import pytest
@@ -9,9 +10,9 @@ from bfme_wizard.engine.errors import SetupError
 from bfme_wizard.engine.events import Log, Warn
 from bfme_wizard.engine.game_environment import GameEnvironment
 from bfme_wizard.engine.graphics import Graphics
-from bfme_wizard.engine.overlay_pattern import OverlayPattern
+from bfme_wizard.engine.overlay_pattern import CONSEQUENCE, OverlayPattern
 from bfme_wizard.engine.paths import Paths
-from tests.fake_dll import IMAGE_BASE, fake_dxvk, load, overlay_hooks
+from tests.fake_dll import IMAGE_BASE, fake_dxvk, fake_wine_d3d9, load, overlay_hooks
 from tests.helpers import context
 
 # Logs each call's arguments. Called with "" (the first start) it makes the prefix as umu would. `reg import` keeps a copy of
@@ -248,6 +249,136 @@ def test_prepare_gives_dxvk_what_the_arenas_overlay_looks_for(env, paths):
     GameEnvironment(paths).prepare(context(paths, [].append, config=Config()))
 
     assert overlay_hooks(load(dll.read_bytes(), IMAGE_BASE), IMAGE_BASE) is not None
+
+
+# The graphics' own d3d9.dll, from Proton
+
+# What a Proton has, in the folders Proton 8 and later use. The 64-bit ones are copied as they are.
+PROTON_D3D9 = {
+    "lib/wine/dxvk/i386-windows/d3d9.dll": fake_dxvk(),
+    "lib/wine/dxvk/x86_64-windows/d3d9.dll": b"DXVK, 64-bit",
+    "lib/wine/i386-windows/d3d9.dll": fake_wine_d3d9(),
+    "lib/wine/x86_64-windows/d3d9.dll": b"Wine, 64-bit",
+}
+
+
+@pytest.fixture
+def proton(tmp_path):
+    folder = tmp_path / "proton"
+
+    for name, data in PROTON_D3D9.items():
+        (folder / "files" / name).parent.mkdir(parents=True, exist_ok=True)
+        (folder / "files" / name).write_bytes(data)
+
+    return folder
+
+
+def d3d9(paths, folder):
+    return paths.drive_c / "windows" / folder / "d3d9.dll"
+
+
+def put(paths, proton, graphics, events=None):
+    ctx = context(
+        paths, events.append if events is not None else None, config=Config(graphics=graphics), proton=str(proton)
+    )
+    GameEnvironment(paths).put_d3d9(ctx)
+
+
+@pytest.mark.parametrize(
+    "graphics, own, x86_64", [("vulkan", fake_dxvk, b"DXVK, 64-bit"), ("opengl", fake_wine_d3d9, b"Wine, 64-bit")]
+)
+def test_each_graphics_gets_its_own_d3d9_once_the_32_bit_one_with_the_pattern(paths, proton, graphics, own, x86_64):
+    make_prefix(paths)
+    events = []
+
+    put(paths, proton, graphics, events)
+
+    games = d3d9(paths, "syswow64")
+    source = proton / "files" / ("lib/wine/dxvk" if graphics == "vulkan" else "lib/wine") / "x86_64-windows/d3d9.dll"
+    assert games.read_bytes() == OverlayPattern.with_pattern(own())
+    assert overlay_hooks(load(games.read_bytes(), IMAGE_BASE), IMAGE_BASE) is not None
+    assert d3d9(paths, "system32").read_bytes() == x86_64
+    assert stat.S_IMODE(games.stat().st_mode) == 0o755
+    assert events == [
+        Log(f"Added what the Arena's in-game overlay looks for to {games}."),
+        Log(f"Copied {source} to {d3d9(paths, 'system32')}."),
+    ]
+    assert sorted(p.name for p in games.parent.iterdir()) == ["d3d9.dll"]
+
+    events.clear()
+    put(paths, proton, graphics, events)
+
+    assert events == []
+
+
+def test_a_switch_of_graphics_swaps_them(paths, proton):
+    make_prefix(paths)
+
+    for graphics, own in (("vulkan", fake_dxvk), ("opengl", fake_wine_d3d9), ("vulkan", fake_dxvk)):
+        put(paths, proton, graphics)
+
+        assert d3d9(paths, "syswow64").read_bytes() == OverlayPattern.with_pattern(own())
+
+
+def test_switching_the_graphics_swaps_them_at_once(env, paths, proton):
+    make_prefix(paths)
+    ctx = context(paths, [].append, config=Config(protonpath=str(proton)), proton=None)
+
+    GameEnvironment(paths).set_graphics(ctx, "opengl")
+
+    assert d3d9(paths, "syswow64").read_bytes() == OverlayPattern.with_pattern(fake_wine_d3d9())
+
+
+def test_without_protons_own_files_dxvk_gets_the_pattern_where_it_is(paths, tmp_path):
+    games = d3d9(paths, "syswow64")
+    games.parent.mkdir(parents=True)
+    games.write_bytes(fake_dxvk())
+    events = []
+
+    put(paths, tmp_path / "no-proton", "opengl", events)
+
+    assert games.read_bytes() == fake_dxvk()
+    assert events == []
+
+    put(paths, tmp_path / "no-proton", "vulkan", events)
+
+    assert games.read_bytes() == OverlayPattern.with_pattern(fake_dxvk())
+    assert events == [Log(f"Added what the Arena's in-game overlay looks for to {games}.")]
+
+    games.unlink()
+    events.clear()
+    put(paths, tmp_path / "no-proton", "vulkan", events)
+
+    assert not games.exists()
+    assert events == []
+
+
+def test_a_d3d9_that_cannot_get_the_pattern_is_still_put_there_and_said(paths, proton):
+    (proton / "files/lib/wine/i386-windows/d3d9.dll").write_bytes(fake_wine_d3d9(symbol=False))
+    events = []
+
+    put(paths, proton, "opengl", events)
+
+    games = d3d9(paths, "syswow64")
+    assert games.read_bytes() == fake_wine_d3d9(symbol=False)  # Wine's mark is kept, so Wine loads its own
+    assert events[:2] == [
+        Warn(
+            f"Could not prepare {games} for the Arena's in-game overlay: it is neither DXVK's nor Wine's. {CONSEQUENCE}"
+        ),
+        Log(f"Copied {proton / 'files/lib/wine/i386-windows/d3d9.dll'} to {games}."),
+    ]
+
+
+def test_a_damaged_dxvk_where_it_is_is_a_warning_and_is_left_as_it_is(paths, tmp_path):
+    games = d3d9(paths, "syswow64")
+    games.parent.mkdir(parents=True)
+    games.write_bytes(fake_dxvk()[:0x1500])
+    events = []
+
+    put(paths, tmp_path / "no-proton", "vulkan", events)
+
+    assert [type(event) for event in events] == [Warn]
+    assert games.read_bytes() == fake_dxvk()[:0x1500]
 
 
 # The first setup's graphics backend
