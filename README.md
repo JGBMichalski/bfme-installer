@@ -129,7 +129,8 @@ Open **Troubleshoot** with the lifebuoy button in the top right corner, which is
   Downloads and Proton are kept.
 
 The graphics switch takes effect the next time you open a program, and nothing is reinstalled. If the games are slow or will
-not start on a card without working Vulkan, try OpenGL; if OpenGL is worse, switch back.
+not start on a card without working Vulkan, try OpenGL; if OpenGL is worse, switch back. The Arena needs Vulkan to start
+games and replays: its in-game overlay does not work with OpenGL.
 
 ## Planned
 

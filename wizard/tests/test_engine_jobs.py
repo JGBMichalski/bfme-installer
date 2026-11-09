@@ -28,6 +28,7 @@ from bfme_wizard.engine.graphics import Graphics
 from bfme_wizard.engine.jobs import Engine
 from bfme_wizard.engine.lock import SetupLock
 from bfme_wizard.engine.menu_shortcuts import MenuShortcuts
+from bfme_wizard.engine.overlay_pattern import OverlayPattern
 from bfme_wizard.engine.paths import Paths
 from bfme_wizard.engine.programs import (
     AIO_LAUNCHER,
@@ -42,6 +43,7 @@ from bfme_wizard.engine.programs import (
 )
 from bfme_wizard.engine.proton import Proton
 from bfme_wizard.engine.system_check import SystemCheck
+from tests.fake_dll import IMAGE_BASE, fake_dxvk, load, overlay_hooks
 from tests.helpers import status
 
 SEVENZIP = shutil.which("7zz") or shutil.which("7z") or shutil.which("7za")
@@ -612,6 +614,21 @@ def test_opening_the_aio_launcher_installs_it_first(world):
     assert AIO_LAUNCHER.installed(world.paths)
     assert events[-1].text.startswith("Starting the AIO Launcher. Log: ")
     assert list(world.paths.logs.glob("aio-launcher-2*.log"))
+
+
+def test_opening_the_arena_gives_dxvk_what_its_overlay_looks_for(world):
+    world.make_prefix()
+    dll = OverlayPattern(world.paths).dll
+    dll.parent.mkdir(parents=True)
+    dll.write_bytes(fake_dxvk())
+
+    code, events = world.engine(jobs.open_program, "arena")
+
+    assert code == jobs.OK
+    assert ARENA.installed(world.paths)
+    assert overlay_hooks(load(dll.read_bytes(), IMAGE_BASE), IMAGE_BASE) is not None
+    assert Log(f"Added what the Arena's in-game overlay looks for to {dll}.") in events
+    assert events[-1].text.startswith("Starting the Arena. Log: ")
 
 
 def test_the_lock_is_free_while_the_program_runs(world, monkeypatch):

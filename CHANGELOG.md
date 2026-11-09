@@ -36,6 +36,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Rotating the AIO Launcher's logs no longer deletes its setup log.
 - DXVK's fix for slowdowns in BFME 2 and Rise of the Witch-king now applies.
+- The Arena can start games, connection tests and replays again. It waits for its in-game overlay, which could not find the game's graphics under DXVK, so it gave up with "A task was canceled", "Failed to create ingame room" or "The overlay didn't load". Each time the Arena opens, the app now adds what the overlay looks for to DXVK in the game environment. With OpenGL graphics the overlay still cannot start; use Vulkan to play in the Arena.
 
 ## [2.1.0]
 
