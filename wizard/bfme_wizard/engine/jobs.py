@@ -15,6 +15,7 @@ from .errors import JobCancelled, SetupError
 from .events import Cancelled, Done, Emit, Error, Log, Progress, SetupStatus, Step
 from .game_environment import GameEnvironment
 from .games import GAMES
+from .graphics import GraphicsCards
 from .lock import SetupLock
 from .menu_shortcuts import MenuShortcuts
 from .paths import Paths
@@ -111,7 +112,7 @@ class Job(Context, ABC):
             graphics=self.config.graphics,
             gpu=self.config.gpu,
             fps_counter=GameEnvironment.fps_counter_on(self.config),
-            graphics_cards=len(Proton.graphics_cards()),
+            graphics_cards=GraphicsCards().count,
         )
 
     def report_status(self) -> None:

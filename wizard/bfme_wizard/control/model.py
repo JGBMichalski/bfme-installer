@@ -1,6 +1,7 @@
 """What the wizard knows about the setup.
 
-The player's choice on the start page becomes a plan: jobs run one after the other, each one job of engine/jobs.py.
+The player's choice on the start page becomes a plan (plan.py): jobs run one after the other, each one job of
+engine/jobs.py.
 
   environment   prepare                doctor, runner, prefix                   left out when it is already ready
   aio-launcher  install aio-launcher   aio-launcher, arena, shortcuts
@@ -27,67 +28,11 @@ from ..engine import events
 from ..engine import programs as engine_programs
 from ..engine.games import GAMES
 from ..engine.jobs import PrepareJob
-
-
-def _job_steps() -> dict[str, list[tuple[str, str, str]]]:
-    """The steps of each job: the game environment's, then each program's that has a job of its own."""
-    steps = {PrepareJob.KEY: list(PrepareJob.STEPS)}
-
-    for program in engine_programs.EVERY_PROGRAM:
-        if program.steps:
-            steps[program.key] = list(program.steps)
-
-    return steps
-
-
-JOB_STEPS = _job_steps()
-
-
-def _keys(only_choices: bool = False, tools: bool = False) -> tuple[str, ...]:
-    keys = []
-
-    for program in engine_programs.EVERY_PROGRAM:
-        if program.is_tool != tools:
-            continue
-
-        if only_choices and program.choice is None:
-            continue
-
-        keys.append(program.key)
-
-    return tuple(keys)
-
-
-PROGRAMS = _keys(only_choices=True)  # Start page choices, in install order.
-ALL_PROGRAMS = _keys()  # Everything that can be opened, and removed again.
-TOOLS = _keys(tools=True)  # Extra programs of the Tools page. Each installs as a job of its own, from the home screen.
-
+from .plan import Plan
 
 # The sandbox cannot see the firewall. Troubleshoot has a section for it.
 HIDDEN_CHECKS = {"firewall"}
 MAX_LOG_LINES = 2000
-
-
-def title_of(step_id: str) -> str:
-    return next((t for steps in JOB_STEPS.values() for i, t, _ in steps if i == step_id), step_id)
-
-
-def description_of(step_id: str) -> str:
-    return next((d for steps in JOB_STEPS.values() for i, _, d in steps if i == step_id), "")
-
-
-def _in_order(programs: Iterable[str]) -> tuple[str, ...]:
-    """Known programs only, in install order."""
-    wanted = set(programs)
-    return tuple(program for program in (*PROGRAMS, *TOOLS) if program in wanted)
-
-
-def plan_for(programs: Iterable[str], environment_ready: bool) -> list[str]:
-    """The jobs these programs need. Empty when none is wanted, since the game environment alone is not a choice."""
-    chosen = list(_in_order(programs))
-    if not chosen:
-        return []
-    return chosen if environment_ready else [PrepareJob.KEY, *chosen]
 
 
 @dataclass(frozen=True)
@@ -103,59 +48,28 @@ class SetupModel:
         self.state = "checking"
         self.log: list[str] = []
         self.status: events.SetupStatus | None = None  # known after a status check
-        self.selection: tuple[str, ...] = ()  # what the player chose to install (see PROGRAMS)
-        self.plan: list[str] = []  # the jobs that choice takes
+        self.plan = Plan()
         self.job: str | None = None  # the job that is running, or failed
-        self.started_from_home = False  # the plan began on the home screen: stopping it goes back there
-        self.just_finished = False  # this session ran a plan to the end
         self.removing: str | None = None  # the program being removed, while the state is "removing"
-        self.steps: dict[str, str] = {}
         self._reset_run()
-
-    @property
-    def step_defs(self) -> list[tuple[str, str, str]]:
-        """Every step of the plan. "Step 3 of 8" counts the whole plan."""
-        return [step for job in self.plan for step in JOB_STEPS[job]]
-
-    @property
-    def step_ids(self) -> list[str]:
-        return [s[0] for s in self.step_defs]
-
-    def choose(self, programs: Iterable[str]) -> tuple[str, ...]:
-        """Remember the chosen programs, in install order."""
-        self.selection = _in_order(programs)
-        return self.selection
 
     def resumes(self, programs: Iterable[str]) -> bool:
         """True when the same choice continues a stopped plan."""
-        return self.paused and bool(self.selection) and _in_order(programs) == self.selection
+        return self.paused and self.plan.same_choice(programs)
 
     def begin_plan(self, programs: Iterable[str] | None = None) -> bool:
         """Plan the choice (the last one if `programs` is None). False when nothing is chosen."""
-        chosen = self.choose(programs) if programs is not None else self.selection
-        plan = plan_for(chosen, self.environment_ready)
-        if not plan:
+        if not self.plan.begin(programs, self.environment_ready, from_home=self.state == "done"):
             return False
-        self.plan = plan
-        self.steps = {sid: "pending" for sid in self.step_ids}
+
         self.job = None
-        self.started_from_home = self.state == "done"
-        self.just_finished = False
         self._reset_run(keep_checks=True)
         return True
 
-    def first_unfinished_job(self) -> str | None:
-        """Where a resume starts. None when the plan is done."""
-        for job in self.plan:
-            if any(self.steps[sid] not in ("done", "skipped") for sid, _t, _d in JOB_STEPS[job]):
-                return job
-        return None
-
     def begin_job(self, name: str) -> None:
-        """A job starts. Its steps start over."""
+        """A job of the plan starts."""
         self.job = name
-        for sid, _t, _d in JOB_STEPS[name]:
-            self.steps[sid] = "pending"
+        self.plan.begin_job(name)
         # Only the environment job runs system checks. Troubleshoot keeps showing the last ones.
         self._reset_run(keep_checks=name != PrepareJob.KEY)
         self.state = "running"
@@ -213,16 +127,18 @@ class SetupModel:
 
     def _apply(self, e: events.Event) -> None:
         """Apply an event to the model, updating its state accordingly."""
+        steps = self.plan.steps
+
         if isinstance(e, events.Step):
-            if e.id not in self.steps:
+            if e.id not in steps:
                 return
             self.progress = None
             self.speed = None
             if e.status == "start":
-                self.steps[e.id] = "running"
+                steps[e.id] = "running"
                 self.current = e.id
             else:
-                self.steps[e.id] = "done" if e.status == "done" else "skipped"
+                steps[e.id] = "done" if e.status == "done" else "skipped"
                 if self.current == e.id:
                     self.current = None
         elif isinstance(e, events.Progress):
@@ -235,8 +151,8 @@ class SetupModel:
             self.fixes[e.check_id] = e.command
         elif isinstance(e, events.Error):
             self.error = e
-            if e.step in self.steps:
-                self.steps[e.step] = "failed"
+            if e.step in steps:
+                steps[e.step] = "failed"
         elif isinstance(e, events.Cancelled):
             self._saw_cancelled = True
         elif isinstance(e, events.Done):
@@ -263,22 +179,19 @@ class SetupModel:
             return None
         if self._saw_cancelled:
             # An install started from the home screen returns there. A setup pauses.
-            self.state = "done" if self.started_from_home else "cancelled"
+            self.state = "done" if self.plan.started_from_home else "cancelled"
             self.current = None
             return None
         if self._saw_done and exit_code == 0:
             self.current = None
-            # DONE means the job finished, so unreported steps are done too.
-            for sid, _t, _d in JOB_STEPS[self.job]:
-                if self.steps[sid] in ("pending", "running"):
-                    self.steps[sid] = "done"
-            following = self.first_unfinished_job()
+            self.plan.finish_job(self.job)  # DONE means the job finished
+            following = self.plan.first_unfinished_job()
             if following is None:
                 self.state = "done"
-                self.just_finished = True
+                self.plan.just_finished = True
             elif self.cancel_requested:
                 # A job cannot stop inside its last step. Stop before the next job.
-                self.state = "done" if self.started_from_home else "cancelled"
+                self.state = "done" if self.plan.started_from_home else "cancelled"
                 return None
             return following
         if self.error is None:
@@ -319,17 +232,9 @@ class SetupModel:
         return self.known.complete
 
     @property
-    def done_count(self) -> int:
-        """Number of steps that are done or skipped."""
-        return sum(1 for s in self.steps.values() if s in ("done", "skipped"))
-
-    @property
     def step_number(self) -> int:
-        """1-based position of the running step in the plan. Returns the next step if the current one is not found."""
-        ids = self.step_ids
-        if self.current in ids:
-            return ids.index(self.current) + 1
-        return max(1, min(self.done_count + 1, len(ids)))  # not past the last step, while the script is finishing up
+        """1-based position of the running step in the plan, or of the next one when none runs."""
+        return self.plan.step_number(self.current)
 
     @property
     def last_check_message(self) -> str:
@@ -386,7 +291,7 @@ class SetupModel:
             if game.key in self.known.games and engine_programs.program(game.installed_by).installs_games:
                 return ""
 
-        if self.just_finished:
+        if self.plan.just_finished:
             return "Setup is complete. Open the AIO Launcher to install your games."
 
         return "No games installed yet. Open the AIO Launcher to install them."

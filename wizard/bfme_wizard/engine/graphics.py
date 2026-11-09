@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -48,3 +50,51 @@ class Graphics:
             return "unknown", "could not check Vulkan"
 
         return backend, why
+
+
+class GraphicsCards:
+    """The graphics cards of this computer, as `lspci` lists them. Read when made. None without `lspci`."""
+
+    # The kinds of device lspci gives a graphics card: an ordinary one, a card that only renders (a laptop's NVIDIA card,
+    # say), and one that only drives a screen.
+    KINDS = re.compile(r"\b(VGA compatible controller|3D controller|Display controller)\b")
+    TIMEOUT_SEC = 10
+
+    def __init__(self) -> None:
+        self.names = self._read()
+
+    def _read(self) -> list[str]:
+        """The name of each card, as lspci gives it after the kind of device."""
+        lspci = shutil.which("lspci")
+
+        if lspci is None:
+            return []
+
+        try:
+            done = subprocess.run([lspci], capture_output=True, text=True, timeout=self.TIMEOUT_SEC, check=False)
+        except (OSError, subprocess.SubprocessError):
+            return []
+
+        names = []
+
+        for line in done.stdout.splitlines():
+            if self.KINDS.search(line):
+                names.append(line.partition(": ")[2] or line)
+
+        return names
+
+    @property
+    def count(self) -> int:
+        return len(self.names)
+
+    @property
+    def nvidia_offload(self) -> bool:
+        """Whether to send the games to an NVIDIA card: only on a computer with more than one card, one of them
+        NVIDIA."""
+        has_nvidia = False
+
+        for name in self.names:
+            if "nvidia" in name.lower():
+                has_nvidia = True
+
+        return self.count > 1 and has_nvidia

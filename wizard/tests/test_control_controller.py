@@ -75,10 +75,10 @@ def test_fresh_start_then_install_the_aio_launcher(fake):
     assert not fake.c.model.paused
     fake.flag("checks-pass")
     fake.run_until("done", lambda: fake.c.install(["aio-launcher"]))
-    assert fake.c.model.done_count == 6
+    assert fake.c.model.plan.done_count == 6
     assert fake.calls() == ["status", "prepare", "install aio-launcher"]
     assert fake.c.model.is_installed("aio-launcher")
-    assert fake.c.model.just_finished
+    assert fake.c.model.plan.just_finished
 
 
 def test_already_installed_starts_on_done(fake):
@@ -150,7 +150,7 @@ def test_a_different_choice_after_a_stop_starts_a_new_plan(fake):
     fake.run_until("cancelled", lambda: fake.c.install(["aio-launcher"]))
     fake.run_until("done", lambda: fake.c.install(["aotr"]))
     # The jobs report the prepared environment, so the new plan skips it.
-    assert fake.c.model.plan == ["aotr"]
+    assert fake.c.model.plan.jobs == ["aotr"]
     assert fake.calls() == ["prepare", "install aio-launcher", "install aotr"]
 
 
@@ -187,7 +187,7 @@ def test_alone_it_installs_neither_the_aio_launcher_nor_the_arena(fake):
     assert m.is_installed("aotr")
     assert not m.is_installed("aio-launcher")
     assert not m.is_installed("arena")
-    assert m.just_finished
+    assert m.plan.just_finished
 
 
 def test_with_the_aio_launcher_it_comes_last(fake):
@@ -223,7 +223,7 @@ def test_from_the_home_screen_it_goes_straight_to_the_download(fake):
     before = fake.calls()
     fake.run_until("done", lambda: fake.c.install(["aotr"]))
     assert fake.calls() == [*before, "install aotr"]  # the rest is there
-    assert fake.c.model.started_from_home
+    assert fake.c.model.plan.started_from_home
 
 
 def test_a_failed_check_is_retried_with_a_new_download(fake):
@@ -251,7 +251,7 @@ def test_leaving_a_failed_first_setup_goes_back_to_the_start_page(fake):
     assert not fake.c.model.has_home_screen
     fake.run_until("idle", fake.c.back_home)  # nothing is installed yet, so there is no home screen
     assert fake.c.model.environment_ready  # but the environment is ready, and says so
-    assert fake.c.model.selection == ("aotr",)
+    assert fake.c.model.plan.selection == ("aotr",)
 
 
 # Shortcuts: a shortcut lives exactly as long as its program, so the wizard brings them in line with what is installed
@@ -474,7 +474,7 @@ def test_an_entry_for_a_program_that_is_not_installed_installs_it_right_away(fak
 
 def test_no_entry_chooses_nothing(fake):
     fake.run_until("idle", fake.c.start)
-    assert fake.c.model.selection == ()
+    assert fake.c.model.plan.selection == ()
 
 
 def test_the_age_of_the_ring_entry_installs_it_on_a_complete_setup(fake):

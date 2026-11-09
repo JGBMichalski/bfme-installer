@@ -9,8 +9,9 @@ from ..engine.events import Event
 from ..engine.jobs import Engine, PrepareJob
 from ..engine.programs import program
 from .apps import AppLauncher
-from .model import ALL_PROGRAMS, TOOLS, SetupModel
+from .model import SetupModel
 from .runner import JobRunner
+from .steps import STEPS
 
 
 class Controller:
@@ -46,13 +47,13 @@ class Controller:
             return
         if not self.model.begin_plan(programs):
             return
-        self._run_job(self.model.first_unfinished_job())
+        self._run_job(self.model.plan.first_unfinished_job())
 
     def resume(self) -> None:
         """Continue the plan after Cancel or a fixed system check."""
         if self.runner.busy:
             return
-        self._run_job(self.model.first_unfinished_job())
+        self._run_job(self.model.plan.first_unfinished_job())
 
     def retry(self) -> None:
         """Run the failed job again."""
@@ -153,7 +154,7 @@ class Controller:
 
     def remove(self, program: str, on_done: Callable[[bool], None]) -> bool:
         """Remove a program (its files and its shortcut), then check the setup again. False if it cannot start now."""
-        if program not in (*ALL_PROGRAMS, *TOOLS) or self.blocked_reason() is not None:
+        if program not in (*STEPS.programs, *STEPS.tools) or self.blocked_reason() is not None:
             return False
 
         def finished(code: int) -> None:

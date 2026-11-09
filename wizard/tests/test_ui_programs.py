@@ -1,9 +1,5 @@
 """The Programs page: one row per program, with Install when it is missing and Remove when it is installed."""
 
-import pytest
-
-from bfme_wizard.engine.errors import SetupError
-from bfme_wizard.engine.programs import EVERY_PROGRAM, program
 from bfme_wizard.engine.programs.aotr import DOWNLOAD_GB as AOTR_DOWNLOAD_GB
 from tests.fake_jobs import idle_controller
 from tests.helpers import buttons, descendants, status, wait_for
@@ -179,43 +175,3 @@ def test_the_buttons_ask_for_their_own_tool(gtk):
 def test_a_running_tool_cannot_be_opened_again(gtk):
     rows = make_page(status("workshop"), apps={"workshop": "running"})[2][3:]
     assert not buttons(rows[0], gtk)[0].get_sensitive()
-
-
-# The programs: every list of them in the wizard comes from engine/programs.
-
-
-def test_the_wizard_knows_the_programs_in_the_order_it_shows_them():
-    from bfme_wizard.control.apps import AppLauncher
-    from bfme_wizard.control.model import ALL_PROGRAMS, JOB_STEPS, PROGRAMS
-    from bfme_wizard.control.model import TOOLS as MODEL_TOOLS
-
-    assert ALL_PROGRAMS == ("aio-launcher", "arena", "aotr")
-    assert PROGRAMS == ("aio-launcher", "aotr")  # the start page's choices: the Arena comes with the AIO Launcher
-    assert MODEL_TOOLS == ("workshop", "mission-control")
-    assert list(AppLauncher(lambda *_a: 0, lambda: None).state) == [*ALL_PROGRAMS, *MODEL_TOOLS]
-
-    for key in ("environment", "aio-launcher", "aotr", *MODEL_TOOLS):
-        assert key in JOB_STEPS
-
-    assert "arena" not in JOB_STEPS  # the AIO Launcher's job installs it
-
-
-def test_the_programs_that_install_together_are_a_pair():
-    for info in EVERY_PROGRAM:
-        if info.installed_with:
-            assert program(info.installed_with).installed_with == info.key  # it goes both ways
-
-
-def test_each_program_is_installed_by_a_job_with_steps():
-    for info in EVERY_PROGRAM:
-        assert program(info.job).steps
-
-
-def test_an_unknown_program_is_refused():
-    with pytest.raises(SetupError, match="Unknown program: bfme2."):
-        program("bfme2")
-
-
-def test_every_program_says_what_removing_it_leaves_alone():
-    for info in EVERY_PROGRAM:
-        assert "not touched" in info.removal

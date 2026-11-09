@@ -74,8 +74,6 @@ def test_a_human_check_instead_of_the_download_page_is_a_failure(moddb):
         ModDB().find()
 
 
-def test_no_connection_is_a_failure(monkeypatch):
-    monkeypatch.setattr(ModDB, "PAGE_URL", "http://127.0.0.1:1/page")
-
+def test_no_connection_is_a_failure():
     with pytest.raises(SetupError, match="ModDB could not be reached"):
-        ModDB().find()
+        ModDB("http://127.0.0.1:1/page").find()

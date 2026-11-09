@@ -55,7 +55,7 @@ class StartPage:
 
     def enter(self) -> None:
         """Tick the remembered choice."""
-        chosen = set(self.controller.model.selection)
+        chosen = set(self.controller.model.plan.selection)
         for program, check in self._checks.items():
             check.set_active(program in chosen)
         self.refresh()

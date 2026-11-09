@@ -9,7 +9,8 @@ gi.require_version("Adw", "1")
 from gi.repository import Gtk  # noqa: E402
 
 from ...control.controller import Controller
-from ...control.model import description_of, speed_text, title_of
+from ...control.model import speed_text
+from ...control.steps import STEPS
 
 
 class RunningPage:
@@ -32,11 +33,11 @@ class RunningPage:
 
     def refresh(self) -> None:
         m = self.controller.model
-        defs = m.step_defs
-        step_id = m.current or (defs[min(m.done_count, len(defs) - 1)][0])
+        defs = m.plan.step_defs
+        step_id = m.current or (defs[min(m.plan.done_count, len(defs) - 1)][0])
         self.count.set_text(f"Step {m.step_number} of {len(defs)}")
-        self.title.set_text(title_of(step_id))
-        self.description.set_text(description_of(step_id))
+        self.title.set_text(STEPS.title_of(step_id))
+        self.description.set_text(STEPS.description_of(step_id))
 
         if m.progress is not None:
             self.bar.set_fraction(m.progress / 100)

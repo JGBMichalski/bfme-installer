@@ -12,7 +12,7 @@ from bfme_wizard.engine.events import Log, Warn
 from bfme_wizard.engine.games import GAMES
 from bfme_wizard.engine.jobs import StatusJob
 from bfme_wizard.engine.paths import Paths
-from bfme_wizard.engine.programs import AIO_LAUNCHER, AOTR, ARENA, TOOLS, AioLauncher, program
+from bfme_wizard.engine.programs import AIO_LAUNCHER, AOTR, ARENA, EVERY_PROGRAM, TOOLS, AioLauncher, program
 from tests.helpers import context, status
 
 
@@ -480,3 +480,22 @@ def test_a_tool_download_says_so(paths, file_server):
     program("workshop").install(context(paths, events.append), url=file_server.url("/tool.exe"))
 
     assert logs(events) == ["Downloading WorkshopStudio.exe."]
+
+
+# The list of programs
+
+
+def test_the_programs_that_install_together_are_a_pair():
+    for info in EVERY_PROGRAM:
+        if info.installed_with:
+            assert program(info.installed_with).installed_with == info.key  # it goes both ways
+
+
+def test_each_program_is_installed_by_a_job_with_steps():
+    for info in EVERY_PROGRAM:
+        assert program(info.job).steps
+
+
+def test_every_program_says_what_removing_it_leaves_alone():
+    for info in EVERY_PROGRAM:
+        assert "not touched" in info.removal

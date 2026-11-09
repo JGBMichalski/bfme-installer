@@ -14,6 +14,7 @@ from .config import DEFAULT_PROTONPATH, Config
 from .download import Download, Progress
 from .errors import SetupError
 from .events import Emit, Log, report_speed
+from .graphics import GraphicsCards
 from .paths import Paths
 
 NO_WINE_SERVER = (
@@ -117,42 +118,6 @@ class Proton:
 
         return str(target)
 
-    @staticmethod
-    def graphics_cards() -> list[str]:
-        """One line per graphics card, as `lspci` names it, in lower case. Empty without `lspci`."""
-        lspci = shutil.which("lspci")
-
-        if lspci is None:
-            return []
-
-        try:
-            out = subprocess.run([lspci], capture_output=True, text=True, timeout=10, check=False).stdout
-        except (OSError, subprocess.SubprocessError):
-            return []
-
-        cards = []
-
-        for line in out.splitlines():
-            lower = line.lower()
-
-            if "vga" in lower or "3d" in lower:
-                cards.append(lower)
-
-        return cards
-
-    @classmethod
-    def use_nvidia(cls) -> bool:
-        """Whether to send the games to an NVIDIA card: only on a computer with more than one graphics card, one of them
-        NVIDIA."""
-        cards = cls.graphics_cards()
-        has_nvidia = False
-
-        for card in cards:
-            if "nvidia" in card:
-                has_nvidia = True
-
-        return len(cards) > 1 and has_nvidia
-
     def _dedicated_card(self, env: dict[str, str]) -> None:
         """Send the programs to the dedicated card: NVIDIA's render offload, and DRI_PRIME for one that Mesa drives
         (AMD)."""
@@ -188,7 +153,7 @@ class Proton:
             self._dedicated_card(env)
         elif self.config.gpu == "integrated":
             self._integrated_card(env)
-        elif self.use_nvidia():
+        elif GraphicsCards().nvidia_offload:
             env["__NV_PRIME_RENDER_OFFLOAD"] = "1"
             env["__GLX_VENDOR_LIBRARY_NAME"] = "nvidia"
             env["__VK_LAYER_NV_optimus"] = "NVIDIA_only"

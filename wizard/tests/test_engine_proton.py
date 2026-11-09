@@ -10,6 +10,7 @@ from bfme_wizard.engine.config import DEFAULT_PROTONPATH, Config, ConfigFile
 from bfme_wizard.engine.download import Download
 from bfme_wizard.engine.errors import SetupError
 from bfme_wizard.engine.events import Log
+from bfme_wizard.engine.graphics import GraphicsCards
 from bfme_wizard.engine.paths import Paths
 from bfme_wizard.engine.proton import Proton
 
@@ -133,13 +134,13 @@ def test_nvidia_offload_only_with_two_cards_one_of_them_nvidia(tmp_path, monkeyp
     executable(tmp_path / "bin" / "lspci", f"#!/bin/sh\nprintf '%s' '{output}'\n")
     monkeypatch.setenv("PATH", str(tmp_path / "bin"))
 
-    assert Proton.use_nvidia() is expected
+    assert GraphicsCards().nvidia_offload is expected
 
 
 def test_no_lspci_means_no_offload(tmp_path, monkeypatch):
     monkeypatch.setenv("PATH", str(tmp_path))
 
-    assert Proton.use_nvidia() is False
+    assert GraphicsCards().nvidia_offload is False
 
 
 # The environment
@@ -346,10 +347,15 @@ def test_the_graphics_card_the_player_chose(tmp_path, monkeypatch, gpu, lspci, e
 
 
 def test_the_cards_are_listed_as_lspci_names_them(tmp_path, monkeypatch):
-    executable(tmp_path / "bin" / "lspci", f"#!/bin/sh\nprintf '%s' '{LSPCI_TWO_CARDS}'\n")
+    lspci = LSPCI_TWO_CARDS + "02:00.0 Display controller: Matrox\n00:1f.3 Audio device: Intel\n"
+    executable(tmp_path / "bin" / "lspci", f"#!/bin/sh\nprintf '%s' '{lspci}'\n")
     monkeypatch.setenv("PATH", str(tmp_path / "bin"))
 
-    assert len(Proton.graphics_cards()) == 2
+    assert GraphicsCards().names == [
+        "Intel Corporation CometLake-H GT2",
+        "NVIDIA Corporation TU106GLM [Quadro RTX 3000 Mobile]",
+        "Matrox",
+    ]
 
 
 @pytest.mark.parametrize(

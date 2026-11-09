@@ -12,7 +12,7 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, GLib, Gtk  # noqa: E402
 
 from ...control.controller import Controller
-from ...control.model import title_of
+from ...control.steps import STEPS
 from ..widgets import clear, first_icon, pill
 
 if TYPE_CHECKING:
@@ -79,7 +79,7 @@ class ProblemPage:
         step = "the setup"
 
         if m.failed_step:
-            step = title_of(m.failed_step)
+            step = STEPS.title_of(m.failed_step)
 
         message = "The setup stopped unexpectedly."
 

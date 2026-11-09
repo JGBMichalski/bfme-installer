@@ -8,13 +8,11 @@ from __future__ import annotations
 import os
 import platform
 import re
-import shutil
-import subprocess
 from pathlib import Path
 
 from ..control.model import SetupModel
 from ..engine.games import GAMES
-from ..engine.graphics import Graphics
+from ..engine.graphics import Graphics, GraphicsCards
 from ..engine.logs import RunLogs
 
 
@@ -79,24 +77,6 @@ class Diagnostics:
 
         return "unknown"
 
-    def _gpus(self) -> list[str]:
-        """One line per graphics card, as `lspci` names it; empty when `lspci` is missing or fails."""
-        if not shutil.which("lspci"):
-            return []
-
-        try:
-            out = subprocess.run(["lspci"], capture_output=True, text=True, timeout=5, check=False).stdout
-        except (OSError, subprocess.SubprocessError):
-            return []
-
-        cards = []
-
-        for line in out.splitlines():
-            if re.search(r"\b(VGA compatible controller|3D controller|Display controller)\b", line):
-                cards.append(line.partition(": ")[2] or line)
-
-        return cards
-
     def _nvidia_driver(self) -> str | None:
         """The NVIDIA kernel driver's version, or None without one."""
         try:
@@ -144,7 +124,7 @@ class Diagnostics:
             f"System: {self._os_name()}, kernel {platform.release()}",
             f"Desktop: {env.get('XDG_CURRENT_DESKTOP') or 'unknown'}, {self._session(env)} session",
         ]
-        gpus = self._gpus()
+        gpus = GraphicsCards().names
 
         for gpu in gpus:
             lines.append(f"Graphics card: {gpu}")
