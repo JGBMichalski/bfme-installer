@@ -3,12 +3,12 @@ their own."""
 
 from __future__ import annotations
 
-import threading
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ..context import Context
 from ..download import Download
-from ..events import Emit, Log, report_speed
+from ..events import Log, report_speed
 from ..paths import Paths
 from .base import Program, Step
 
@@ -36,14 +36,16 @@ class Tool(Program):
     def exe(self, paths: Paths) -> Path:
         return paths.drive_c / "BFME Tools" / self.folder_name / self.exe_name
 
-    def run_install(self, job: InstallJob) -> None:
+    def run_install(self, job: InstallJob) -> list[str]:
         job.start(self.key)
-        self.install(job.paths, job.emit, job.cancel)
+        self.install(job)
         job.done(self.key)
-        job.finish(f"{self.name} is installed.")
+        return [f"{self.name} is installed."]
 
-    def install(self, paths: Paths, emit: Emit, cancel: threading.Event | None = None, url: str | None = None) -> None:
-        exe = self.exe(paths)
+    def install(self, ctx: Context, url: str | None = None) -> None:
+        exe = self.exe(ctx.paths)
+        emit = ctx.emit
+        cancel = ctx.cancel
         emit(Log(f"Downloading {exe.name}."))
         Download(url or self.url, exe, cancel=cancel, on_speed=report_speed(emit)).run()
         exe.chmod(0o755)

@@ -190,6 +190,10 @@ def status_lines(**changed):
         if value == "installed":
             installed.append(key.replace("_", "-"))
 
+    # Age of the Ring's launcher is also where its copies of the games are.
+    if "aotr" in installed:
+        installed.append("aotr-games")
+
     complete = changed.get("complete", "no") == "yes"
     report = status(
         *installed,

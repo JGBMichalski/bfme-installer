@@ -3,16 +3,15 @@
 from __future__ import annotations
 
 import hashlib
-import threading
 import urllib.error
 import urllib.request
 from pathlib import Path
 
+from ..context import Context
 from ..download import Download
 from ..errors import SetupError
-from ..events import Emit, Log, Warn, report_speed
+from ..events import Log, Warn, report_speed
 from ..paths import Paths
-from ..proton import Proton
 from .base import Program, Shortcut
 
 
@@ -46,8 +45,8 @@ class Arena(Program):
         tmp = self.download_file(paths)
         return [tmp, tmp.with_name(tmp.name + ".part")]
 
-    def prepare_to_open(self, paths: Paths, proton: Proton, emit: Emit, cancel: threading.Event | None = None) -> None:
-        self.update(paths, emit, cancel)
+    def prepare_to_open(self, ctx: Context) -> None:
+        self.update(ctx)
 
     def remote_hash(self, server_host: str | None = None) -> str:
         """The MD5 of the newest Arena, or "" when the server cannot be asked."""
@@ -62,15 +61,11 @@ class Arena(Program):
         except (urllib.error.URLError, OSError):
             return ""
 
-    def update(
-        self,
-        paths: Paths,
-        emit: Emit,
-        cancel: threading.Event | None = None,
-        files_host: str | None = None,
-        server_host: str | None = None,
-    ) -> None:
+    def update(self, ctx: Context, files_host: str | None = None, server_host: str | None = None) -> None:
         """Download the Arena, or a newer one. An installed Arena is kept when the server cannot be asked."""
+        paths = ctx.paths
+        emit = ctx.emit
+        cancel = ctx.cancel
         files_host = files_host or self.FILES_HOST
         exe = self.exe(paths)
         (exe.parent / "Data").mkdir(parents=True, exist_ok=True)

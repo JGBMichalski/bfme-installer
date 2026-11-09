@@ -7,15 +7,17 @@ import shutil
 from pathlib import Path
 
 from .config import GPUS, GRAPHICS, Config, ConfigFile
+from .context import Context
 from .errors import SetupError
-from .events import Emit, Log, Warn
+from .events import Log, Warn
 from .graphics import Graphics
 from .paths import Paths
 from .proton import NO_WINE_SERVER, Proton
 
 
 class GameEnvironment:
-    """The Wine prefix that holds the programs and the games."""
+    """The Wine prefix that holds the programs and the games. Asking whether it is ready needs only its paths; its
+    actions take a context, and the ones that change a setting update the context's config."""
 
     # Raise it to roll out a new setting: every prefix gets the settings again once.
     SETTINGS_VERSION = 4
@@ -44,8 +46,9 @@ class GameEnvironment:
 
         return self._folders_exist()
 
-    def create(self, proton: Proton, emit: Emit) -> None:
+    def create(self, ctx: Context) -> None:
         paths = self.paths
+        emit = ctx.emit
         paths.prefix.mkdir(parents=True, exist_ok=True)
         paths.logs.mkdir(parents=True, exist_ok=True)
         (paths.prefix / self.CREATING_MARKER).touch()
@@ -56,7 +59,7 @@ class GameEnvironment:
         # "umu-run ''" builds the prefix, then exits with an error because there is nothing to run. That is expected, so
         # check the files it created instead.
         with open(log, "w", encoding="utf-8") as out:
-            proton.run([""], inprefix=False, output=out)
+            ctx.proton.run([""], inprefix=False, output=out)
 
         if not self._folders_exist():
             for line in log.read_text(errors="replace").splitlines()[-20:]:
@@ -66,25 +69,25 @@ class GameEnvironment:
 
         (paths.prefix / self.CREATING_MARKER).unlink()
 
-    def prepare(self, proton: Proton, emit: Emit) -> None:
+    def prepare(self, ctx: Context) -> None:
         """Create it if it is missing, then make sure it has the current settings."""
         if not self.ready():
-            self.create(proton, emit)
+            self.create(ctx)
 
-        self.apply_settings(proton, emit)
+        self.apply_settings(ctx)
 
-    def reset(self, config: Config, emit: Emit) -> None:
+    def reset(self, ctx: Context) -> None:
         """Delete it, with every game and program in it. Ends its Wine session first."""
         prefix = self.paths.prefix
 
         if prefix in (Path("/"), Path.home()):
             raise SetupError(f"Refusing to delete '{prefix}'.")
 
-        if not Proton(self.paths, config).end_session():
-            emit(Warn(NO_WINE_SERVER))
+        if not Proton(self.paths, ctx.config).end_session():
+            ctx.emit(Warn(NO_WINE_SERVER))
 
         shutil.rmtree(prefix, ignore_errors=True)
-        emit(Log("Prefix deleted."))
+        ctx.emit(Log("Prefix deleted."))
 
     @classmethod
     def settings(cls, graphics_backend: str) -> list[tuple[str, str, str, str]]:
@@ -130,7 +133,7 @@ class GameEnvironment:
 
         return "\r\n".join(lines) + "\r\n"
 
-    def apply_settings(self, proton: Proton, emit: Emit, force: bool = False) -> None:
+    def apply_settings(self, ctx: Context, force: bool = False) -> None:
         """Set the registry settings, once per SETTINGS_VERSION unless forced.
 
         All of them go in one `reg import`: each Proton start takes seconds, so setting them one by one took about a
@@ -142,6 +145,8 @@ class GameEnvironment:
         if marker.exists() and not force:
             return
 
+        proton = ctx.proton
+        emit = ctx.emit
         backend = proton.config.graphics
         emit(Log("Applying prefix settings."))
         paths.logs.mkdir(parents=True, exist_ok=True)
@@ -166,25 +171,27 @@ class GameEnvironment:
 
         marker.touch()
 
-    def detect_graphics(self, config: Config, emit: Emit) -> Config:
+    def detect_graphics(self, ctx: Context) -> None:
         """On the first setup, pick the backend this computer suits and save it, so it is picked once. A backend the
         player chose, or one an existing game environment was made with, is kept."""
-        if config.graphics_chosen or self.ready():
-            return config
+        if ctx.config.graphics_chosen or self.ready():
+            return
 
         backend, why = Graphics.probe()
 
         if backend == "unknown":
-            return config
+            return
 
         ConfigFile(self.paths.config).save("BFME_GRAPHICS", backend)
-        emit(Log(f"Graphics: {Graphics.label(backend)} ({why})."))
+        ctx.emit(Log(f"Graphics: {Graphics.label(backend)} ({why})."))
+        ctx.config = dataclasses.replace(ctx.config, graphics=backend, graphics_chosen=True)
 
-        return dataclasses.replace(config, graphics=backend, graphics_chosen=True)
-
-    def set_graphics(self, config: Config, backend: str, emit: Emit) -> Config:
+    def set_graphics(self, ctx: Context, backend: str) -> None:
         """The player's switch. Saved in config.env, which the shortcuts read too, and applied to a ready prefix at
         once."""
+        config = ctx.config
+        emit = ctx.emit
+
         if backend not in GRAPHICS:
             raise SetupError(f"Unknown graphics backend: {backend}.")
 
@@ -199,20 +206,19 @@ class GameEnvironment:
         if changed or not config.graphics_chosen:
             ConfigFile(self.paths.config).save("BFME_GRAPHICS", backend)
 
-        config = dataclasses.replace(config, graphics=backend, graphics_chosen=True)
+        ctx.config = dataclasses.replace(config, graphics=backend, graphics_chosen=True)
 
         if not self.ready():
             emit(Log("The game environment will be created with it."))
-            return config
+            return
 
-        self.apply_settings(Proton(self.paths, config), emit, force=True)
+        ctx.renew_proton()
+        self.apply_settings(ctx, force=True)
 
         if changed:
             emit(Log("The change applies the next time you open a program."))
         else:
             emit(Log("The settings were applied again."))
-
-        return config
 
     @staticmethod
     def fps_counter_on(config: Config) -> bool:
@@ -232,8 +238,9 @@ class GameEnvironment:
 
         return extra
 
-    def set_option(self, config: Config, option: str, value: str | int, emit: Emit) -> Config:
+    def set_option(self, ctx: Context, option: str, value: str | int) -> None:
         """Save one of the player's graphics settings in config.env. They apply the next time a program opens."""
+        config = ctx.config
         if option not in self.OPTIONS:
             raise SetupError(f"Unknown setting: {option}.")
 
@@ -262,7 +269,6 @@ class GameEnvironment:
         if option == "fps-counter":
             shown = "on" if value else "off"
 
-        emit(Log(f"{label}: {shown}. Saved for this game environment."))
-        emit(Log("The change applies the next time you open a program."))
-
-        return config
+        ctx.config = config
+        ctx.emit(Log(f"{label}: {shown}. Saved for this game environment."))
+        ctx.emit(Log("The change applies the next time you open a program."))

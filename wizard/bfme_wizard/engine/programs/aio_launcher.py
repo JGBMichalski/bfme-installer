@@ -7,12 +7,13 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ..context import Context
 from ..download import Download
 from ..errors import JobCancelled, SetupError
-from ..events import Emit, Log, Warn, report_speed
+from ..events import Log, Warn, report_speed
 from ..paths import Paths
-from ..proton import NO_WINE_SERVER, Proton
-from ..shortcuts import MenuShortcuts
+from ..proton import NO_WINE_SERVER
+from .arena import Arena
 from .base import Program, Shortcut
 
 if TYPE_CHECKING:
@@ -70,41 +71,33 @@ class AioLauncher(Program):
         setup = self.setup_file(paths)
         return [paths.prefix / self.INSTALLING, setup, setup.with_name(setup.name + ".part")]
 
-    def run_install(self, job: InstallJob) -> None:
-        """It, then the Arena that comes with it, then their shortcuts."""
-        from . import ARENA
-
+    def run_install(self, job: InstallJob) -> list[str]:
+        """It, then the Arena that comes with it. The job adds their shortcuts."""
         if self.installed(job.paths):
             job.skip("aio-launcher")
         else:
             job.start("aio-launcher")
-            proton = job.ensure_prefix()
-            self.install(job.paths, proton, job.emit, job.cancel)
+            job.ensure_prefix()
+            self.install(job)
             job.done("aio-launcher")
 
         job.start("arena")
         job.ensure_prefix()
-        ARENA.update(job.paths, job.emit, job.cancel)
+        Arena().update(job)
         job.done("arena")
 
-        # The programs are installed whatever happens here, and sync says what went wrong.
-        job.start("shortcuts")
-        MenuShortcuts(job.paths, job.environ).sync(job.emit)
-        job.done("shortcuts")
-        job.finish(*self.DONE)
+        return list(self.DONE)
 
-    def prepare_to_open(self, paths: Paths, proton: Proton, emit: Emit, cancel: threading.Event | None = None) -> None:
-        self.install(paths, proton, emit, cancel)
+    def prepare_to_open(self, ctx: Context) -> None:
+        self.install(ctx)
 
-    def install(
-        self,
-        paths: Paths,
-        proton: Proton,
-        emit: Emit,
-        cancel: threading.Event | None = None,
-        url: str | None = None,
-    ) -> None:
+    def install(self, ctx: Context, url: str | None = None) -> None:
         """Run its setup in the game environment, unless it is installed. The prefix must be ready."""
+        paths = ctx.paths
+        proton = ctx.proton
+        emit = ctx.emit
+        cancel = ctx.cancel
+
         if self.installed(paths):
             return
 

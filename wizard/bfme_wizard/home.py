@@ -12,6 +12,7 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, GLib, Gtk  # noqa: E402
 
 from .controller import Controller
+from .engine.games import GAMES
 from .engine.paths import Paths
 from .engine.programs import PROGRAMS, Program
 from .widgets import clear, first_icon, pill, program_icon
@@ -162,11 +163,16 @@ class GameFoldersPage:
         )
         any_installed = False
         # A game that is not installed has no folders to open, so it has no group.
-        for folders in (f for f in Paths.of().game_folders() if f.installed):
-            group = Adw.PreferencesGroup(title=GLib.markup_escape_text(folders.name))
+        paths = Paths.of()
+
+        for game in GAMES:
+            if not game.has_folders(paths):
+                continue
+
+            group = Adw.PreferencesGroup(title=GLib.markup_escape_text(game.name))
             for title, subtitle, target in (
-                ("Game folder", "Installed files and patches", folders.game),
-                ("Maps and user data", "Maps, replays and settings", folders.maps_target()),
+                ("Game folder", "Installed files and patches", game.game_dir(paths)),
+                ("Maps and user data", "Maps, replays and settings", game.maps_target(paths)),
             ):
                 row = Adw.ActionRow(title=title, subtitle=subtitle, activatable=True)
                 row.add_suffix(Gtk.Image.new_from_icon_name("folder-open-symbolic"))

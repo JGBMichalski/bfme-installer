@@ -113,6 +113,13 @@ def test_nothing_about_games_for_someone_who_did_not_install_the_aio_launcher():
     assert games(status("aotr"), finished=True) == ""
 
 
+def test_age_of_the_rings_own_copies_are_not_the_games_the_aio_launcher_installs():
+    assert (
+        games(status(*LAUNCHER, "aotr", "aotr-games"))
+        == "No games installed yet. Open the AIO Launcher to install them."
+    )
+
+
 TOOLS_IDLE = {"workshop": "idle", "mission-control": "idle"}
 
 

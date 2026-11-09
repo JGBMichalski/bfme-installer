@@ -45,18 +45,20 @@ Set these in `config.env` in the data folder. The file wins over the environment
 
 ## Code
 
-`wizard/bfme_wizard/engine/` is the setup, with no GTK. `jobs.py` holds the jobs: a `Job` base class (setup lock,
-steps, errors, exit status) with one subclass per job, and `Engine`, the jobs the window runs (prepare, install,
+`wizard/bfme_wizard/engine/` is the setup, with no GTK. Asking where something is (a program's file, whether the prefix
+is ready) takes `Paths`; doing something takes a `Context` (`context.py`: paths, settings, events, the player's stop,
+and the Proton that is ready). `jobs.py` holds the jobs: a `Job` base class, itself a context (setup lock, steps,
+errors, exit status), with one subclass per job, and `Engine`, the jobs the window runs (prepare, install,
 remove, ...). `Proton` (`proton.py`) gets the pinned Proton and runs programs in the game environment through umu;
 `GameEnvironment` (`prefix.py`) creates the Wine prefix, applies its registry and graphics settings, and deletes it.
 The other classes: `SystemCheck` (`doctor.py`), `MenuShortcuts` (`shortcuts.py`), `ConfigFile` (`config.py`),
-`Download` (`download.py`), `ModDB` (`moddb.py`), `SetupLock` (`lock.py`), `Graphics` (`graphics.py`) and `Paths`
+`Download` (`download.py`), `ModDB` (`moddb.py`), `Game` (`games.py`, one per game), `SetupLock` (`lock.py`), `Graphics` (`graphics.py`) and `Paths`
 (`paths.py`). Module-level functions are kept for pure helpers only.
 
 `engine/programs/` has one class per program. The base class `Program` (`base.py`) holds what they share: where the
 program is, whether it is installed, opening it with a log of its own, and removing it. Each subclass fills in its own
 facts (names, install-page steps, shortcut) and overrides what it does differently, starting with `run_install`, the
-steps of its install job: `AioLauncher` runs a setup, `Arena` updates itself by checksum, `AgeOfTheRing` downloads, unpacks and runs an installer, and `Tool`
+steps of its install job (the job then syncs the shortcuts and finishes): `AioLauncher` runs a setup, `Arena` updates itself by checksum, `AgeOfTheRing` downloads, unpacks and runs an installer, and `Tool`
 (`WorkshopStudio`, `MissionControl`) is a single download. `programs/__init__.py` lists them; everything else in the
 wizard gets its programs from there.
 The rest of `wizard/bfme_wizard/` is the window. See [the wizard](wizard.md).

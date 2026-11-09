@@ -10,10 +10,12 @@ from __future__ import annotations
 import threading
 from abc import ABC, abstractmethod
 
-from .config import Config, ConfigError, ConfigFile
+from .config import ConfigError, ConfigFile
+from .context import Context
 from .doctor import SystemCheck
 from .errors import JobCancelled, SetupError
 from .events import Cancelled, Done, Emit, Error, Log, Progress, SetupStatus, Step
+from .games import GAMES
 from .lock import SetupLock
 from .moddb import ModdbUnavailable
 from .paths import Paths
@@ -27,22 +29,16 @@ FAILED = 1
 NEEDS_FILE = 2  # the app cannot download Age of the Ring itself: the player downloads it and chooses the file
 STOPPED = 130
 SET_UP_FIRST = "Set up the game environment first."
-# Each game's program, under drive_c. A game counts as installed once it is there.
-GAME_EXES = {"bfme1": "BFME1/lotrbfme.exe", "bfme2": "BFME2/lotrbfme2.exe", "rotwk": "RotWK/lotrbfme2ep1.exe"}
 
 
-class Job(ABC):
-    """One run of a job: what it works with, the step it is on (an error names it), and how it ends."""
+class Job(Context, ABC):
+    """One run of a job: the context its actions work with, the step it is on (an error names it), and how it ends."""
 
     def __init__(
         self, emit: Emit, cancel: threading.Event | None = None, environ: dict[str, str] | None = None
     ) -> None:
-        self.emit = emit
-        self.cancel = cancel or threading.Event()
-        self.environ = environ
-        self.paths = Paths.of(environ)
+        super().__init__(Paths.of(environ), emit=emit, cancel=cancel, environ=environ)
         self.environment = GameEnvironment(self.paths)
-        self.config = Config()
         self.step: str | None = None
 
     @abstractmethod
@@ -75,11 +71,6 @@ class Job(ABC):
         return OK
 
     # Steps
-
-    def stop_if_asked(self) -> None:
-        """Stop the job if the player asked for it."""
-        if self.cancel.is_set():
-            raise JobCancelled()
 
     def start(self, step: str) -> None:
         """Begin a step. A stop the player asked for takes effect here, between steps."""
@@ -115,9 +106,9 @@ class Job(ABC):
                 if not each.is_tool:
                     any_program = True
 
-        for game, exe in GAME_EXES.items():
-            if (self.paths.drive_c / exe).is_file():
-                games.add(game)
+        for game in GAMES:
+            if game.installed(self.paths):
+                games.add(game.key)
 
         return SetupStatus(
             prefix_ready=ready,
@@ -144,7 +135,7 @@ class Job(ABC):
     # The game environment
 
     def ensure_runner(self) -> Proton:
-        """Proton, ready to run programs."""
+        """Proton, ready to run programs. It is the context's Proton from then on."""
         for folder in (self.paths.base, self.paths.downloads, self.paths.logs):
             folder.mkdir(parents=True, exist_ok=True)
 
@@ -160,15 +151,15 @@ class Job(ABC):
         def progress(percent: int) -> None:
             self.emit(Progress(percent))
 
-        proton = Proton(self.paths, self.config)
-        proton.ensure(progress, self.cancel, self.emit)
-        return proton
+        self.proton = Proton(self.paths, self.config)
+        self.proton.ensure(progress, self.cancel, self.emit)
+        return self.proton
 
     def ensure_prefix(self) -> Proton:
         """Proton and a ready game environment with the current settings."""
-        proton = self.ensure_runner()
-        self.environment.prepare(proton, self.emit)
-        return proton
+        self.ensure_runner()
+        self.environment.prepare(self)
+        return self.proton
 
     def need_prefix(self) -> None:
         if not self.environment.ready():
@@ -221,10 +212,11 @@ class PrepareJob(Job):
             self.start("prefix")
 
             if not self.environment.ready():
-                self.config = self.environment.detect_graphics(self.config, self.emit)
+                self.environment.detect_graphics(self)
+                # A new choice of graphics changes how Proton runs the programs.
+                self.renew_proton()
 
-            # A new choice of graphics changes how Proton runs the programs.
-            self.environment.prepare(Proton(self.paths, self.config), self.emit)
+            self.environment.prepare(self)
             self.done("prefix")
             self.finish("The game environment is ready.")
 
@@ -232,6 +224,9 @@ class PrepareJob(Job):
 class InstallJob(Job):
     """Install one program, by its own steps (Program.run_install). Needs the game environment. `zip_path` is the Age of
     the Ring file the player chose; the other programs ignore it."""
+
+    # A program that shows its shortcuts as a step of its own lists this among its steps.
+    SHORTCUTS_STEP = "shortcuts"
 
     def __init__(self, key: str, zip_path: str | None, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -246,7 +241,22 @@ class InstallJob(Job):
             for folder in (self.paths.downloads, self.paths.logs):
                 folder.mkdir(parents=True, exist_ok=True)
 
-            chosen.run_install(self)
+            lines = chosen.run_install(self)
+            step_ids = []
+
+            for step_id, _title, _description in chosen.steps:
+                step_ids.append(step_id)
+
+            # The program is installed whatever happens here, and sync says what went wrong.
+            if self.SHORTCUTS_STEP in step_ids:
+                self.start(self.SHORTCUTS_STEP)
+
+            MenuShortcuts(self.paths, self.environ).sync(self.emit)
+
+            if self.SHORTCUTS_STEP in step_ids:
+                self.done(self.SHORTCUTS_STEP)
+
+            self.finish(*lines)
 
 
 class RemoveJob(Job):
@@ -258,7 +268,7 @@ class RemoveJob(Job):
 
     def body(self) -> None:
         with self.lock():
-            program(self.key).remove(self.paths, self.config, self.emit)
+            program(self.key).remove(self)
             MenuShortcuts(self.paths, self.environ).sync(self.emit)
             self.finish()
 
@@ -270,7 +280,7 @@ class SwitchGraphicsJob(Job):
 
     def body(self) -> None:
         with self.lock():
-            self.config = self.environment.set_graphics(self.config, self.backend, self.emit)
+            self.environment.set_graphics(self, self.backend)
             self.report_status()
             self.emit(Done())
 
@@ -285,7 +295,7 @@ class ChangeOptionJob(Job):
 
     def body(self) -> None:
         with self.lock():
-            self.config = self.environment.set_option(self.config, self.option, self.value, self.emit)
+            self.environment.set_option(self, self.option, self.value)
             self.report_status()
             self.emit(Done())
 
@@ -295,7 +305,7 @@ class ResetJob(Job):
 
     def body(self) -> None:
         with self.lock():
-            self.environment.reset(self.config, self.emit)
+            self.environment.reset(self)
             MenuShortcuts(self.paths, self.environ).sync(self.emit)
 
 
@@ -316,10 +326,10 @@ class OpenJob(Job):
             raise SetupError(f"{chosen.title} is not installed.")
 
         with self.lock():
-            proton = self.ensure_prefix()
-            chosen.prepare_to_open(self.paths, proton, self.emit, self.cancel)
+            self.ensure_prefix()
+            chosen.prepare_to_open(self)
 
-        chosen.open(self.paths, proton, self.emit)
+        chosen.open(self)
 
 
 class Engine:

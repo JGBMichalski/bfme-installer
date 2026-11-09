@@ -4,15 +4,14 @@ overrides the steps it does differently."""
 from __future__ import annotations
 
 import shutil
-import threading
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ..config import Config
+from ..context import Context
 from ..errors import SetupError
-from ..events import Emit, Log, Warn
+from ..events import Log, Warn
 from ..logs import RunLogs
 from ..paths import Paths
 from ..proton import NO_WINE_SERVER, Proton
@@ -95,43 +94,45 @@ class Program(ABC):
         """Files and folders an interrupted install leaves behind. Removing the program deletes them too."""
         return []
 
-    def run_install(self, job: InstallJob) -> None:
-        """The steps of its install job, with the setup lock held. A program installed by another one's job has none."""
+    def run_install(self, job: InstallJob) -> list[str]:
+        """The steps of its install job, with the setup lock held. Returns what to tell the player at the end; the job
+        then syncs the shortcuts. A program installed by another one's job has none."""
         raise SetupError(f"{self.title} is installed with {self.installed_by}.")
 
-    def prepare_to_open(self, paths: Paths, proton: Proton, emit: Emit, cancel: threading.Event | None = None) -> None:
+    def prepare_to_open(self, ctx: Context) -> None:
         """What opening it needs first, while the setup lock is held. Nothing by default."""
         return
 
     def logs(self, paths: Paths) -> RunLogs:
         return RunLogs(paths.logs, self.key)
 
-    def open(self, paths: Paths, proton: Proton, emit: Emit) -> int:
+    def open(self, ctx: Context) -> int:
         """Run the program from its own folder and wait until it ends. Its output goes to a log of its own. Returns its
         exit status."""
-        exe = self.exe(paths)
-        logs = self.logs(paths)
+        exe = self.exe(ctx.paths)
+        logs = self.logs(ctx.paths)
         log = logs.new()
-        emit(Log(f"Starting {self.name}. Log: {log}"))
+        ctx.emit(Log(f"Starting {self.name}. Log: {log}"))
 
         with open(log, "w", encoding="utf-8") as out:
-            code = proton.run([str(exe)], inprefix=True, output=out, cwd=exe.parent)
+            code = ctx.proton.run([str(exe)], inprefix=True, output=out, cwd=exe.parent)
 
         logs.remove_old()
 
         return code
 
-    def remove(self, paths: Paths, config: Config, emit: Emit) -> None:
+    def remove(self, ctx: Context) -> None:
         """Take it out of the game environment: its folder and what an interrupted install of it left. Keeps the games,
         the other programs and the settings it keeps in the player's own folder."""
+        paths = ctx.paths
         folder = self.folder(paths)
 
         # Whatever the settings say, never delete outside the game environment.
         if paths.drive_c not in folder.parents:
             raise SetupError(f"Refusing to delete '{folder}'.")
 
-        if not Proton(paths, config).end_session():
-            emit(Warn(NO_WINE_SERVER))
+        if not Proton(paths, ctx.config).end_session():
+            ctx.emit(Warn(NO_WINE_SERVER))
 
         shutil.rmtree(folder, ignore_errors=True)
 
@@ -141,4 +142,4 @@ class Program(ABC):
             else:
                 leftover.unlink(missing_ok=True)
 
-        emit(Log(f"Removed {self.name}."))
+        ctx.emit(Log(f"Removed {self.name}."))

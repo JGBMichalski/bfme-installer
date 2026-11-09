@@ -6,16 +6,14 @@ import threading
 
 import pytest
 
-from bfme_wizard.engine import jobs
-from bfme_wizard.engine.config import Config
 from bfme_wizard.engine.download import Download
 from bfme_wizard.engine.errors import JobCancelled, SetupError
 from bfme_wizard.engine.events import Log, Warn
+from bfme_wizard.engine.games import GAMES
 from bfme_wizard.engine.jobs import StatusJob
 from bfme_wizard.engine.paths import Paths
 from bfme_wizard.engine.programs import AIO_LAUNCHER, AOTR, ARENA, TOOLS, AioLauncher, program
-from bfme_wizard.engine.proton import Proton
-from tests.helpers import status
+from tests.helpers import context, status
 
 
 def executable(path, text):
@@ -79,15 +77,17 @@ EXPECTED = {
     "aio-launcher": status("aio-launcher", prefix_ready=True),
     "aio-launcher still installing": status(prefix_ready=True),
     "arena only": status("arena", prefix_ready=True),
-    "aotr": status("aotr", prefix_ready=True),
-    "aotr still installing": status(prefix_ready=True),
-    "programs without a prefix": status("aio-launcher", "aotr"),
+    "aotr": status("aotr", "aotr-games", prefix_ready=True),
+    # Its copies of the games are there with its launcher, but the mod counts only once its installer has finished.
+    "aotr still installing": status("aotr-games", prefix_ready=True),
+    "programs without a prefix": status("aio-launcher", "aotr", "aotr-games"),
     "tools only": status("workshop", "mission-control", prefix_ready=True),
     "games": status("aio-launcher", "bfme1", "bfme2", "rotwk", prefix_ready=True),
     "a game folder without its program": status(prefix_ready=True),
 }
 
 TOOL_KEYS = [tool.key for tool in TOOLS]
+GAME_KEYS = {game.key: game for game in GAMES}
 
 
 def build(paths, parts):
@@ -106,8 +106,9 @@ def build(paths, parts):
             put(paths.prefix / AOTR.INSTALLING)
         elif part in TOOL_KEYS:
             put(program(part).exe(paths))
-        elif part in jobs.GAME_EXES:
-            put(paths.drive_c / jobs.GAME_EXES[part])
+        elif part in GAME_KEYS:
+            game = GAME_KEYS[part]
+            put(game.game_dir(paths) / game.exe)
         elif part == "bfme2-folder":
             (paths.drive_c / "BFME2").mkdir(parents=True)
 
@@ -186,9 +187,7 @@ def aio_launcher_env(tmp_path, paths, monkeypatch, file_server):
 def test_the_aio_launcher_setup_runs_once_and_the_session_is_ended(paths, aio_launcher_env):
     events = []
 
-    AIO_LAUNCHER.install(
-        paths, Proton(paths, Config(), aio_launcher_env["proton"]), events.append, url=aio_launcher_env["url"]
-    )
+    AIO_LAUNCHER.install(context(paths, events.append, proton=aio_launcher_env["proton"]), url=aio_launcher_env["url"])
 
     tmp = aio_launcher_env["tmp"]
     setup = paths.downloads / "AllInOneLauncherSetup.exe"
@@ -206,9 +205,7 @@ def test_the_aio_launcher_setup_runs_once_and_the_session_is_ended(paths, aio_la
 def test_an_installed_aio_launcher_is_left_alone(paths, aio_launcher_env, file_server):
     put(AIO_LAUNCHER.exe(paths))
 
-    AIO_LAUNCHER.install(
-        paths, Proton(paths, Config(), aio_launcher_env["proton"]), [].append, url=aio_launcher_env["url"]
-    )
+    AIO_LAUNCHER.install(context(paths, [].append, proton=aio_launcher_env["proton"]), url=aio_launcher_env["url"])
 
     assert file_server.requests == []
     assert not (aio_launcher_env["tmp"] / "umu.log").exists()
@@ -219,9 +216,7 @@ def test_an_interrupted_install_is_redone_with_the_setup_already_downloaded(path
     put(paths.prefix / AIO_LAUNCHER.INSTALLING)
     put(paths.downloads / "AllInOneLauncherSetup.exe", "setup")
 
-    AIO_LAUNCHER.install(
-        paths, Proton(paths, Config(), aio_launcher_env["proton"]), [].append, url=aio_launcher_env["url"]
-    )
+    AIO_LAUNCHER.install(context(paths, [].append, proton=aio_launcher_env["proton"]), url=aio_launcher_env["url"])
 
     assert file_server.requests == []
     assert AIO_LAUNCHER.exe(paths).read_text() == "aio-launcher"
@@ -233,9 +228,7 @@ def test_a_setup_that_installs_nothing_fails_and_stays_unfinished(paths, aio_lau
     monkeypatch.setattr(AioLauncher, "WAIT_SEC", 0.3)
 
     with pytest.raises(SetupError, match="The AIO Launcher was not installed. See .*aio-launcher-setup.log"):
-        AIO_LAUNCHER.install(
-            paths, Proton(paths, Config(), aio_launcher_env["proton"]), [].append, url=aio_launcher_env["url"]
-        )
+        AIO_LAUNCHER.install(context(paths, [].append, proton=aio_launcher_env["proton"]), url=aio_launcher_env["url"])
 
     assert (paths.prefix / AIO_LAUNCHER.INSTALLING).exists()
     assert (aio_launcher_env["tmp"] / "wineserver.log").read_text() == "-k\n-w\n"
@@ -249,9 +242,7 @@ def test_without_a_wine_server_it_warns(paths, aio_launcher_env, tmp_path):
     )
     events = []
 
-    AIO_LAUNCHER.install(
-        paths, Proton(paths, Config(), aio_launcher_env["proton"]), events.append, url=aio_launcher_env["url"]
-    )
+    AIO_LAUNCHER.install(context(paths, events.append, proton=aio_launcher_env["proton"]), url=aio_launcher_env["url"])
 
     assert (
         Warn(
@@ -278,7 +269,7 @@ def arena_server(file_server):
 
 
 def install_arena(paths, host, events=None):
-    ARENA.update(paths, (events if events is not None else []).append, files_host=host, server_host=host)
+    ARENA.update(context(paths, (events if events is not None else []).append), files_host=host, server_host=host)
 
 
 def test_a_missing_arena_is_downloaded_and_checked(paths, arena_server):
@@ -355,7 +346,7 @@ def test_a_download_with_the_wrong_checksum_keeps_the_old_arena(paths, arena_ser
 def test_a_tool_is_downloaded_into_its_folder(paths, file_server, tool):
     file_server.files["/tool.exe"] = b"tool"
 
-    program(tool).install(paths, [].append, url=file_server.url("/tool.exe"))
+    program(tool).install(context(paths), url=file_server.url("/tool.exe"))
 
     assert program(tool).exe(paths).read_bytes() == b"tool"
     assert os.access(program(tool).exe(paths), os.X_OK)
@@ -461,7 +452,7 @@ def test_removing_takes_away_only_the_programs_files(paths, key):
     assert gone <= before
 
     events = []
-    program(key).remove(paths, Config(), events.append)
+    program(key).remove(context(paths, events.append))
 
     assert tree(paths) == before - gone
     assert logs(events) == [message]
@@ -470,7 +461,7 @@ def test_removing_takes_away_only_the_programs_files(paths, key):
 
 def test_an_unknown_program_is_refused(paths):
     with pytest.raises(SetupError, match="Unknown program: bfme2."):
-        program("bfme2").remove(paths, Config(), [].append)
+        program("bfme2").remove(context(paths, [].append))
 
 
 def test_the_arena_update_check_names_the_app_not_python(paths, arena_server):
@@ -486,6 +477,6 @@ def test_a_tool_download_says_so(paths, file_server):
     file_server.files["/tool.exe"] = b"tool"
     events = []
 
-    program("workshop").install(paths, events.append, url=file_server.url("/tool.exe"))
+    program("workshop").install(context(paths, events.append), url=file_server.url("/tool.exe"))
 
     assert logs(events) == ["Downloading WorkshopStudio.exe."]

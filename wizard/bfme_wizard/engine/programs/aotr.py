@@ -17,14 +17,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ..config import Config
+from ..context import Context
 from ..download import Download
 from ..errors import JobCancelled, SetupError
 from ..events import Emit, Log, Progress, Step, report_speed
 from ..moddb import ModDB, RemoteFile
 from ..paths import Paths
-from ..proton import Proton
-from ..shortcuts import MenuShortcuts
 from .base import Program, Shortcut
 
 if TYPE_CHECKING:
@@ -105,7 +103,7 @@ class AgeOfTheRing(Program):
     def leftovers(self, paths: Paths) -> list[Path]:
         return [paths.prefix / self.INSTALLING, self.unpack_dir(paths)]
 
-    def run_install(self, job: InstallJob) -> None:
+    def run_install(self, job: InstallJob) -> list[str]:
         """Without a zip from the player the app downloads it from ModDB; when it cannot, the job ends with NEEDS_FILE and
         the player downloads it in a browser."""
         downloaded = not job.zip_path
@@ -121,7 +119,7 @@ class AgeOfTheRing(Program):
             resumed = self.from_unpacked(job.paths, remote.name)
 
             if resumed is None:
-                zip_path = self.download_zip(job.paths, job.config, remote, job.emit, job.cancel)
+                zip_path = self.download_zip(job, remote)
             else:
                 zip_path = resumed.path
 
@@ -131,11 +129,11 @@ class AgeOfTheRing(Program):
             job.start("aotr-check")
             aotr_zip = self.check_zip(zip_path)
             self.check_space(job.paths, aotr_zip)
-            proton = job.ensure_prefix()
+            job.ensure_prefix()
             job.done("aotr-check")
 
             job.start("aotr-unpack")
-            self.unpack(job.paths, aotr_zip, job.emit, job.cancel)
+            self.unpack(job, aotr_zip)
 
             # The zip the app downloaded goes once it is unpacked, unless the player keeps it. The player's own stays.
             if downloaded and not job.config.keep_aotr_download:
@@ -145,23 +143,21 @@ class AgeOfTheRing(Program):
         else:
             aotr_zip = resumed
             job.skip("aotr-check")
-            proton = job.ensure_prefix()
+            job.ensure_prefix()
             job.skip("aotr-unpack")
 
         job.start("aotr-install")
-        self.run_installer(job.paths, proton, aotr_zip, job.emit, job.cancel)
+        self.run_installer(job, aotr_zip)
         job.done("aotr-install")
 
         job.start("aotr-settings")
         self.clean_up(job.paths)
         job.done("aotr-settings")
 
-        MenuShortcuts(job.paths, job.environ).sync(job.emit)
-
         if downloaded:
-            job.finish("Age of the Ring is installed.")
-        else:
-            job.finish(f"Age of the Ring is installed. You can delete {zip_path.name} now.")
+            return ["Age of the Ring is installed."]
+
+        return [f"Age of the Ring is installed. You can delete {zip_path.name} now."]
 
     # The download
 
@@ -247,17 +243,18 @@ class AgeOfTheRing(Program):
 
         return AotrZip(path=zip_path, exe_name=exe_name, unpacked_bytes=unpacked)
 
-    def download_zip(
-        self, paths: Paths, config: Config, remote: RemoteFile, emit: Emit, cancel: threading.Event | None = None
-    ) -> Path:
+    def download_zip(self, ctx: Context, remote: RemoteFile) -> Path:
         """Download the zip into the downloads folder, with progress, and check it against ModDB's MD5. A finished
         download is not repeated."""
+        paths = ctx.paths
+        emit = ctx.emit
+        cancel = ctx.cancel
         zip_path = paths.downloads / remote.name
 
         if zip_path.is_file() and zip_path.stat().st_size == remote.size:
             return zip_path
 
-        self.check_download_space(paths, config, remote)
+        self.check_download_space(ctx, remote)
         emit(Log(f"Downloading {remote.name} ({remote.size // 1000000000} GB) from ModDB."))
 
         def progress(percent: int) -> None:
@@ -292,9 +289,11 @@ class AgeOfTheRing(Program):
         need = aotr_zip.unpacked_bytes + aotr_zip.unpacked_bytes * self.INSTALL_RATIO_PERCENT // 100
         self._need_free_space(paths, need - self._already_there(paths))
 
-    def check_download_space(self, paths: Paths, config: Config, remote: RemoteFile) -> None:
+    def check_download_space(self, ctx: Context, remote: RemoteFile) -> None:
         """Before the download: the zip, then the installer unpacked from it (about as big as the zip), then the installed
         game. The zip is deleted once it is unpacked, unless the player keeps it."""
+        paths = ctx.paths
+        config = ctx.config
         zip_path = paths.downloads / remote.name
         part = zip_path.with_name(zip_path.name + ".part")
         already = self._already_there(paths)
@@ -338,9 +337,12 @@ class AgeOfTheRing(Program):
 
         return None
 
-    def unpack(self, paths: Paths, aotr_zip: AotrZip, emit: Emit, cancel: threading.Event | None = None) -> None:
+    def unpack(self, ctx: Context, aotr_zip: AotrZip) -> None:
         """Unpack the zip into the downloads folder. A finished unpack of the same zip is not repeated. 7-Zip checks every
         file's CRC, so a damaged download fails here, not in the installer."""
+        paths = ctx.paths
+        emit = ctx.emit
+        cancel = ctx.cancel
         unpack_dir = self.unpack_dir(paths)
 
         def measure() -> int | None:
@@ -375,16 +377,13 @@ class AgeOfTheRing(Program):
 
     # Installing
 
-    def run_installer(
-        self,
-        paths: Paths,
-        proton: Proton,
-        aotr_zip: AotrZip,
-        emit: Emit,
-        cancel: threading.Event | None = None,
-    ) -> None:
+    def run_installer(self, ctx: Context, aotr_zip: AotrZip) -> None:
         """Run the installer without its window. It leaves a marker until it is done, so a half-finished install is not
         taken for Age of the Ring."""
+        paths = ctx.paths
+        proton = ctx.proton
+        emit = ctx.emit
+        cancel = ctx.cancel
         unpack_dir = self.unpack_dir(paths)
 
         def measure() -> int | None:

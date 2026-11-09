@@ -80,14 +80,14 @@ def manifest_icon_exports():
 def status(*installed, prefix_ready=False, **fields):
     """A SetupStatus with these program and game keys installed. Complete as the engine works it out, unless given."""
     from bfme_wizard.engine.events import SetupStatus
-    from bfme_wizard.engine.paths import GAME_DIRS
+    from bfme_wizard.engine.games import GAMES
     from bfme_wizard.engine.programs import program
 
     programs = set()
     games = set()
 
     for key in installed:
-        if key in GAME_DIRS:
+        if key in [game.key for game in GAMES]:
             games.add(key)
         else:
             programs.add(key)
@@ -102,3 +102,13 @@ def status(*installed, prefix_ready=False, **fields):
         fields["complete"] = prefix_ready and any_program
 
     return SetupStatus(prefix_ready=prefix_ready, programs=frozenset(programs), games=frozenset(games), **fields)
+
+
+def context(paths, emit=None, cancel=None, config=None, proton="fake-proton"):
+    """A Context for calling an action directly, with Proton at `proton` (umu's PROTONPATH)."""
+    from bfme_wizard.engine.config import Config
+    from bfme_wizard.engine.context import Context
+    from bfme_wizard.engine.proton import Proton
+
+    config = config or Config()
+    return Context(paths, config=config, emit=emit, cancel=cancel, proton=Proton(paths, config, proton))

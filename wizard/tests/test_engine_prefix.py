@@ -10,7 +10,7 @@ from bfme_wizard.engine.events import Log, Warn
 from bfme_wizard.engine.graphics import Graphics
 from bfme_wizard.engine.paths import Paths
 from bfme_wizard.engine.prefix import GameEnvironment
-from bfme_wizard.engine.proton import Proton
+from tests.helpers import context
 
 # Logs each call's arguments. Called with "" (the first start) it makes the prefix as umu would. `reg import` keeps a copy of
 # the file in REG_COPY, and fails with IMPORT_FAIL. REG_FAIL makes `reg add`
@@ -104,7 +104,7 @@ def test_ready_needs_both_folders_and_no_creation_marker(paths):
 def test_creating_runs_umu_once_without_runinprefix_and_leaves_no_marker(env, paths):
     events = []
 
-    GameEnvironment(paths).create(Proton(paths, Config(), "fake-proton"), events.append)
+    GameEnvironment(paths).create(context(paths, events.append, config=Config()))
 
     assert GameEnvironment(paths).ready()
     assert umu_calls(env) == [""]
@@ -117,7 +117,7 @@ def test_a_failed_creation_says_where_to_look_and_stays_unfinished(env, paths, m
     events = []
 
     with pytest.raises(SetupError, match="Could not create the prefix. See .*prefix-create.log"):
-        GameEnvironment(paths).create(Proton(paths, Config(), "fake-proton"), events.append)
+        GameEnvironment(paths).create(context(paths, events.append, config=Config()))
 
     assert (paths.prefix / ".bfme-creating").exists()
     assert logs(events)[-1] == "umu: something broke"
@@ -177,7 +177,7 @@ REG_FILE = {
 def test_the_settings_for_each_backend_are_imported_at_once(env, paths, backend):
     make_prefix(paths)
 
-    GameEnvironment(paths).apply_settings(Proton(paths, Config(graphics=backend), "fake-proton"), [].append, force=True)
+    GameEnvironment(paths).apply_settings(context(paths, [].append, config=Config(graphics=backend)), force=True)
 
     assert umu_calls(env) == [IMPORT]
     assert Path(env["REG_COPY"]).read_bytes().decode("ascii") == REG_FILE[backend]
@@ -189,16 +189,16 @@ def test_the_settings_are_applied_once_per_version(env, paths):
     make_prefix(paths)
     (paths.prefix / ".bfme-settings-v3").touch()
 
-    GameEnvironment(paths).apply_settings(Proton(paths, Config(), "fake-proton"), [].append)
+    GameEnvironment(paths).apply_settings(context(paths, [].append, config=Config()))
     assert umu_calls(env) == [IMPORT]
     assert [p.name for p in paths.prefix.glob(".bfme-settings-v*")] == [
         f".bfme-settings-v{GameEnvironment.SETTINGS_VERSION}"
     ]
 
-    GameEnvironment(paths).apply_settings(Proton(paths, Config(), "fake-proton"), [].append)
+    GameEnvironment(paths).apply_settings(context(paths, [].append, config=Config()))
     assert umu_calls(env) == []
 
-    GameEnvironment(paths).apply_settings(Proton(paths, Config(), "fake-proton"), [].append, force=True)
+    GameEnvironment(paths).apply_settings(context(paths, [].append, config=Config()), force=True)
     assert umu_calls(env) == [IMPORT]
 
 
@@ -208,7 +208,7 @@ def test_when_the_import_fails_they_are_set_one_by_one(env, paths, monkeypatch, 
     monkeypatch.setenv("IMPORT_FAIL", "1")
     events = []
 
-    GameEnvironment(paths).apply_settings(Proton(paths, Config(graphics=backend), "fake-proton"), events.append)
+    GameEnvironment(paths).apply_settings(context(paths, events.append, config=Config(graphics=backend)))
 
     assert umu_calls(env) == [IMPORT, *SETTINGS[backend]]
     assert [e for e in events if isinstance(e, Warn)] == []
@@ -221,7 +221,7 @@ def test_a_setting_that_fails_one_by_one_is_a_warning(env, paths, monkeypatch):
     monkeypatch.setenv("REG_FAIL", "DisableHWAcceleration")
     events = []
 
-    GameEnvironment(paths).apply_settings(Proton(paths, Config(), "fake-proton"), events.append)
+    GameEnvironment(paths).apply_settings(context(paths, events.append, config=Config()))
 
     warnings = [e for e in events if isinstance(e, Warn)]
     assert warnings == [Warn(f"Could not set DisableHWAcceleration. See {paths.logs / 'prefix-settings.log'}")]
@@ -229,11 +229,11 @@ def test_a_setting_that_fails_one_by_one_is_a_warning(env, paths, monkeypatch):
 
 
 def test_prepare_creates_a_missing_prefix_then_applies_the_settings(env, paths):
-    GameEnvironment(paths).prepare(Proton(paths, Config(), "fake-proton"), [].append)
+    GameEnvironment(paths).prepare(context(paths, [].append, config=Config()))
 
     assert umu_calls(env) == ["", IMPORT]
 
-    GameEnvironment(paths).prepare(Proton(paths, Config(), "fake-proton"), [].append)
+    GameEnvironment(paths).prepare(context(paths, [].append, config=Config()))
     assert umu_calls(env) == []
 
 
@@ -250,7 +250,9 @@ def probe(monkeypatch):
 def test_the_first_setup_saves_what_the_computer_suits(paths, probe):
     events = []
 
-    config = GameEnvironment(paths).detect_graphics(Config(), events.append)
+    ctx = context(paths, events.append)
+    GameEnvironment(paths).detect_graphics(ctx)
+    config = ctx.config
 
     assert (config.graphics, config.graphics_chosen) == ("opengl", True)
     assert ConfigFile(paths.config).load({}).graphics == "opengl"
@@ -260,21 +262,27 @@ def test_the_first_setup_saves_what_the_computer_suits(paths, probe):
 def test_a_chosen_backend_is_kept(paths, probe):
     config = Config(graphics="vulkan", graphics_chosen=True)
 
-    assert GameEnvironment(paths).detect_graphics(config, [].append) is config
+    ctx = context(paths, config=config)
+    GameEnvironment(paths).detect_graphics(ctx)
+    assert ctx.config is config
     assert not paths.config.exists()
 
 
 def test_an_existing_game_environment_is_left_as_it_is(paths, probe):
     make_prefix(paths)
 
-    assert GameEnvironment(paths).detect_graphics(Config(), [].append) == Config()
+    ctx = context(paths)
+    GameEnvironment(paths).detect_graphics(ctx)
+    assert ctx.config == Config()
     assert not paths.config.exists()
 
 
 def test_a_probe_that_fails_changes_nothing(paths, probe):
     probe["value"] = ("unknown", "could not check Vulkan")
 
-    assert GameEnvironment(paths).detect_graphics(Config(), [].append) == Config()
+    ctx = context(paths)
+    GameEnvironment(paths).detect_graphics(ctx)
+    assert ctx.config == Config()
     assert not paths.config.exists()
 
 
@@ -314,7 +322,9 @@ def test_switching(env, paths, ready, saved, wanted):
     paths.config.write_text(start)
     events = []
 
-    config = GameEnvironment(paths).set_graphics(ConfigFile(paths.config).load({}), wanted, events.append)
+    ctx = context(paths, events.append, config=ConfigFile(paths.config).load({}))
+    GameEnvironment(paths).set_graphics(ctx, wanted)
+    config = ctx.config
 
     assert logs(events) == SWITCHES[(ready, saved, wanted)]
     assert paths.config.read_text() == f"BFME_NVIDIA=1\n# keep me\nBFME_GRAPHICS={wanted}\n"
@@ -330,7 +340,7 @@ def test_switching(env, paths, ready, saved, wanted):
 
 def test_an_unknown_backend_is_refused(paths):
     with pytest.raises(SetupError, match="Unknown graphics backend: direct3d."):
-        GameEnvironment(paths).set_graphics(Config(), "direct3d", [].append)
+        GameEnvironment(paths).set_graphics(context(paths), "direct3d")
 
 
 # Deleting it
@@ -342,7 +352,7 @@ def test_reset_ends_the_wine_session_and_deletes_the_prefix(tmp_path, env, paths
     executable(tmp_path / "my-proton/files/bin/wineserver", f"#!/bin/sh\necho \"$*\" >> '{log}'\n")
     events = []
 
-    GameEnvironment(paths).reset(Config(protonpath=str(tmp_path / "my-proton")), events.append)
+    GameEnvironment(paths).reset(context(paths, events.append, config=Config(protonpath=str(tmp_path / "my-proton"))))
 
     assert not paths.prefix.exists()
     assert log.read_text() == "-k\n-w\n"
@@ -363,7 +373,9 @@ def test_the_card_is_only_saved(env, paths, option, value, key, field):
     make_prefix(paths)
     paths.base.mkdir(parents=True, exist_ok=True)
 
-    config = GameEnvironment(paths).set_option(Config(), option, value, [].append)
+    ctx = context(paths)
+    GameEnvironment(paths).set_option(ctx, option, value)
+    config = ctx.config
 
     assert getattr(config, field) == value
     assert paths.config.read_text() == f"{key}={value}\n"
@@ -379,7 +391,7 @@ def test_the_card_is_only_saved(env, paths, option, value, key, field):
 )
 def test_a_wrong_setting_is_refused(paths, option, value, message):
     with pytest.raises(SetupError, match=message):
-        GameEnvironment(paths).set_option(Config(), option, value, [].append)
+        GameEnvironment(paths).set_option(context(paths), option, value)
 
     assert not paths.config.exists()
 
@@ -391,7 +403,9 @@ def test_the_fps_counter_is_added_to_the_extra_environment_and_keeps_the_rest(pa
     paths.base.mkdir(parents=True)
     paths.config.write_text('BFME_EXTRA_ENV="WINEDEBUG=-all"\n')
 
-    config = GameEnvironment(paths).set_option(ConfigFile(paths.config).load({}), "fps-counter", 1, [].append)
+    ctx = context(paths, config=ConfigFile(paths.config).load({}))
+    GameEnvironment(paths).set_option(ctx, "fps-counter", 1)
+    config = ctx.config
 
     assert paths.config.read_text() == "BFME_EXTRA_ENV=WINEDEBUG=-all DXVK_HUD=fps\n"
     assert config.extra_env == {"WINEDEBUG": "-all", "DXVK_HUD": "fps"}
@@ -405,7 +419,9 @@ def test_turning_it_off_removes_any_dxvk_hud_and_only_that(paths):
     config = ConfigFile(paths.config).load({})
     assert GameEnvironment.fps_counter_on(config)  # any DXVK_HUD counts as on
 
-    config = GameEnvironment(paths).set_option(config, "fps-counter", 0, [].append)
+    ctx = context(paths, config=config)
+    GameEnvironment(paths).set_option(ctx, "fps-counter", 0)
+    config = ctx.config
 
     assert paths.config.read_text() == "BFME_EXTRA_ENV=WINEDEBUG=-all\n"
     assert not GameEnvironment.fps_counter_on(config)
@@ -416,7 +432,9 @@ def test_turning_it_off_with_nothing_else_leaves_it_empty(paths):
     paths.config.write_text("BFME_EXTRA_ENV=DXVK_HUD=fps\n")
 
     events = []
-    config = GameEnvironment(paths).set_option(ConfigFile(paths.config).load({}), "fps-counter", 0, events.append)
+    ctx = context(paths, events.append, config=ConfigFile(paths.config).load({}))
+    GameEnvironment(paths).set_option(ctx, "fps-counter", 0)
+    config = ctx.config
 
     assert paths.config.read_text() == "BFME_EXTRA_ENV=\n"
     assert config.extra_env == {}

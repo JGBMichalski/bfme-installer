@@ -1,41 +1,11 @@
-"""Where everything lives: the data folder, the game environment (prefix) and the games in it. Each program knows its own
-files (engine/programs/)."""
+"""Where everything lives: the data folder and the game environment (prefix). Each program and game knows its own files
+(engine/programs/, engine/games.py)."""
 
 from __future__ import annotations
 
 import os
 from dataclasses import dataclass
 from pathlib import Path
-
-# Per game: folder under drive_c, and the user-data folder under AppData/Roaming made on first start.
-GAME_DIRS = {
-    "bfme1": ("BFME", "BFME1", "My Battle for Middle-earth Files"),
-    "bfme2": ("BFME 2", "BFME2", "My Battle for Middle-earth II Files"),
-    "rotwk": ("Rise of the Witch-king", "RotWK", "My Rise of the Witch-king Files"),
-}
-# Age of the Ring has its own copies of the games in C:\AgeoftheRing, and keeps its settings and maps in AppData\Roaming\Age of the Ring.
-AOTR = ("aotr", "Age of the Ring", "AgeoftheRing", "Age of the Ring", "maps")
-
-
-@dataclass(frozen=True)
-class GameFolders:
-    key: str
-    name: str
-    game: Path
-    user_data: Path
-    maps_dir: str = "Maps"
-
-    @property
-    def installed(self) -> bool:
-        return self.game.is_dir()
-
-    def maps_target(self) -> Path:
-        """First existing of: the maps folder, the user-data folder, the game folder."""
-        for path in (self.user_data / self.maps_dir, self.user_data, self.game):
-            if path.is_dir():
-                return path
-
-        return self.game
 
 
 @dataclass(frozen=True)
@@ -91,29 +61,3 @@ class Paths:
     @property
     def roaming(self) -> Path:
         return self.drive_c / "users/steamuser/AppData/Roaming"  # Proton always names the user steamuser
-
-    def game_folders(self) -> list[GameFolders]:
-        games = []
-
-        for key, (name, folder, user_data) in GAME_DIRS.items():
-            games.append(
-                GameFolders(
-                    key=key,
-                    name=name,
-                    game=self.drive_c / folder,
-                    user_data=self.roaming / user_data,
-                )
-            )
-
-        key, name, folder, user_data, maps_dir = AOTR
-        games.append(
-            GameFolders(
-                key=key,
-                name=name,
-                game=self.drive_c / folder,
-                user_data=self.roaming / user_data,
-                maps_dir=maps_dir,
-            )
-        )
-
-        return games

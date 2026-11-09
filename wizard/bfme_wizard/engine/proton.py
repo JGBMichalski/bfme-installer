@@ -49,6 +49,11 @@ class Proton:
         return self.paths.base / "proton" / DEFAULT_PROTONPATH
 
     @property
+    def chosen_path(self) -> str | None:
+        """The path given when it was made, if any."""
+        return self._path
+
+    @property
     def path(self) -> str:
         if self._path is not None:
             return self._path

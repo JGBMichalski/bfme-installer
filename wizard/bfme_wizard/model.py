@@ -27,8 +27,8 @@ from dataclasses import dataclass
 
 from .engine import events
 from .engine import programs as engine_programs
+from .engine.games import GAMES
 from .engine.jobs import PrepareJob
-from .engine.paths import GAME_DIRS
 
 
 def _job_steps() -> dict[str, list[tuple[str, str, str]]]:
@@ -65,17 +65,6 @@ ALL_PROGRAMS = _keys()  # Everything that can be opened, and removed again.
 TOOLS = _keys(tools=True)  # Extra programs of the Tools page. Each installs as a job of its own, from the home screen.
 
 
-def _games() -> list[tuple[str, str]]:
-    """(key, name) of each game, in order. The names live with the games' folders, in engine/paths.py."""
-    games = []
-
-    for key, (name, _folder, _user_data) in GAME_DIRS.items():
-        games.append((key, name))
-
-    return games
-
-
-GAMES = _games()
 # The sandbox cannot see the firewall. Troubleshoot has a section for it.
 HIDDEN_CHECKS = {"firewall"}
 MAX_LOG_LINES = 2000
@@ -381,9 +370,9 @@ class SetupModel:
         """Return a list of installed game names. Known only after a status check."""
         names = []
 
-        for key, name in GAMES:
-            if key in self.known.games:
-                names.append(name)
+        for game in GAMES:
+            if game.key in self.known.games:
+                names.append(game.name)
 
         return names
 
@@ -404,9 +393,6 @@ class SetupModel:
     @property
     def games_line(self) -> str:
         """The home screen's top sentence. Empty when games are installed or there is no AIO Launcher."""
-        if self.games:
-            return ""
-
         has_installer = False
 
         for program in engine_programs.EVERY_PROGRAM:
@@ -415,6 +401,10 @@ class SetupModel:
 
         if not has_installer:
             return ""
+
+        for game in GAMES:
+            if game.key in self.known.games and engine_programs.program(game.installed_by).installs_games:
+                return ""
 
         if self.just_finished:
             return "Setup is complete. Open the AIO Launcher to install your games."

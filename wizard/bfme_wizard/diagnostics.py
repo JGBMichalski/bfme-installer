@@ -12,9 +12,10 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from .engine.games import GAMES
 from .engine.graphics import Graphics
 from .engine.logs import RunLogs
-from .model import GAMES, SetupModel
+from .model import SetupModel
 
 
 class Diagnostics:
@@ -188,13 +189,13 @@ class Diagnostics:
 
         games = []
 
-        for key, name in GAMES:
+        for game in GAMES:
             if status is None:
-                games.append(f"{name} unknown")
-            elif key in status.games:
-                games.append(f"{name} installed")
+                games.append(f"{game.name} unknown")
+            elif game.key in status.games:
+                games.append(f"{game.name} installed")
             else:
-                games.append(f"{name} missing")
+                games.append(f"{game.name} missing")
 
         out.append("Games: " + ", ".join(games))
         out += ["", "System checks:"]
