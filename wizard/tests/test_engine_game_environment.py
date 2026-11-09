@@ -1,4 +1,4 @@
-"""engine.prefix: the game environment, its settings and the graphics backend."""
+"""engine.game_environment: the game environment, its settings and the graphics backend."""
 
 from pathlib import Path
 
@@ -7,9 +7,9 @@ import pytest
 from bfme_wizard.engine.config import Config, ConfigFile
 from bfme_wizard.engine.errors import SetupError
 from bfme_wizard.engine.events import Log, Warn
+from bfme_wizard.engine.game_environment import GameEnvironment
 from bfme_wizard.engine.graphics import Graphics
 from bfme_wizard.engine.paths import Paths
-from bfme_wizard.engine.prefix import GameEnvironment
 from tests.helpers import context
 
 # Logs each call's arguments. Called with "" (the first start) it makes the prefix as umu would. `reg import` keeps a copy of

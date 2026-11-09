@@ -83,8 +83,8 @@ class CommandLine:
             print("No display found, so the setup wizard cannot open.", file=sys.stderr)
             return 1
 
-        from .runner import JobRunner
-        from .ui import WizardApp  # late, so a shortcut that opens a program needs no GTK
+        from .control.runner import JobRunner
+        from .ui.app import WizardApp  # late, so a shortcut that opens a program needs no GTK
 
         return WizardApp(JobRunner(), offer=offer).run(self.argv[:1])
 

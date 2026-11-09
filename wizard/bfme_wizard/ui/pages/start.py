@@ -8,9 +8,9 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, GLib, Gtk  # noqa: E402
 
-from .controller import Controller
-from .engine.programs import PROGRAMS
-from .widgets import first_icon, pill
+from ...control.controller import Controller
+from ...engine.programs import PROGRAMS
+from ..widgets import first_icon, pill
 
 FRESH = ("Set up BFME on Linux", "Choose what to install.")
 READY = ("Choose what to install", "Your game environment is ready.")

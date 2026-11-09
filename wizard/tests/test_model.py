@@ -1,7 +1,7 @@
 import pytest
 
+from bfme_wizard.control.model import SetupModel, plan_for, speed_text
 from bfme_wizard.engine.events import Cancelled, Check, Done, Error, Fix, Log, Progress, Speed, Step, Warn
-from bfme_wizard.model import SetupModel, plan_for, speed_text
 from tests.helpers import status
 
 
@@ -116,7 +116,7 @@ def test_the_aio_launcher_alone_has_the_six_steps_it_always_had():
 
 
 def test_the_steps_name_the_aio_launcher_in_full_because_age_of_the_ring_has_a_aio_launcher_too():
-    from bfme_wizard.model import description_of, title_of
+    from bfme_wizard.control.model import description_of, title_of
 
     assert title_of("aio-launcher") == "Download the AIO Launcher"
     assert description_of("shortcuts") == "Adding the AIO Launcher and the Arena to your application menu."

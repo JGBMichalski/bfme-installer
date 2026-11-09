@@ -8,7 +8,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from .engine.paths import Paths
+from ..engine.paths import Paths
 from .updater import parse_version
 
 CHANGELOG = Path("/app/share/bfme-installer/CHANGELOG.md")

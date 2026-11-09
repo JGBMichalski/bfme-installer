@@ -10,7 +10,7 @@ import gi
 gi.require_version("GLib", "2.0")
 from gi.repository import GLib  # noqa: E402
 
-from .engine.events import Emit, Error, Event  # noqa: E402
+from ..engine.events import Emit, Error, Event  # noqa: E402
 
 # A job from engine/jobs.py with its own arguments already given: it takes (emit, cancel) and returns an exit status.
 Job = Callable[[Emit, threading.Event], int]

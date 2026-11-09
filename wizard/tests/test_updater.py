@@ -4,7 +4,7 @@ import stat
 import pytest
 from gi.repository import GLib
 
-from bfme_wizard.updater import (
+from bfme_wizard.services.updater import (
     Updater,
     is_newer,
     parse_version,

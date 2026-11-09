@@ -151,7 +151,7 @@ def test_the_menu_entry_asks_for_the_app_icon_by_the_app_id():
 
 @pytest.fixture
 def widgets(gtk):
-    from bfme_wizard import widgets
+    from bfme_wizard.ui import widgets
 
     widgets.read_picture.cache_clear()
     yield widgets
@@ -234,7 +234,7 @@ def test_a_failure_to_read_is_not_kept_so_a_file_that_appears_later_is_found(wid
 
 
 def test_the_home_screen_shows_each_installed_programs_picture_at_64_and_only_those(widgets):
-    from bfme_wizard.home import HomePage
+    from bfme_wizard.ui.pages.home import HomePage
 
     page = HomePage(make_controller(status("aio-launcher", "aotr")), lambda: "1.0")
     page.refresh()
@@ -244,7 +244,7 @@ def test_the_home_screen_shows_each_installed_programs_picture_at_64_and_only_th
 
 
 def test_the_programs_page_shows_every_programs_picture_at_40_installed_or_not(widgets):
-    from bfme_wizard.programs import ProgramsPage
+    from bfme_wizard.ui.pages.programs import ProgramsPage
 
     c = make_controller(status("aio-launcher"))
     page = ProgramsPage(c, install=lambda key: None, remove=lambda key: None, open_app=lambda key: None)
@@ -260,8 +260,8 @@ def test_the_programs_page_shows_every_programs_picture_at_40_installed_or_not(w
 def test_the_old_generic_glyphs_are_gone_from_the_cards_and_rows(gtk, widgets):
     # They were symbolic icons from the icon theme, which differs between the host and the Flatpak. (libadwaita draws
     # symbolic icons of its own inside its widgets, so this looks for the ones the app used to name, and no others.)
-    from bfme_wizard.home import HomePage
-    from bfme_wizard.programs import ProgramsPage
+    from bfme_wizard.ui.pages.home import HomePage
+    from bfme_wizard.ui.pages.programs import ProgramsPage
 
     old = {
         "applications-games-symbolic",

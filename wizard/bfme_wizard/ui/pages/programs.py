@@ -13,9 +13,9 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, GLib, Gtk  # noqa: E402
 
-from .controller import Controller
-from .engine.programs import PROGRAMS, TOOLS, Program, program
-from .widgets import program_icon
+from ...control.controller import Controller
+from ...engine.programs import PROGRAMS, TOOLS, Program, program
+from ..widgets import program_icon
 
 ROW_ICON_SIZE = 40
 DESCRIPTION = (

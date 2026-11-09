@@ -12,10 +12,10 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from .engine.games import GAMES
-from .engine.graphics import Graphics
-from .engine.logs import RunLogs
-from .model import SetupModel
+from ..control.model import SetupModel
+from ..engine.games import GAMES
+from ..engine.graphics import Graphics
+from ..engine.logs import RunLogs
 
 
 class Diagnostics:

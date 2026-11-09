@@ -8,8 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from bfme_wizard.engine import doctor
-from bfme_wizard.engine.doctor import SystemCheck
+from bfme_wizard.engine import system_check as doctor
 from bfme_wizard.engine.download import Download
 from bfme_wizard.engine.errors import SetupError
 from bfme_wizard.engine.events import (
@@ -28,6 +27,7 @@ from bfme_wizard.engine.events import (
 from bfme_wizard.engine.graphics import Graphics
 from bfme_wizard.engine.jobs import Engine
 from bfme_wizard.engine.lock import SetupLock
+from bfme_wizard.engine.menu_shortcuts import MenuShortcuts
 from bfme_wizard.engine.paths import Paths
 from bfme_wizard.engine.programs import (
     AIO_LAUNCHER,
@@ -41,7 +41,7 @@ from bfme_wizard.engine.programs import (
     program,
 )
 from bfme_wizard.engine.proton import Proton
-from bfme_wizard.engine.shortcuts import MenuShortcuts
+from bfme_wizard.engine.system_check import SystemCheck
 from tests.helpers import status
 
 SEVENZIP = shutil.which("7zz") or shutil.which("7z") or shutil.which("7za")
@@ -157,7 +157,7 @@ def lines(events):
 
 
 def without_checks(found):
-    """The checks depend on the computer (free disk space); they are tested in test_engine_doctor."""
+    """The checks depend on the computer (free disk space); they are tested in test_engine_system_check."""
     out = []
 
     for line in found:

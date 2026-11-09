@@ -8,9 +8,9 @@ import os
 
 import pytest
 
-from bfme_wizard.controller import Controller
+from bfme_wizard.control.controller import Controller
+from bfme_wizard.control.runner import JobRunner
 from bfme_wizard.engine.programs.aotr import INSTALLED_GB as AOTR_INSTALLED_GB
-from bfme_wizard.runner import JobRunner
 from tests.fake_jobs import FakeJobs
 from tests.helpers import buttons, descendants, labels, status, wait_for
 
@@ -38,7 +38,7 @@ def shared_app():
 @pytest.fixture
 def make_window(gtk, tmp_path):
     """Builds windows for the test and destroys them afterwards. Without `jobs` nothing is installed as far as the jobs know."""
-    from bfme_wizard import ui
+    from bfme_wizard.ui import window as ui
 
     made = []
 
@@ -246,7 +246,7 @@ def test_the_home_content_stays_centred_above_the_version_line_while_it_keeps_cl
     ],
 )
 def test_each_has_an_icon_and_no_text(win, gtk, tip, icons_name):
-    from bfme_wizard import ui
+    from bfme_wizard.ui import window as ui
 
     button = corner_buttons(win, gtk)[tip]
     assert button.get_icon_name() in getattr(ui, icons_name)
@@ -262,7 +262,7 @@ def test_the_icons_are_the_ones_the_flatpaks_runtime_has(gtk):
     )
     if not runtime:
         pytest.skip("the GNOME runtime is not installed here")
-    from bfme_wizard import ui
+    from bfme_wizard.ui import window as ui
 
     available = {os.path.basename(p)[:-4] for p in glob.glob(runtime[0] + "/**/*.svg", recursive=True)}
     for icons in (ui.PROGRAMS_ICONS, ui.FOLDERS_ICONS, ui.TROUBLESHOOT_ICONS):
@@ -335,10 +335,10 @@ def test_installing_from_the_programs_page_goes_back_to_the_main_page_and_instal
     asked = []
     win.controller.install = asked.append
     win.show_programs()
-    win.install_program("aotr")
+    win.actions.install_program("aotr")
     assert win.nav.get_visible_page() is win.root_page
     assert asked == [["aotr"]]
-    win.install_program("arena")  # the Arena installs with the AIO Launcher
+    win.actions.install_program("arena")  # the Arena installs with the AIO Launcher
     assert asked[-1] == ["aio-launcher"]
 
 
@@ -406,7 +406,7 @@ def test_its_rows_follow_the_model(make_window):
 
 
 def dialog_for(win, dialogs, program):
-    win.confirm_remove(program)
+    win.actions.confirm_remove(program)
     return dialogs[-1]
 
 
@@ -426,20 +426,20 @@ def test_the_confirmation_names_the_program_says_what_stays_and_offers_a_way_out
     assert "not touched" in dialog.get_body()
     assert "install it again from the Programs page" in dialog.get_body()
     assert "Close the AIO Launcher, the Arena and Age of the Ring first" in dialog.get_body()
-    assert dialog.get_response_label("remove") == "Remove"
-    assert dialog.get_response_appearance("remove") == Adw.ResponseAppearance.DESTRUCTIVE
+    assert dialog.get_response_label("yes") == "Remove"
+    assert dialog.get_response_appearance("yes") == Adw.ResponseAppearance.DESTRUCTIVE
     assert (dialog.get_default_response(), dialog.get_close_response()) == ("cancel", "cancel")
 
 
 def test_the_reset_dialog_also_names_the_aio_launcher_among_the_programs_to_close(win, dialogs):
-    win.confirm_reset()
+    win.actions.confirm_reset()
     assert "Close the AIO Launcher, the Arena and Age of the Ring first" in dialogs[-1].get_body()
 
 
 def test_a_removal_toast_says_the_aio_launcher_in_full(win, toasts):
     win.controller.remove = lambda program, on_done: on_done(True) or True
     shown = toasts(win)
-    win._do_remove("aio-launcher")
+    win.actions.remove("aio-launcher")
     assert shown[-1] == "The AIO Launcher was removed."
 
 
@@ -467,14 +467,14 @@ def test_cancel_removes_nothing_and_remove_asks_the_controller(win, dialogs):
     dialog = dialog_for(win, dialogs, "arena")
     dialog.emit("response", "cancel")
     assert asked == []
-    dialog.emit("response", "remove")
+    dialog.emit("response", "yes")
     assert asked == ["arena"]
 
 
 def test_a_removal_that_cannot_start_says_why(win, toasts):
     win.controller.apps.state["aio-launcher"] = "running"
     shown = toasts(win)
-    win._do_remove("arena")
+    win.actions.remove("arena")
     assert "still running" in shown[-1]
 
 
@@ -485,7 +485,7 @@ def test_the_whole_removal_ends_on_the_home_screen_with_a_toast(make_window, gtk
     wait_for(8000, lambda: win.model.state == "done" and not win.controller.runner.busy)
     win.show_programs()
     shown = toasts(win)
-    win._do_remove("arena")
+    win.actions.remove("arena")
     assert win.model.state == "removing"
     assert win.stack.get_visible_child_name() == "removing"
     assert not win._programs_page.get_can_pop()
@@ -507,7 +507,7 @@ def test_removing_the_last_program_lands_on_the_start_page(make_window, fake):
     win.controller.start()
     wait_for(8000, lambda: win.model.state == "done" and not win.controller.runner.busy)
     win.show_programs()
-    win._do_remove("aotr")
+    win.actions.remove("aotr")
     wait_for(8000, lambda: win.model.state == "idle" and not win.controller.runner.busy)
     assert win.nav.get_visible_page() is win.root_page
     assert win.stack.get_visible_child_name() == "start"
@@ -520,7 +520,7 @@ def test_a_removal_that_fails_says_so_and_nothing_changes(make_window, fake, toa
     win.controller.start()
     wait_for(8000, lambda: win.model.state == "done" and not win.controller.runner.busy)
     shown = toasts(win)
-    win._do_remove("aio-launcher")
+    win.actions.remove("aio-launcher")
     wait_for(8000, lambda: win.model.state == "done" and not win.controller.runner.busy)
     assert shown == ["Could not remove the AIO Launcher: Could not remove it"]
     assert win.model.is_installed("aio-launcher")
@@ -530,7 +530,7 @@ def test_the_page_shown_while_it_runs_says_what_is_going(win):
     win.model.state, win.model.removing = "removing", "aotr"
     win.render()
     assert win.stack.get_visible_child_name() == "removing"
-    assert win.removing_page.get_title() == "Removing Age of the Ring..."
+    assert win.removing.view.get_title() == "Removing Age of the Ring..."
 
 
 def test_closing_the_window_in_the_middle_of_a_removal_asks_first(win, dialogs):
@@ -538,7 +538,8 @@ def test_closing_the_window_in_the_middle_of_a_removal_asks_first(win, dialogs):
     assert win._on_close_request(win)  # the window stays
     dialog = dialogs[-1]
     assert dialog.get_heading() == "A program is still being removed"
-    assert (dialog.get_default_response(), dialog.get_response_label("stop")) == ("wait", "Close anyway")
+    assert dialog.get_default_response() == "cancel"
+    assert (dialog.get_response_label("cancel"), dialog.get_response_label("yes")) == ("Keep going", "Close anyway")
 
 
 def test_closing_the_window_otherwise_just_closes(win, dialogs):
@@ -562,7 +563,7 @@ def test_a_download_shows_its_percent_and_speed(win):
         win.model.feed_event(event)
 
     win.render()
-    assert win.run_note.get_text() == "42% · 3.2 MB/s"
+    assert win.running.note.get_text() == "42% · 3.2 MB/s"
 
 
 def test_a_download_of_unknown_size_shows_its_speed_alone(win):
@@ -575,4 +576,4 @@ def test_a_download_of_unknown_size_shows_its_speed_alone(win):
         win.model.feed_event(event)
 
     win.render()
-    assert win.run_note.get_text() == "640 KB/s"
+    assert win.running.note.get_text() == "640 KB/s"

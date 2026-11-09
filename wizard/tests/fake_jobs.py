@@ -21,7 +21,7 @@ import tempfile
 import time
 from pathlib import Path
 
-from bfme_wizard.controller import Controller
+from bfme_wizard.control.controller import Controller
 from bfme_wizard.engine.events import (
     Cancelled,
     Check,
@@ -268,6 +268,6 @@ class FakeJobs:
 
 def idle_controller(on_change=lambda: None):
     """A controller for a page that only needs one: nothing is installed and nothing runs until asked."""
-    from bfme_wizard.runner import JobRunner
+    from bfme_wizard.control.runner import JobRunner
 
     return Controller(JobRunner(), on_change, jobs=FakeJobs(tempfile.mkdtemp()))

@@ -117,8 +117,9 @@ def run_scene(scene: str, out: str) -> None:
     gi.require_version("Gtk", "4.0")
     gi.require_version("Adw", "1")
     from gi.repository import GLib, Gtk
-    from bfme_wizard import ui
-    from bfme_wizard.runner import JobRunner
+    from bfme_wizard.ui import app as ui_app
+    from bfme_wizard.ui import window as ui
+    from bfme_wizard.control.runner import JobRunner
 
     # No animations: a crossfade or a page sliding in needs a frame for every step, so a display that paints slowly (a headless
     # one paints about once a second) would leave a photograph in the middle of one. GTK jumps to the end state without them.
@@ -131,7 +132,7 @@ def run_scene(scene: str, out: str) -> None:
             self.set_default_size(640, 700)
         ui.WizardWindow.__init__ = tall
 
-    app = ui.WizardApp(JobRunner(), jobs=StubJobs(scene))
+    app = ui_app.WizardApp(JobRunner(), jobs=StubJobs(scene))
 
     def act(window):
         """Put the window in the state this scene shows."""

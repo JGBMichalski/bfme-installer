@@ -1,4 +1,4 @@
-"""engine.shortcuts and engine.launch, in a stand-in for the Flatpak sandbox."""
+"""engine.menu_shortcuts and starting a program, in a stand-in for the Flatpak sandbox."""
 
 import os
 import time
@@ -7,9 +7,9 @@ from pathlib import Path
 import pytest
 
 from bfme_wizard.engine.events import Log, Warn
+from bfme_wizard.engine.menu_shortcuts import MenuShortcuts
 from bfme_wizard.engine.paths import Paths
 from bfme_wizard.engine.programs import AIO_LAUNCHER, AOTR, ARENA
-from bfme_wizard.engine.shortcuts import MenuShortcuts
 from tests.helpers import context, manifest_app_id, manifest_icon_exports
 
 DEV_ID = "com.example.Dev"

@@ -3,8 +3,8 @@ import os
 import pytest
 from gi.repository import GLib
 
-from bfme_wizard.controller import Controller
-from bfme_wizard.runner import JobRunner
+from bfme_wizard.control.controller import Controller
+from bfme_wizard.control.runner import JobRunner
 from tests.fake_jobs import FakeJobs
 
 

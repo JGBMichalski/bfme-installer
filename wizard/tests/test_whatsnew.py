@@ -2,8 +2,8 @@
 
 import pytest
 
-from bfme_wizard import whatsnew
 from bfme_wizard.engine.paths import Paths
+from bfme_wizard.services import whatsnew
 
 CHANGELOG = """# Changelog
 
@@ -137,7 +137,7 @@ def test_the_markup_of_a_section():
 def test_the_dialog_names_the_newest_version_and_holds_every_section(gtk, monkeypatch):
     from gi.repository import Adw
 
-    from bfme_wizard import ui
+    from bfme_wizard.ui import dialogs as ui
     from tests.helpers import descendants
 
     monkeypatch.setattr(Adw.AlertDialog, "present", lambda dialog, parent=None: None)

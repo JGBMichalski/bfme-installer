@@ -13,4 +13,5 @@ ignore = [
 
 [lint.per-file-ignores]
 # GTK modules call gi.require_version() before importing from gi.repository.
-"bfme_wizard/{aotr,apps,home,programs,start,ui,widgets}.py" = ["E402"]
+"bfme_wizard/control/apps.py" = ["E402"]
+"bfme_wizard/ui/**/*.py" = ["E402"]

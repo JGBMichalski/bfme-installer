@@ -51,8 +51,8 @@ is ready) takes `Paths`; doing something takes a `Context` (`context.py`: paths,
 and the Proton that is ready). `jobs.py` holds the jobs: a `Job` base class, itself a context (setup lock, steps,
 errors, exit status), with one subclass per job, and `Engine`, the jobs the window runs (prepare, install, remove, ...).
 `Proton` (`proton.py`) gets the pinned Proton and runs programs in the game environment through umu; `GameEnvironment`
-(`prefix.py`) creates the Wine prefix, applies its registry and graphics settings, and deletes it. The other classes:
-`SystemCheck` (`doctor.py`), `MenuShortcuts` (`shortcuts.py`), `ConfigFile` (`config.py`), `Download` (`download.py`),
+(`game_environment.py`) creates the Wine prefix, applies its registry and graphics settings, and deletes it. The other classes:
+`SystemCheck` (`system_check.py`), `MenuShortcuts` (`menu_shortcuts.py`), `ConfigFile` (`config.py`), `Download` (`download.py`),
 `Game` (`games.py`, one per game), `SetupLock` (`lock.py`), `Graphics` (`graphics.py`) and `Paths` (`paths.py`).
 Module-level functions are kept for pure helpers only.
 

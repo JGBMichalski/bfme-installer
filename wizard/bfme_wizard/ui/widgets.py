@@ -10,7 +10,7 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, Gdk, GLib, Gtk  # noqa: E402
 
-from .engine.programs import Program
+from ..engine.programs import Program
 
 
 def first_icon(*names: str) -> str:

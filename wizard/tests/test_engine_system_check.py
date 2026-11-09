@@ -1,15 +1,15 @@
-"""engine.doctor: the system check."""
+"""engine.system_check: the system check."""
 
 from collections import namedtuple
 
 import pytest
 
-from bfme_wizard.engine import doctor
+from bfme_wizard.engine import system_check as doctor
 from bfme_wizard.engine.config import Config, ConfigFile
-from bfme_wizard.engine.doctor import SystemCheck
 from bfme_wizard.engine.events import Check, Fix, Log
 from bfme_wizard.engine.graphics import Graphics
 from bfme_wizard.engine.paths import Paths
+from bfme_wizard.engine.system_check import SystemCheck
 
 Usage = namedtuple("Usage", "total used free")
 KEPT = ("cpu", "flatpak-32bit", "graphics", "disk", "firewall")

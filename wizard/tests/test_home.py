@@ -8,14 +8,14 @@ from unittest import mock
 import pytest
 
 from bfme_wizard.__main__ import CommandLine, main
-from bfme_wizard.apps import AppLauncher
-from bfme_wizard.controller import Controller
-from bfme_wizard.diagnostics import Diagnostics
+from bfme_wizard.control.apps import AppLauncher
+from bfme_wizard.control.controller import Controller
+from bfme_wizard.control.model import SetupModel
+from bfme_wizard.control.runner import JobRunner
 from bfme_wizard.engine.events import Cancelled, Check, Done, Fix
+from bfme_wizard.engine.menu_shortcuts import MenuShortcuts
 from bfme_wizard.engine.programs import AIO_LAUNCHER
-from bfme_wizard.engine.shortcuts import MenuShortcuts
-from bfme_wizard.model import SetupModel
-from bfme_wizard.runner import JobRunner
+from bfme_wizard.services.diagnostics import Diagnostics
 from tests.fake_jobs import FakeJobs, idle_controller
 from tests.helpers import buttons, descendants, labels, status, wait_for
 
@@ -361,7 +361,7 @@ def test_a_2x_shortcut_is_replaced_the_first_time_it_is_used(tmp_path, monkeypat
 
 
 def test_a_shortcut_whose_program_is_gone_opens_the_wizard_offering_it(monkeypatch):
-    from bfme_wizard import ui
+    from bfme_wizard.ui import app as ui
 
     with (
         mock.patch("bfme_wizard.__main__.Engine.ready_to_open", return_value=False),
@@ -489,7 +489,7 @@ def test_reset_is_refused_while_things_run(c):
 
 
 def test_the_advice_about_graphics_drivers_names_the_chosen_backend(gtk):
-    from bfme_wizard.home import cant_check
+    from bfme_wizard.ui.pages.troubleshoot import cant_check
 
     vulkan = {title: text for title, text, _command in cant_check("vulkan")}
     opengl = {title: text for title, text, _command in cant_check("opengl")}
@@ -499,22 +499,41 @@ def test_the_advice_about_graphics_drivers_names_the_chosen_backend(gtk):
     assert "switch back to Vulkan" in opengl["Graphics drivers"]
 
 
+class RecordedActions:
+    """A stand-in for the window's actions (ui/actions.py) that only writes down what the page asked for."""
+
+    def __init__(self, asked):
+        self.asked = asked
+
+    def copy(self, text, toast):
+        self.asked.append(("copy", text))
+
+    def copy_diagnostics(self):
+        self.asked.append(("copy_diagnostics",))
+
+    def open_logs(self):
+        self.asked.append(("open_logs",))
+
+    def open_config(self):
+        self.asked.append(("open_config",))
+
+    def confirm_reset(self):
+        self.asked.append(("confirm_reset",))
+
+    def change_graphics(self, backend):
+        self.asked.append(("change_graphics", backend))
+
+    def change_option(self, option, value):
+        self.asked.append(("change_option", option, value))
+
+
 def troubleshoot_button_labels(Gtk, graphics):
-    from bfme_wizard.home import TroubleshootPage
+    from bfme_wizard.ui.pages.troubleshoot import TroubleshootPage
 
     c = idle_controller()
     c.model.state = "idle"
     c.model.status = status(graphics=graphics)
-    page = TroubleshootPage(
-        c,
-        copy_text=lambda *_a: None,
-        copy_diagnostics=lambda: None,
-        open_logs=lambda: None,
-        open_config=lambda: None,
-        confirm_reset=lambda: None,
-        change_graphics=lambda _backend: None,
-        change_option=lambda _option, _value: None,
-    )
+    page = TroubleshootPage(c, RecordedActions([]))
     return [b.get_label() for b in buttons(page.view, Gtk)]
 
 
@@ -530,7 +549,7 @@ ALL = status("aio-launcher", "arena", "aotr")
 
 
 def home_page(installed):
-    from bfme_wizard.home import HomePage
+    from bfme_wizard.ui.pages.home import HomePage
 
     c = idle_controller()
     c.model.status = installed
@@ -602,7 +621,7 @@ def test_the_version_is_at_the_bottom(gtk):
 
 
 def folders_page(home, opened):
-    from bfme_wizard.home import GameFoldersPage
+    from bfme_wizard.ui.pages.game_folders import GameFoldersPage
 
     with mock.patch.dict(os.environ, {"BFME_HOME": str(home)}):
         return GameFoldersPage(opened.append)
@@ -663,7 +682,7 @@ def test_its_rows_open_its_program_folder_and_its_lowercase_maps_folder(gtk, tmp
 
 @pytest.fixture
 def start(gtk):
-    from bfme_wizard.start import StartPage
+    from bfme_wizard.ui.pages.start import StartPage
 
     c = idle_controller()
     return c, StartPage(c)
@@ -749,22 +768,13 @@ def test_the_button_installs_what_is_ticked(start):
 
 
 def troubleshoot(installed, state="done"):
-    from bfme_wizard.home import TroubleshootPage
+    from bfme_wizard.ui.pages.troubleshoot import TroubleshootPage
 
     c = idle_controller()
     c.model.state = state
     c.model.status = installed
     asked = []
-    page = TroubleshootPage(
-        c,
-        copy_text=lambda *_a: None,
-        copy_diagnostics=lambda: None,
-        open_logs=lambda: None,
-        open_config=lambda: asked.append(("open_config",)),
-        confirm_reset=lambda: None,
-        change_graphics=lambda _backend: None,
-        change_option=lambda option, value: asked.append((option, value)),
-    )
+    page = TroubleshootPage(c, RecordedActions(asked))
     return page, asked
 
 
@@ -808,7 +818,7 @@ def test_changing_a_row_saves_that_setting(gtk):
     combos["Graphics card"].set_selected(1)
     rows_titled(page, Adw.SwitchRow)["Show FPS"].set_active(True)
 
-    assert asked == [("gpu", "dedicated"), ("fps-counter", 1)]
+    assert asked == [("change_option", "gpu", "dedicated"), ("change_option", "fps-counter", 1)]
 
 
 def test_the_rows_wait_while_the_setup_runs(gtk):

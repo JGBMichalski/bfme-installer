@@ -37,7 +37,7 @@ READ = (
 # from before it was called AioLauncher.
 NOT_A_WORD = (
     ("flatpak/install-flatpak.sh", "for program in AioLauncher Launcher Arena Aotr"),
-    ("wizard/bfme_wizard/engine/shortcuts.py", 'OLD_SUFFIXES = ("Launcher",)'),
+    ("wizard/bfme_wizard/engine/menu_shortcuts.py", 'OLD_SUFFIXES = ("Launcher",)'),
     ("flatpak/install-flatpak.sh", "# Launcher: the AIO Launcher's shortcut before it was called AioLauncher."),
     # The glossary names the phrase it forbids, in quotes.
     ("CONTEXT.md", 'Never shortened to "the Launcher"'),

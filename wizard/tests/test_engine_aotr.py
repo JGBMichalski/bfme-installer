@@ -13,8 +13,8 @@ import pytest
 from bfme_wizard.engine.config import Config
 from bfme_wizard.engine.errors import JobCancelled, SetupError
 from bfme_wizard.engine.events import Progress
+from bfme_wizard.engine.game_environment import GameEnvironment
 from bfme_wizard.engine.paths import Paths
-from bfme_wizard.engine.prefix import GameEnvironment
 from bfme_wizard.engine.programs import AOTR, AgeOfTheRing
 from bfme_wizard.engine.programs.aotr import ModDB, RemoteFile, ZipContents
 from bfme_wizard.engine.programs.aotr import program as aotr_module

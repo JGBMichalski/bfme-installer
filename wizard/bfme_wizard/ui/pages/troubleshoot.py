@@ -1,29 +1,20 @@
-"""The home screen cards, the Game folders page and the Troubleshoot page. They show the model and call back into the window."""
+"""The Troubleshoot page: system checks, graphics, tools and reset."""
 
 from __future__ import annotations
-
-from collections.abc import Callable
-from pathlib import Path
 
 import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
+from typing import TYPE_CHECKING
+
 from gi.repository import Adw, GLib, Gtk  # noqa: E402
 
-from .controller import Controller
-from .engine.games import GAMES
-from .engine.paths import Paths
-from .engine.programs import PROGRAMS, Program
-from .widgets import clear, first_icon, pill, program_icon
+from ...control.controller import Controller
+from ..widgets import first_icon
 
-# What the page says when there is no card to show. A complete setup always has one, so this is only a safety net.
-NOTHING_INSTALLED = "Nothing is installed. Use the download button at the top to install a program."
-CARD_ICON_SIZE = 64
-# The window floats its icon buttons in the top right corner of the page: 6 pixels from the top, and 34 high.
-CORNER_CLEARANCE = 46
-QUICK_EXIT_NOTE = "Closed after a few seconds. If it didn't open, see Troubleshoot."
-
+if TYPE_CHECKING:
+    from ..actions import WindowActions
 
 # The sandbox cannot see these. Advice only, never pass or fail. The drivers named depend on the chosen backend.
 # (value, label) of each choice in Troubleshoot's Graphics section.
@@ -59,164 +50,12 @@ def cant_check(graphics: str) -> list[tuple[str, str, str]]:
     ]
 
 
-class HomePage:
-    """One card for each program that is installed. Installing and removing programs is the Programs page's job."""
-
-    def __init__(self, controller: Controller, version: Callable[[], str]) -> None:
-        self.controller, self.version = controller, version
-        self.box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        self.content = Gtk.Box(
-            orientation=Gtk.Orientation.VERTICAL,
-            spacing=18,
-            vexpand=True,
-            valign=Gtk.Align.CENTER,
-            halign=Gtk.Align.CENTER,
-            margin_start=24,
-            margin_end=24,
-            margin_top=CORNER_CLEARANCE,
-            margin_bottom=CORNER_CLEARANCE,
-        )
-        self.version_label = Gtk.Label(
-            css_classes=["caption", "dim-label"], halign=Gtk.Align.CENTER, margin_top=6, margin_bottom=12
-        )
-        self.box.append(self.content)
-        self.box.append(self.version_label)
-
-    def refresh(self) -> None:
-        clear(self.content)
-        self.version_label.set_text(f"Version {self.version()}")
-        line = self.controller.model.games_line
-        if line:
-            self.content.append(
-                Gtk.Label(label=line, wrap=True, justify=Gtk.Justification.CENTER, css_classes=["heading"])
-            )
-        installed = [info for info in PROGRAMS if self.controller.model.is_installed(info.key)]
-        if not installed:
-            self.content.append(
-                Gtk.Label(
-                    label=NOTHING_INSTALLED,
-                    wrap=True,
-                    justify=Gtk.Justification.CENTER,
-                    css_classes=["dim-label"],
-                    max_width_chars=40,
-                )
-            )
-            return
-        cards = Gtk.Box(spacing=16, homogeneous=True, halign=Gtk.Align.CENTER)
-        for info in installed:
-            cards.append(self._card(info))
-        self.content.append(cards)
-
-    def _card(self, info: Program) -> Gtk.Widget:
-        name = info.key
-        state = self.controller.apps.state[name]
-        inner = Gtk.Box(
-            orientation=Gtk.Orientation.VERTICAL,
-            spacing=10,
-            margin_top=18,
-            margin_bottom=18,
-            margin_start=18,
-            margin_end=18,
-        )
-        inner.append(program_icon(info, CARD_ICON_SIZE))
-        inner.append(Gtk.Label(label=info.title, css_classes=["title-2"]))
-        inner.append(
-            Gtk.Label(
-                label=info.summary,
-                wrap=True,
-                justify=Gtk.Justification.CENTER,
-                css_classes=["dim-label"],
-                max_width_chars=20,
-            )
-        )
-        if state == "running":
-            running = Gtk.Box(spacing=8, halign=Gtk.Align.CENTER, margin_top=4, margin_bottom=4)
-            running.append(Gtk.Spinner(spinning=True))
-            running.append(Gtk.Label(label="Running"))
-            inner.append(running)
-        else:
-            inner.append(pill("Open", lambda n=name: self.controller.open_app(n)))
-        if state == "quick":
-            inner.append(
-                Gtk.Label(
-                    label=QUICK_EXIT_NOTE,
-                    wrap=True,
-                    justify=Gtk.Justification.CENTER,
-                    css_classes=["caption", "warning"],
-                    max_width_chars=26,
-                )
-            )
-        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, css_classes=["card"])
-        card.append(inner)
-        return card
-
-
-class GameFoldersPage:
-    """Game folders page: one group per game, one row per folder."""
-
-    def __init__(self, open_folder: Callable[[Path], None]) -> None:
-        self.view = Adw.ToolbarView()
-        self.view.add_top_bar(Adw.HeaderBar())
-        page = Adw.PreferencesPage(
-            title="Game folders",
-            description="Open a folder in your file manager to add maps or copy files.",
-        )
-        any_installed = False
-        # A game that is not installed has no folders to open, so it has no group.
-        paths = Paths.of()
-
-        for game in GAMES:
-            if not game.has_folders(paths):
-                continue
-
-            group = Adw.PreferencesGroup(title=GLib.markup_escape_text(game.name))
-            for title, subtitle, target in (
-                ("Game folder", "Installed files and patches", game.game_dir(paths)),
-                ("Maps and user data", "Maps, replays and settings", game.maps_target(paths)),
-            ):
-                row = Adw.ActionRow(title=title, subtitle=subtitle, activatable=True)
-                row.add_suffix(Gtk.Image.new_from_icon_name("folder-open-symbolic"))
-                row.connect("activated", lambda *_, t=target: open_folder(t))
-                group.add(row)
-            page.add(group)
-            any_installed = True
-        if not any_installed:
-            self.view.set_content(
-                Adw.StatusPage(
-                    title="No games installed",
-                    description="Install a game with the AIO Launcher, and its folders will be here.",
-                    icon_name=first_icon("folder-symbolic", "folder-open-symbolic"),
-                )
-            )
-            return
-        self.view.set_content(page)
-
-
 class TroubleshootPage:
     """Rebuilt only when its content changes, so expanded rows stay open."""
 
-    def __init__(
-        self,
-        controller: Controller,
-        *,
-        copy_text: Callable[[str, str], None],
-        copy_diagnostics: Callable[[], None],
-        open_logs: Callable[[], None],
-        open_config: Callable[[], None],
-        confirm_reset: Callable[[], None],
-        change_graphics: Callable[[str], None],
-        change_option: Callable[[str, str | int], None],
-    ) -> None:
+    def __init__(self, controller: Controller, actions: WindowActions) -> None:
         self.controller = controller
-        self._cb = dict(
-            copy_text=copy_text,
-            copy_diagnostics=copy_diagnostics,
-            open_logs=open_logs,
-            open_config=open_config,
-            confirm_reset=confirm_reset,
-            change_graphics=change_graphics,
-            change_option=change_option,
-        )
+        self.actions = actions
         self.view = Adw.ToolbarView()
         self.view.add_top_bar(Adw.HeaderBar())
         self._key = None
@@ -294,7 +133,7 @@ class TroubleshootPage:
             label="Use Vulkan" if opengl else "Use OpenGL", valign=Gtk.Align.CENTER, css_classes=["flat"]
         )
         button.set_sensitive(self.controller.blocked_reason() is None)
-        button.connect("clicked", lambda *_: self._cb["change_graphics"]("vulkan" if opengl else "opengl"))
+        button.connect("clicked", lambda *_: self.actions.change_graphics("vulkan" if opengl else "opengl"))
         row.add_suffix(button)
         group.add(row)
 
@@ -318,7 +157,7 @@ class TroubleshootPage:
             sensitive=free,
         )
         counter.connect(
-            "notify::active", lambda row, _param: self._cb["change_option"]("fps-counter", int(row.get_active()))
+            "notify::active", lambda row, _param: self.actions.change_option("fps-counter", int(row.get_active()))
         )
         group.add(counter)
 
@@ -349,7 +188,7 @@ class TroubleshootPage:
 
         # Connected after the current value is set, so building the row saves nothing.
         def picked(combo: Adw.ComboRow, _param) -> None:
-            self._cb["change_option"](option, choices[combo.get_selected()][0])
+            self.actions.change_option(option, choices[combo.get_selected()][0])
 
         row.connect("notify::selected", picked)
         return row
@@ -362,7 +201,7 @@ class TroubleshootPage:
         for title, advice, command in cant_check(self.controller.model.graphics):
             row = Adw.ActionRow(title=title, subtitle=GLib.markup_escape_text(advice), subtitle_lines=3)
             button = Gtk.Button(label="Copy command", valign=Gtk.Align.CENTER, css_classes=["flat"])
-            button.connect("clicked", lambda _b, cmd=command: self._cb["copy_text"](cmd, "Command copied"))
+            button.connect("clicked", lambda _b, cmd=command: self.actions.copy(cmd, "Command copied"))
             row.add_suffix(button)
             group.add(row)
         return group
@@ -373,18 +212,18 @@ class TroubleshootPage:
             (
                 "Copy diagnostics",
                 "Version, your computer's desktop and graphics card, system checks and the end of the latest logs. Check it before you share it.",
-                "copy_diagnostics",
+                self.actions.copy_diagnostics,
             ),
-            ("Open logs folder", "Opens the folder in your file manager.", "open_logs"),
+            ("Open logs folder", "Opens the folder in your file manager.", self.actions.open_logs),
             (
                 "Open settings file",
                 "Opens config.env in your text editor. Changes apply the next time you open a program.",
-                "open_config",
+                self.actions.open_config,
             ),
         ):
             row = Adw.ActionRow(title=title, subtitle=subtitle, subtitle_lines=2, activatable=True)
             row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
-            row.connect("activated", lambda *_, a=action: self._cb[a]())
+            row.connect("activated", lambda *_, a=action: a())
             group.add(row)
         reason = self.controller.blocked_reason()
         reset = Adw.ActionRow(
@@ -398,7 +237,7 @@ class TroubleshootPage:
         )
         reset.add_css_class("error")
         reset.add_suffix(Gtk.Image.new_from_icon_name("user-trash-symbolic"))
-        reset.connect("activated", lambda *_: self._cb["confirm_reset"]())
+        reset.connect("activated", lambda *_: self.actions.confirm_reset())
         group.add(reset)
         return group
 
@@ -422,6 +261,6 @@ class TroubleshootPage:
                 css_classes=["flat"],
                 tooltip_text="Copy the command",
             )
-            button.connect("clicked", lambda *_: self._cb["copy_text"](fix, "Command copied"))
+            button.connect("clicked", lambda *_: self.actions.copy(fix, "Command copied"))
             row.add_suffix(button)
         return row

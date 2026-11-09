@@ -52,12 +52,9 @@ data folder), once. A first install and development builds show nothing.
 | File | Job |
 | --- | --- |
 | `engine/` | The setup, without GTK. See [How it works](how-it-works.md). |
-| `runner.py` | Runs one job at a time on a worker thread. |
-| `controller.py` | Runs the plan: retry, resume, recheck, cancel, remove. |
-| `model.py` | The setup's state and the plan. |
-| `apps.py` | Opens programs and watches whether they still run. |
-| `diagnostics.py`, `updater.py`, `whatsnew.py` | `Diagnostics` (Copy diagnostics); `Updater` (release check, portal update, restart); `WhatsNew` (the notes after an update). |
-| `ui.py`, `start.py`, `home.py`, `programs.py`, `widgets.py` | The window and its pages (need GTK). |
+| `control/` | The window's logic, without GTK: `model.py` (the setup's state and the plan), `controller.py` (runs the plan: retry, resume, recheck, cancel, remove), `runner.py` (one job at a time on a worker thread), `apps.py` (opens programs and watches whether they still run). |
+| `services/` | `Diagnostics` (Copy diagnostics), `Updater` (release check, portal update, restart), `WhatsNew` (the notes after an update). |
+| `ui/` | The window (needs GTK): `app.py` (the application), `window.py` (builds the pages, shows the one the model is in, navigates), `actions.py` (what pages ask of the window: toasts, copying, opening files, confirmations, starting the controller's work), `update_banner.py`, `dialogs.py`, `widgets.py`, and one module per page in `pages/`. |
 | `__main__.py` | Entry point; `CommandLine` handles `--open`. |
 
 ## Build, run and test

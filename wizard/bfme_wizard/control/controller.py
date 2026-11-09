@@ -5,10 +5,10 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable
 from functools import partial
 
+from ..engine.events import Event
+from ..engine.jobs import Engine, PrepareJob
+from ..engine.programs import program
 from .apps import AppLauncher
-from .engine.events import Event
-from .engine.jobs import Engine, PrepareJob
-from .engine.programs import program
 from .model import ALL_PROGRAMS, TOOLS, SetupModel
 from .runner import JobRunner
 

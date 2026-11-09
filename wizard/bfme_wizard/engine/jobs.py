@@ -11,16 +11,16 @@ from abc import ABC, abstractmethod
 
 from .config import ConfigError, ConfigFile
 from .context import Context
-from .doctor import SystemCheck
 from .errors import JobCancelled, SetupError
 from .events import Cancelled, Done, Emit, Error, Log, Progress, SetupStatus, Step
+from .game_environment import GameEnvironment
 from .games import GAMES
 from .lock import SetupLock
+from .menu_shortcuts import MenuShortcuts
 from .paths import Paths
-from .prefix import GameEnvironment
 from .programs import EVERY_PROGRAM, program
 from .proton import Proton
-from .shortcuts import MenuShortcuts
+from .system_check import SystemCheck
 
 OK = 0
 FAILED = 1

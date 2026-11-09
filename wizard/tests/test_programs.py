@@ -15,7 +15,7 @@ def make_page(installed, model_state="done", removing=None, apps=None):
     """The page, its controller, every row (the programs, then the tools) and what its buttons asked for."""
     from gi.repository import Adw
 
-    from bfme_wizard.programs import ProgramsPage
+    from bfme_wizard.ui.pages.programs import ProgramsPage
 
     c = idle_controller()
     c.model.status = installed
@@ -185,9 +185,9 @@ def test_a_running_tool_cannot_be_opened_again(gtk):
 
 
 def test_the_wizard_knows_the_programs_in_the_order_it_shows_them():
-    from bfme_wizard.apps import AppLauncher
-    from bfme_wizard.model import ALL_PROGRAMS, JOB_STEPS, PROGRAMS
-    from bfme_wizard.model import TOOLS as MODEL_TOOLS
+    from bfme_wizard.control.apps import AppLauncher
+    from bfme_wizard.control.model import ALL_PROGRAMS, JOB_STEPS, PROGRAMS
+    from bfme_wizard.control.model import TOOLS as MODEL_TOOLS
 
     assert ALL_PROGRAMS == ("aio-launcher", "arena", "aotr")
     assert PROGRAMS == ("aio-launcher", "aotr")  # the start page's choices: the Arena comes with the AIO Launcher
