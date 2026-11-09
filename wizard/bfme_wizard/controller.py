@@ -186,14 +186,13 @@ class Controller:
     def _status_done(self, code: int) -> None:
         """Handle the completion of the status job."""
         self.model.finish_status(code)
-        offered = program(self._offer).job if self._offer else None
-        self._offer = None  # a shortcut is answered once, not every time the player comes back to the home screen
         done = self.model.state == "done"
+        # The shortcut of a program that is gone: install it again, by the job that installs it (the Arena comes with
+        # the AIO Launcher). A shortcut is answered once, not every time the player comes back to the home screen.
         missing = None
-        if offered and done and not self.model.is_installed(offered) and program(offered).shortcut_reinstalls:
-            missing = offered  # the shortcut of a program that is not installed: go and install it
-        if offered and not done:
-            self.model.choose([offered])
+        if code == 0 and self._offer and not self.model.is_installed(self._offer):
+            missing = program(self._offer).job
+        self._offer = None
         self._sync_shortcuts(lambda: self._after_status(done, missing))
 
     def _after_status(self, done: bool, missing: str | None) -> None:

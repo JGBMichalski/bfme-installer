@@ -5,7 +5,7 @@
   bfme-installer --open arena          the "BFME Online Arena" shortcut
   bfme-installer --open aotr           the "Age of the Ring" shortcut
 
-A shortcut starts its program without a window. If the program is gone, the wizard opens and removes the shortcut.
+A shortcut starts its program without a window. If the program is gone, the wizard opens and installs it again.
 """
 
 from __future__ import annotations

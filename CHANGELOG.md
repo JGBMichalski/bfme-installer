@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- Clicking the menu shortcut of a program that is no longer installed installs it again right away, for every program.
 - The setup now runs in Python inside the app instead of a separate shell script.
 - Applying the game environment's settings, and switching between Vulkan and OpenGL, takes a few seconds instead of about a minute.
 - The AIO Launcher's menu shortcut and icon are now `<app id>.AioLauncher`. A 2.x shortcut still opens it, and is replaced the first time it is used.

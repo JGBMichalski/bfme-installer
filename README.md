@@ -92,7 +92,7 @@ The home screen shows only what you installed. Three buttons in the top right co
 
 Skipped something? Press the download arrow and then **Install** next to it. Changed your mind? **Remove** takes one program out (its files and its shortcut) and keeps your games, your other programs and the settings Age of the Ring keeps in your own folder. You can install it again later.
 
-Each program you install gets a shortcut in your application menu, and only while it is installed. **Reset** removes them all, and a program you delete yourself loses its shortcut the next time you open BFME Installer.
+Each program you install gets a shortcut in your application menu, and only while it is installed. **Reset** removes them all, and a program you delete yourself loses its shortcut the next time you open BFME Installer. Clicking the shortcut of a program you deleted yourself installs it again.
 
 ### Install Age of the Ring
 

@@ -35,7 +35,8 @@ The first three are left out when the game environment is ready.
   graphics card (only with two) and **Show FPS**; **Copy diagnostics** (can contain your home folder name); **Open logs
   folder**; **Open settings file** (`config.env`); and **Reset game environment**.
 - **Shortcuts** run `bfme-installer --open aio-launcher|arena|aotr` and exist only while the program is installed. A
-  shortcut whose program is ready opens it without the window.
+  shortcut whose program is ready opens it without the window. One whose program is gone opens the window and installs
+  it again (the Arena's, with the AIO Launcher).
 
 ## Updating
 

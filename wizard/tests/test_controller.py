@@ -464,10 +464,12 @@ def test_a_program_that_was_removed_can_be_installed_again(fake):
 @pytest.mark.parametrize(
     "entry, program", [("aio-launcher", "aio-launcher"), ("arena", "aio-launcher"), ("aotr", "aotr")]
 )
-def test_an_entry_for_a_program_that_is_not_installed_prechooses_it_on_the_start_page(fake, entry, program):
+def test_an_entry_for_a_program_that_is_not_installed_installs_it_right_away(fake, entry, program):
+    fake.flag("checks-pass")
     fake.c = fake.controller(offer=entry)
-    fake.run_until("idle", fake.c.start)
-    assert fake.c.model.selection == (program,)
+    fake.run_until("done", fake.c.start)
+    assert fake.calls() == ["status", "prepare", f"install {program}"]  # the game environment first, as it is missing
+    assert fake.c.model.is_installed(entry)
 
 
 def test_no_entry_chooses_nothing(fake):
@@ -496,11 +498,29 @@ def test_the_age_of_the_ring_entry_does_nothing_when_it_is_installed(fake):
     fake.run_until("done", fake.c.start)
 
 
-def test_an_aio_launcher_entry_on_a_complete_setup_just_shows_the_home_screen(fake):
+def test_an_aio_launcher_entry_on_a_complete_setup_installs_it_too(fake):
     fake.flag("prefix", "aotr")
     fake.c = fake.controller(offer="aio-launcher")
     fake.run_until("done", fake.c.start)
-    assert not fake.c.model.is_installed("aio-launcher")
+    assert fake.calls() == ["status", "install aio-launcher"]
+    assert fake.c.model.is_installed("aio-launcher")
+
+
+def test_an_arena_entry_installs_the_arena_when_only_it_is_gone(fake):
+    # The AIO Launcher is there, so the check must be about the Arena itself; its job is the AIO Launcher's.
+    fake.flag("prefix", "aio-launcher")
+    fake.c = fake.controller(offer="arena")
+    fake.run_until("done", fake.c.start)
+    assert fake.calls() == ["status", "install aio-launcher"]
+    assert fake.c.model.is_installed("arena")
+
+
+def test_an_entry_does_nothing_when_the_status_check_fails(fake):
+    fake.flag("prefix")
+    fake.c = fake.controller(offer="aotr")
+    fake.jobs.status = lambda emit, cancel=None: 1
+    fake.run_until("idle", fake.c.start)
+    assert "install aotr" not in fake.calls()
 
 
 # Age of the Ring downloaded by the app

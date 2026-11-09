@@ -74,8 +74,6 @@ class AgeOfTheRing(Program):
         suffix="Aotr",
     )
 
-    shortcut_reinstalls = True
-
     # Left in the game environment until the installer finishes, so a half-finished install is not taken for the mod.
     INSTALLING = ".bfme-aotr-installing"
     # The installed game is about this much bigger than the unpacked installer, with a little room to spare. Measured for
