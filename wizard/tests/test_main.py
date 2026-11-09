@@ -108,7 +108,7 @@ def test_a_2x_shortcut_is_replaced_the_first_time_it_is_used(tmp_path, monkeypat
     assert names == [f"{app}.AioLauncher.desktop"]
 
 
-def test_a_shortcut_whose_program_is_gone_opens_the_wizard_offering_it(monkeypatch):
+def test_a_shortcut_whose_program_is_gone_opens_the_wizard_offering_it(monkeypatch, gtk):
     from bfme_wizard.ui import app as ui
 
     with (
