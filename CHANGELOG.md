@@ -8,35 +8,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
-- The app downloads Age of the Ring from ModDB itself. Set `BFME_KEEP_AOTR_DOWNLOAD=1` in `config.env` to keep the zip.
-- Each download writes a "Downloading …" line to the log, and the running page shows its speed next to the percentage.
-- Troubleshoot's **Graphics** section can choose the graphics card on a computer with two, and show an FPS counter.
-- After an update, the app shows once what changed since the version you last used.
-- Troubleshoot can open the settings file, `config.env`, in your text editor.
-- After an update installs, the banner's **Restart** button starts the new version.
+- The app downloads Age of the Ring from ModDB itself. `BFME_KEEP_AOTR_DOWNLOAD=1` in `config.env` keeps the zip.
+- The running page shows the download speed.
+- Troubleshoot can choose the graphics card on a computer with two, show an FPS counter, and open the settings file.
+- After an update, the app shows what changed, and **Restart** starts the new version.
 
 ### Changed
 
-- Clicking the menu shortcut of a program that is no longer installed installs it again right away, for every program.
-- The setup now runs in Python inside the app instead of a separate shell script.
-- Applying the game environment's settings, and switching between Vulkan and OpenGL, takes a few seconds instead of about a minute.
-- The AIO Launcher's menu shortcut and icon are now `<app id>.AioLauncher`. A 2.x shortcut still opens it, and is replaced the first time it is used.
-- Error messages no longer tell you to run terminal commands.
-- Age of the Ring sizes are updated for 10.0.0: about 19 GB to download, 28 GB installed, and about 47 GB of free space while installing.
-- **Stop now** works like Cancel: downloads, unpacking and installers stop at once, and other steps finish first.
+- The menu shortcut of a program that is no longer installed installs it again.
+- Applying the game environment's settings and switching between Vulkan and OpenGL take seconds instead of about a minute.
+- Error messages no longer ask you to run terminal commands.
+- Age of the Ring sizes match version 10.0.0: about 19 GB to download and 47 GB of free space to install.
+- **Stop now** works like Cancel: downloads, unpacking and installers stop at once.
 
 ### Removed
 
-- Downloading Age of the Ring in your browser and choosing the file. The app always downloads it; when ModDB cannot be used, the install fails with the reason and **Retry** tries again.
-- The terminal script (`bfme-linux-setup.sh`) and its commands. Without a display, the app says so and exits; `install-flatpak.sh` asks you to finish the setup from the desktop.
-- The system Wine option. The setup always uses Proton. `config.env` no longer reads `BFME_RUNNER`, `BFME_ARENA_BRANCH`, `BFME_NVIDIA` or `BFME_UMU_RUN`.
-- Desktop notifications. The window shows the same.
+- Choosing an Age of the Ring file you downloaded in your browser. The app always downloads it.
+- The terminal script (`bfme-linux-setup.sh`). Use the app.
+- The system Wine option and its `config.env` settings. The setup always uses Proton.
+- Desktop notifications.
 
 ### Fixed
 
-- Rotating the AIO Launcher's logs no longer deletes its setup log.
+- The Arena can start games, connection tests and replays again, instead of failing with "A task was canceled". This needs Vulkan graphics.
+- The AIO Launcher's setup log is no longer deleted with its old logs.
 - DXVK's fix for slowdowns in BFME 2 and Rise of the Witch-king now applies.
-- The Arena can start games, connection tests and replays again. It waits for its in-game overlay, which could not find the game's graphics under DXVK, so it gave up with "A task was canceled", "Failed to create ingame room" or "The overlay didn't load". Each time the Arena opens, the app now adds what the overlay looks for to DXVK in the game environment. With OpenGL graphics the overlay still cannot start; use Vulkan to play in the Arena.
 
 ## [2.1.0]
 
